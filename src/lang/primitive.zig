@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Primitive registration entry point.
 //!
 //! `registerAll(env)` runs once at boot (from the runner's setup,
@@ -54,6 +55,8 @@ const reduced_prim = @import("primitive/reduced.zig");
 const namespace_prim = @import("primitive/namespace.zig");
 const macroexpand_prim = @import("primitive/macroexpand.zig");
 const array_prim = @import("primitive/array.zig");
+const map_step = @import("primitive/map_step.zig");
+const lazy_step = @import("primitive/lazy_step.zig");
 
 pub const RegisterError = error{
     InternalNamespaceMissing,
@@ -113,6 +116,8 @@ pub fn registerAll(env: *Env) !void {
     try namespace_prim.register(env, clojure_core_ns); // ADR-0083 ns-reflection
     try macroexpand_prim.register(env, clojure_core_ns); // D-229 macroexpand-1/macroexpand
     try array_prim.register(env, clojure_core_ns); // ADR-0105 / D-287 Java arrays
+    try map_step.register(env, clojure_core_ns); // ADR-0205 multi-coll map step
+    try lazy_step.register(env, clojure_core_ns); // O-110 native lazy producers
 
     // Phase 14 row 14.1 (D-079 discharge): walk every
     // `runtime/java/<pkg>/<Class>.zig`'s `___HOST_EXTENSION`
@@ -152,6 +157,10 @@ pub fn registerAll(env: *Env) !void {
     // D-420: `.numerator`/`.denominator` interop on the `.ratio` value
     // (clojure.lang.Ratio) — math.numeric-tower's floor/ceil/round/sqrt on ratios.
     try @import("../runtime/ratio_methods.zig").installNativeMethods(env.rt);
+    // java.lang.Number instance methods (.intValue/.longValue/.floatValue/
+    // .compareTo/.equals/.hashCode, Double .isNaN/.isInfinite) on the Long
+    // and Double values; BigInt and Ratio splice the same specs in above/below.
+    try @import("../runtime/number_methods.zig").installNativeMethods(env.rt);
     // java.math.BigInteger instance methods (abs/negate/signum/gcd/pow/mod/sqrt)
     // on the `.big_int` value — number-theory / crypto dot-form interop (D-514).
     try @import("../runtime/bigint_methods.zig").installNativeMethods(env.rt);
@@ -164,6 +173,12 @@ pub fn registerAll(env: *Env) !void {
     // `.char` instance methods (charValue / compareTo) — the
     // java.lang.Character instance surface.
     try @import("../runtime/java/lang/Character.zig").installNativeMethods(env.rt);
+    // java.util.concurrent.Future method NAMES (.get/.isDone/.isCancelled/
+    // .cancel) on the `.future` value — the semantics already existed as
+    // deref / realized? / future-cancelled? / future-cancel, so a library
+    // holding a `^Future` (hive-weave.pool, .guarded) reaches them by their
+    // Java spelling instead of only the Clojure one.
+    try @import("../runtime/java/util/concurrent/Future.zig").installNativeMethods(env.rt);
 
     // ADR-0171: `__`-prefixed kernel helpers leave clojure.core for
     // cljw.internal BEFORE the user refer + printer index, so neither

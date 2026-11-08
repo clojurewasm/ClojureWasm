@@ -49,7 +49,16 @@ E2E_JOBS="${E2E_JOBS:-8}"
 # how many smoke-only commits ride before a full gate is forced.
 SMOKE_MODE=0
 SMOKE_E2E=""
-SMOKE_CORE="zig_fmt_check,zig_build_test_vm,zig_build_test_tree_walk,zlinter,build_cljw,lazy_ns_replay,corpus_regression"
+# `test_reach` / `e2e_reach` are in the core because they catch the one failure
+# the smoke is otherwise blind to: a test file that was WRITTEN but never RUNS.
+# Both are seconds. A new e2e added in a smoke-authorised commit rode to CI
+# unregistered on 2026-08-05 (the full gate caught it, one push too late) —
+# a green smoke should not be able to say "the tests pass" about a test that
+# is not wired in.
+# Static invariants belong here by COST, not category. Measured via --only on
+# 2026-09-03: doc_coverage 2s, epipe_head 2s, gate_parity 0s. portable_timeout
+# remains full-only at 13s; e2e_reach was already present and measured 10s.
+SMOKE_CORE="zig_fmt_check,zig_build_test_vm,zig_build_test_tree_walk,zlinter,build_cljw,lazy_ns_replay,corpus_regression,test_clj_suites,test_reach,e2e_reach,entrypoint_surface,repr_decode,doc_coverage,epipe_head,epipe_grep,gate_parity"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -117,7 +126,7 @@ fi
 #      at their end, so running them serially in the registration pass —
 #      before the flush — leaves the pool a correct, stable binary.
 # These run serially BEFORE the parallel flush, on a quiet machine.
-SERIAL_STEPS="e2e_phase8_exit_smoke,e2e_phase4_cli,e2e_phase4_exit,e2e_phase4_exit_codes,e2e_phase16_http_server,e2e_phase16_http_client"
+SERIAL_STEPS="e2e_phase8_exit_smoke,e2e_phase4_cli,e2e_phase4_exit,e2e_phase4_exit_codes,e2e_phase16_http_server,e2e_phase16_http_client,e2e_phase16_fractal_server"
 declare -a E2E_QUEUE=()
 
 # Steps that MUST run on every pass, even under --resume. These are
@@ -209,6 +218,25 @@ run_step() {
             STEPS_FAILED+=("$name")
         fi
     fi
+}
+
+# A step this host cannot run because a dependency cannot be obtained. The name
+# is still REGISTERED, so a selector naming it (SMOKE_CORE names zlinter) matches
+# and the unmatched-selector guard below stays fatal only for names no branch of
+# this script registers. The skip is printed, never silent.
+skip_unavailable_step() {
+    local name="$1"
+    local reason="$2"
+
+    ALL_STEP_NAMES+=("$name")
+
+    if (( LIST_ONLY )); then
+        echo "$name (unavailable: $reason)"
+        return 0
+    fi
+
+    echo "run_all: SKIP $name: $reason"
+    STEPS_SKIPPED+=("$name")
 }
 
 # Run the deferred functional e2e steps concurrently (sliding pool of
@@ -323,6 +351,8 @@ resume_done() { (( RESUME )) && grep -qxF "$GATE_FP $1" "$GATE_LEDGER" 2>/dev/nu
 run_step "zig_build_test_vm"        "zig build test -Dwasm -Doptimize=ReleaseSafe"
 run_step "zig_build_test_tree_walk" "zig build test -Dwasm -Dbackend=tree_walk -Doptimize=ReleaseSafe"
 run_step "zone_check"           "bash scripts/zone_check.sh --gate"
+run_step "entrypoint_surface"   "bash scripts/check_entrypoint_surface.sh"
+run_step "repr_decode"          "bash scripts/check_repr_decode.sh --gate"
 run_step "surface_marker"       "bash scripts/check_surface_marker.sh --gate"
 run_step "feature_keyword"      "bash scripts/check_feature_keyword.sh --gate"
 run_step "host_interface"       "bash scripts/check_host_interface.sh --gate"
@@ -333,11 +363,24 @@ run_step "host_interface"       "bash scripts/check_host_interface.sh --gate"
 run_step "test_reach"           "bash scripts/check_test_reach.sh --gate"
 run_step "e2e_reach"            "bash scripts/check_e2e_reach.sh --gate"
 run_step "e2e_dup"              "bash scripts/check_e2e_dup.sh"
+run_step "e2e_count"            "bash scripts/check_e2e_count.sh"
+# Every runnable script in the repository has a row in test/units.list, and
+# every row names a file that exists. An exclusion is a gated=no row, never
+# an absence.
+run_step "runner_reach"         "bash scripts/check_runner_reach.sh"
 # Informational (no --gate): every D-NNN cited in source/docs must resolve
 # to a debt.yaml row (kills phantom IDs), + prints the quality-loop-floor
 # backlog so the F-010 loop sees it. Tech-debt consolidation 2026-05-31 /
-# .dev/tech_debt_consolidation.md. Gate-promotion tracked in D-175.
+# memory 20260911004940-38e9586e (the M1-M5 leak modes). Gate-promotion tracked in D-175.
 run_step "debt_id_refs"         "bash scripts/check_debt_id_refs.sh --gate"
+
+# CHANGELOG.md is the release-history SSOT, so an `[Unreleased]` entry that
+# already shipped in the newest tag mis-states what a reader can get.
+run_step "changelog_reachability" "bash scripts/check_changelog_reachability.sh --gate"
+
+# ADR-0004 locked the analyzer's special-form enum on day one and nothing
+# enforced it; the ADR and the enum had diverged in both directions.
+run_step "special_form_enum"    "bash scripts/check_special_form_enum.sh"
 
 # Accepted clj-divergence ledger (.dev/accepted_divergences.yaml): every
 # AD-NNN cites a justifying invariant + a pinning test, and COVERAGE.md
@@ -351,11 +394,23 @@ run_step "accepted_divergences" "bash scripts/check_accepted_divergences.sh --ga
 # four pushes went red on a single stray blank line only CI checked).
 run_step "zig_fmt_check"        "zig fmt --check src/"
 
-# zlinter no_deprecated gate (ADR-0003) — Mac-host only. zlinter is
-# fetched via `zig fetch` against GitHub; OrbStack runs are network-
-# free per .dev/orbstack_setup.md.
-if [[ "$(uname -s)" == "Darwin" ]]; then
-    run_step "zlinter"          "zig build lint -Dwasm -- --max-warnings 0"
+# zlinter rule chain (ADR-0003). Gated on whether zlinter can be OBTAINED,
+# not on the host OS. It is fetched from GitHub, so a network-free host
+# (OrbStack, per .dev/orbstack_setup.md) genuinely cannot run it — but a
+# networked Linux host can, and keying the guard on `uname == Darwin` meant
+# Linux never ran the linter at all. A deprecated-stdlib call could then ride
+# a green Linux gate all the way to the macOS leg, which is exactly how
+# `std.mem.indexOfPos` reached CI: Linux green, macOS red, on one commit.
+# The dep resolves offline once it is in the global Zig cache. Probe the
+# delegated lint build itself: main-build `--help` intentionally never resolves
+# zlinter now, while forwarded linter `--help` stops after proving availability.
+# A host that cannot obtain zlinter skips it in the smoke as well as the full
+# gate: the selector in SMOKE_CORE matches the unavailable step instead of
+# failing as an unknown name, and CI, which has the network, still lints.
+if zig build lint -- --help >/dev/null 2>&1; then
+    run_step "zlinter"          "zig build lint -- --max-warnings 0"
+else
+    skip_unavailable_step "zlinter" "the zlinter dependency could not be resolved (no global Zig cache entry, no network)"
 fi
 
 # Build the default (vm — production, ADR-0070 flip) cljw binary ONCE here,
@@ -390,19 +445,62 @@ run_step "assert_e2e_releasesafe" 'mode=$(zig-out/bin/cljw --version 2>/dev/null
 # 2026-07 incident — README said "about 3.8 MB" while the shipped binary
 # was 9.5 MB — is the vigilance failure this step closes structurally.
 run_step "size_claims"          "bash scripts/binary_size_report.sh --check zig-out/bin/cljw"
+run_step "capability_claims"    "bash scripts/check_capability_claims.sh"
+run_step "placement_drift"      "bash scripts/check_placement_status.sh"
+run_step "core_surface"         "bash scripts/check_core_surface.sh"
+# A Step-0 survey points a subagent at the paths .dev/reference_clones.md
+# claims are live; a path that is not there yields a survey that skips its
+# ground truth and reports success anyway. Skips on a fresh clone (D-565).
+run_step "reference_clones"     "bash scripts/check_reference_clones.sh"
+# legal/NOTICE must list exactly the files reproducing upstream source text.
+# The commit hook checks this too, but CI does not run hooks — and the notice
+# said "Three files" for nine, so the claim needs something that executes.
+run_step "clj_attribution"      "bash scripts/check_clj_attribution.sh --gate"
+# Every public var without a docstring is a RECORDED decision. core_meta.clj
+# was generated once and gated by nothing, so it rotted to covering under half
+# of clojure.core while `find-doc` kept answering confidently (ADR-0181).
+run_step "doc_coverage"         "bash scripts/check_doc_coverage.sh"
+# Every src/**/*.zig opens with the two-line canonical header (SPDX + //!).
+# .claude/rules/module_docstring.md carries the exemptions.
+run_step "module_docstring"     "bash scripts/check_module_docstring.sh --check"
+# `| head -N` fed by a command is a silent-death trap under pipefail: the
+# producer takes SIGPIPE, the script dies before printing its diagnostic, and it
+# only bites on a loaded machine. ab84126b fixed four sites and left 24.
+run_step "epipe_head"           "bash scripts/check_epipe_head.sh"
+# The sibling shape: `echo "$value" | grep -q` under pipefail reports a MISS for
+# a line that is present when grep -q exits before the producer finishes
+# (2026-09-05, e2e_phase16_wasm_memory, red in the full gate, green twice
+# directly). A herestring has no pipe to race.
+run_step "epipe_grep"           "bash scripts/check_epipe_grep.sh"
+run_step "portable_timeout"      "bash scripts/check_portable_timeout.sh"
+run_step "mutation_harness"      "python3 -m unittest scripts/mutation/test_mutate.py"
+# The local full gate and CI's must be the SAME run. ci_gate.sh claimed they
+# were; nothing checked, and they were not (parallel vs serial e2e).
+run_step "gate_parity"          "bash scripts/check_gate_parity.sh"
+# A release/default build must configure with package fetching disabled. This
+# pins zlinter as a lint-only lazy dependency instead of making every release
+# resolve its transitive zls dependency tree (CLJW-RELEASE-FETCH).
+run_step "release_deps"         "bash scripts/check_release_deps.sh"
 
 # clj-diff corpus regression (cljw-only replay of golden `;;=> …` pairs —
 # no clj/network). Makes a "X/Y landed" discharge claim mechanically
 # re-checkable (anti D-177 false-positive-discharge) + catches behaviour
 # drift. See .claude/rules/clj_diff_sweep.md.
 run_step "lazy_ns_replay"      "bash scripts/check_lazy_ns_replay.sh"
-run_step "corpus_regression"   "bash scripts/check_corpus_regression.sh"
+run_step "corpus_regression"   "bb scripts/corpus_regression.clj"
 
 # Host-class member truth (ADR-0174 D9): compat_tiers.yaml per-class member
 # lists must match the registered descriptors (both directions). Runs AFTER
 # build_cljw so the dump probes the FRESH binary — on a stale checkout the
 # pre-build zig-out binary lacks __dump-host-classes (the ubuntunote miss).
 run_step "compat_members" "bash scripts/check_compat_members.sh"
+
+# Layer 6 — golden snapshots (ADR-0186). Whole-program stdout+stderr+exit for a
+# corpus of programs, so a change to anything a user SEES fails here even when
+# no assertion was written for it. Runs after build_cljw (it needs the fresh
+# binary) and before the e2e suite (it is cheaper and its failures are more
+# legible than a substring assert's).
+run_step "golden" "bash test/golden/run.sh"
 
 run_step "e2e_phase2_exit"     "bash test/e2e/phase2_exit.sh"
 run_step "e2e_phase3_cli"      "bash test/e2e/phase3_cli.sh"
@@ -411,20 +509,13 @@ run_step "e2e_phase4_cli"        "bash test/e2e/phase4_cli.sh"
 run_step "e2e_phase4_exit"       "bash test/e2e/phase4_exit.sh"
 run_step "e2e_phase4_exit_codes" "bash test/e2e/phase4_exit_codes.sh"
 run_step "e2e_phase5_exit"       "bash test/e2e/phase5_exit.sh"
-run_step "e2e_phase6_regex_cycle1" "bash test/e2e/phase6_regex_cycle1.sh"
 run_step "e2e_phase6_clojure_string_cycle1" "bash test/e2e/phase6_clojure_string_cycle1.sh"
 run_step "e2e_phase6_clojure_string_cycle2" "bash test/e2e/phase6_clojure_string_cycle2.sh"
 run_step "e2e_phase6_clojure_string_cycle3" "bash test/e2e/phase6_clojure_string_cycle3.sh"
-run_step "e2e_phase6_clojure_string_cycle4" "bash test/e2e/phase6_clojure_string_cycle4.sh"
 run_step "e2e_phase6_clojure_set_cycle1" "bash test/e2e/phase6_clojure_set_cycle1.sh"
 run_step "e2e_phase6_clojure_set_cycle2" "bash test/e2e/phase6_clojure_set_cycle2.sh"
 run_step "e2e_phase6_clojure_walk_cycle1" "bash test/e2e/phase6_clojure_walk_cycle1.sh"
 run_step "e2e_phase6_16_a_0_metadata"      "bash test/e2e/phase6_16_a_0_metadata.sh"
-run_step "e2e_composition_unlock_a1"       "bash test/e2e/composition_unlock_a1.sh"
-run_step "e2e_composition_unlock_a2"       "bash test/e2e/composition_unlock_a2.sh"
-run_step "e2e_composition_unlock_a3_1"     "bash test/e2e/composition_unlock_a3_1.sh"
-run_step "e2e_transducer_unlock_a3"        "bash test/e2e/transducer_unlock_a3.sh"
-run_step "e2e_phase6_clojure_set_group_ab" "bash test/e2e/phase6_clojure_set_group_ab.sh"
 run_step "e2e_phase6_set_map_literal"      "bash test/e2e/phase6_set_map_literal.sh"
 run_step "e2e_phase6_clojure_set_group_c"  "bash test/e2e/phase6_clojure_set_group_c.sh"
 run_step "e2e_phase6_16_b_4_private_leaf"  "bash test/e2e/phase6_16_b_4_private_leaf.sh"
@@ -432,16 +523,13 @@ run_step "e2e_phase6_16_b_4_require_basic" "bash test/e2e/phase6_16_b_4_require_
 run_step "e2e_phase6_16_b_4_require_libspec" "bash test/e2e/phase6_16_b_4_require_libspec.sh"
 run_step "e2e_phase6_16_b_4_ns_macro"        "bash test/e2e/phase6_16_b_4_ns_macro.sh"
 run_step "e2e_phase6_16_c_walk_pattern_a"    "bash test/e2e/phase6_16_c_walk_pattern_a.sh"
-run_step "e2e_phase6_16_c_keyword_name"      "bash test/e2e/phase6_16_c_keyword_name.sh"
 run_step "e2e_phase6_16_d_clojure_string_shim" "bash test/e2e/phase6_16_d_clojure_string_shim.sh"
 run_step "e2e_phase6_exit_smoke"             "bash test/e2e/phase6_exit_smoke.sh"
-run_step "e2e_phase7_symbol_value"           "bash test/e2e/phase7_symbol_value.sh"
 run_step "e2e_phase7_multimethod"            "bash test/e2e/phase7_multimethod.sh"
 run_step "e2e_phase7_protocol"               "bash test/e2e/phase7_protocol.sh"
 run_step "e2e_phase7_definterface"           "bash test/e2e/phase7_definterface.sh"
 run_step "e2e_phase7_extend_host_type"       "bash test/e2e/phase7_extend_host_type.sh"
 run_step "e2e_phase7_defmacro_private"       "bash test/e2e/phase7_defmacro_private.sh"
-run_step "e2e_phase7_defrecord"              "bash test/e2e/phase7_defrecord.sh"
 run_step "e2e_phase7_record_field_scope"     "bash test/e2e/phase7_record_field_scope.sh"
 run_step "e2e_phase7_reify"                  "bash test/e2e/phase7_reify.sh"
 run_step "e2e_phase7_method_dispatch"        "bash test/e2e/phase7_method_dispatch.sh"
@@ -449,7 +537,6 @@ run_step "e2e_phase7_symbol_of_var"          "bash test/e2e/phase7_symbol_of_var
 run_step "e2e_phase7_polymorphic_extend"     "bash test/e2e/phase7_polymorphic_extend.sh"
 run_step "e2e_phase7_extend_native_class"    "bash test/e2e/phase7_extend_native_class.sh"
 run_step "e2e_phase7_multi_arity"            "bash test/e2e/phase7_multi_arity.sh"
-run_step "e2e_phase7_apply_variadic"         "bash test/e2e/phase7_apply_variadic.sh"
 run_step "e2e_phase7_catch_hierarchy"        "bash test/e2e/phase7_catch_hierarchy.sh"
 run_step "e2e_phase7_instance_q"             "bash test/e2e/phase7_instance_q.sh"
 run_step "e2e_phase7_replace_pattern_a"      "bash test/e2e/phase7_replace_pattern_a.sh"
@@ -467,6 +554,9 @@ run_step "e2e_phase8_d089_set_extend"        "bash test/e2e/phase8_d089_set_exte
 run_step "e2e_phase8_exit_smoke"             "bash test/e2e/phase8_exit_smoke.sh"
 run_step "e2e_phase9_edn_read_string"        "bash test/e2e/phase9_edn_read_string.sh"
 run_step "e2e_phase9_json"                   "bash test/e2e/phase9_json.sh"
+run_step "e2e_data_errors_catchable"         "bash test/e2e/data_errors_catchable.sh"
+run_step "e2e_budget_thread_ownership"       "bash test/e2e/budget_thread_ownership.sh"
+run_step "e2e_regex_parity_gaps"             "bash test/e2e/regex_parity_gaps.sh"
 run_step "e2e_phase14_json_options"          "bash test/e2e/phase14_json_options.sh"
 run_step "e2e_phase14_require_idempotent"    "bash test/e2e/phase14_require_idempotent.sh"
 run_step "e2e_phase9_csv"                    "bash test/e2e/phase9_csv.sh"
@@ -474,11 +564,15 @@ run_step "e2e_phase9_cli"                    "bash test/e2e/phase9_cli.sh"
 run_step "e2e_phase9_exit_smoke"             "bash test/e2e/phase9_exit_smoke.sh"
 run_step "e2e_phase10_pprint"                "bash test/e2e/phase10_pprint.sh"
 run_step "e2e_phase14_pprint_dispatch"       "bash test/e2e/phase14_pprint_dispatch.sh"
-run_step "e2e_phase14_cl_format"             "bash test/e2e/phase14_cl_format.sh"
 run_step "e2e_phase10_exit_smoke"            "bash test/e2e/phase10_exit_smoke.sh"
 # phase11_clojure_test retired: the D-099-era minimal `is`/`run-tests` surface it
-# tested was replaced by the real clojure.test (D-227) — see e2e_phase15_clojure_test.
+# tested was replaced by the real clojure.test (D-227) — see test/clj/suites/test_reporters_test.clj.
 run_step "test_clj_tier_a"                   "bash test/clj/run_tier_a.sh"
+# Layer 5b — cljw-NATIVE clojure.test suites, ALL of test/clj/suites/ in ONE
+# cljw process (auto-discovered; see test/clj/run_suites.clj's header for the
+# measured 8.5x over the per-assertion process spawns the bash e2e tier pays).
+# In SMOKE_CORE: at tens of ms it belongs in every per-commit loop.
+run_step "test_clj_suites"                   "zig-out/bin/cljw -cp test/clj:scripts test/clj/run_suites.clj"
 run_step "e2e_phase11_exit_smoke"            "bash test/e2e/phase11_exit_smoke.sh"
 run_step "e2e_phase13_exit_smoke"            "bash test/e2e/phase13_exit_smoke.sh"
 run_step "e2e_phase14_catch_keyword"         "bash test/e2e/phase14_catch_keyword.sh"
@@ -486,7 +580,6 @@ run_step "e2e_phase14_catch_internal"        "bash test/e2e/phase14_catch_intern
 run_step "e2e_phase14_binding"               "bash test/e2e/phase14_binding.sh"
 run_step "e2e_phase14_with_context"          "bash test/e2e/phase14_with_context.sh"
 run_step "e2e_phase14_user_throw"            "bash test/e2e/phase14_user_throw.sh"
-run_step "e2e_phase14_collection_keys"       "bash test/e2e/phase14_collection_keys.sh"
 run_step "e2e_phase14_key_val"               "bash test/e2e/phase14_key_val.sh"
 run_step "e2e_phase14_multifn_introspect"    "bash test/e2e/phase14_multifn_introspect.sh"
 run_step "e2e_phase14_auto_keyword"          "bash test/e2e/phase14_auto_keyword.sh"
@@ -501,38 +594,24 @@ run_step "e2e_phase14_future_promise_delay"  "bash test/e2e/phase14_future_promi
 run_step "e2e_phase14_repl"                  "bash test/e2e/phase14_repl.sh"
 run_step "e2e_phase14_nrepl"                 "bash test/e2e/phase14_nrepl.sh"
 run_step "e2e_phase14_nrepl_completion"      "bash test/e2e/phase14_nrepl_completion.sh"
+run_step "e2e_phase14_nrepl_classpath"       "bash test/e2e/phase14_nrepl_classpath.sh"
+run_step "e2e_phase14_nrepl_toplevel_do"     "bash test/e2e/phase14_nrepl_toplevel_do.sh"
+run_step "e2e_entrypoint_eval_parity"        "bash test/e2e/entrypoint_eval_parity.sh"
+run_step "e2e_cljw_test_runner"              "bash test/e2e/cljw_test_runner.sh"
 run_step "e2e_phase14_error_format"          "bash test/e2e/phase14_error_format.sh"
 run_step "e2e_phase14_render_error"          "bash test/e2e/phase14_render_error.sh"
 run_step "e2e_phase14_callable_print"        "bash test/e2e/phase14_callable_print.sh"
 run_step "e2e_phase14_java_static_dispatch"  "bash test/e2e/phase14_java_static_dispatch.sh"
 run_step "e2e_phase14_system_statics"        "bash test/e2e/phase14_system_statics.sh"
-run_step "e2e_phase14_integer_statics"       "bash test/e2e/phase14_integer_statics.sh"
-run_step "e2e_phase14_long_statics"          "bash test/e2e/phase14_long_statics.sh"
-run_step "e2e_phase14_double_statics"        "bash test/e2e/phase14_double_statics.sh"
-run_step "e2e_phase14_character_statics"     "bash test/e2e/phase14_character_statics.sh"
 run_step "e2e_phase14_static_fields"         "bash test/e2e/phase14_static_fields.sh"
-run_step "e2e_phase14_bignum_compare"        "bash test/e2e/phase14_bignum_compare.sh"
-run_step "e2e_phase14_boolean_statics"       "bash test/e2e/phase14_boolean_statics.sh"
-run_step "e2e_phase14_math_extra"            "bash test/e2e/phase14_math_extra.sh"
 run_step "e2e_phase14_instance_member"       "bash test/e2e/phase14_instance_member.sh"
 run_step "e2e_phase14_instance_deref_family" "bash test/e2e/phase14_instance_deref_family.sh"
 run_step "e2e_phase14_def_meta_quote_value"  "bash test/e2e/phase14_def_meta_quote_value.sh"
-run_step "e2e_phase14_math"                  "bash test/e2e/phase14_math.sh"
 run_step "e2e_phase14_math_exact"            "bash test/e2e/phase14_math_exact.sh"
 run_step "e2e_phase14_fn_recur"              "bash test/e2e/phase14_fn_recur.sh"
 run_step "e2e_phase14_defn_docstring"        "bash test/e2e/phase14_defn_docstring.sh"
 run_step "e2e_phase14_deftype"               "bash test/e2e/phase14_deftype.sh"
 run_step "e2e_phase14_letfn"                 "bash test/e2e/phase14_letfn.sh"
-run_step "e2e_phase14_math_transcendental" "bash test/e2e/phase14_math_transcendental.sh"
-run_step "e2e_phase14_destructure"           "bash test/e2e/phase14_destructure.sh"
-run_step "e2e_phase14_map_string_keys"       "bash test/e2e/phase14_map_string_keys.sh"
-run_step "e2e_phase14_float_print"           "bash test/e2e/phase14_float_print.sh"
-run_step "e2e_phase14_comp_juxt_partition"   "bash test/e2e/phase14_comp_juxt_partition.sh"
-run_step "e2e_phase14_map_complement_vector" "bash test/e2e/phase14_map_complement_vector.sh"
-run_step "e2e_phase14_seq_core_batch"        "bash test/e2e/phase14_seq_core_batch.sh"
-run_step "e2e_phase14_merge_partition_by"    "bash test/e2e/phase14_merge_partition_by.sh"
-run_step "e2e_phase14_threading_macros"      "bash test/e2e/phase14_threading_macros.sh"
-run_step "e2e_phase14_thread_runtime"        "bash test/e2e/phase14_thread_runtime.sh"
 run_step "e2e_phase14_arraylist"             "bash test/e2e/phase14_arraylist.sh"
 run_step "e2e_phase14_hashmap"               "bash test/e2e/phase14_hashmap.sh"
 run_step "e2e_phase14_hashset"               "bash test/e2e/phase14_hashset.sh"
@@ -552,43 +631,20 @@ run_step "e2e_phase14_seq_key_hash"          "bash test/e2e/phase14_seq_key_hash
 run_step "e2e_phase14_with_in_str"           "bash test/e2e/phase14_with_in_str.sh"
 run_step "e2e_phase14_lisp_string_reader"    "bash test/e2e/phase14_lisp_string_reader.sh"
 run_step "e2e_phase14_qualified_deftype"     "bash test/e2e/phase14_qualified_deftype.sh"
-run_step "e2e_phase14_string_getbytes"       "bash test/e2e/phase14_string_getbytes.sh"
-run_step "e2e_phase14_some_doto"             "bash test/e2e/phase14_some_doto.sh"
 run_step "e2e_phase14_iteration_macros"      "bash test/e2e/phase14_iteration_macros.sh"
 run_step "e2e_phase14_case"                  "bash test/e2e/phase14_case.sh"
 run_step "e2e_phase14_condp"                 "bash test/e2e/phase14_condp.sh"
 run_step "e2e_phase14_println_stdout"        "bash test/e2e/phase14_println_stdout.sh"
-run_step "e2e_phase14_fn_combinators"        "bash test/e2e/phase14_fn_combinators.sh"
-run_step "e2e_phase14_when_if_not"          "bash test/e2e/phase14_when_if_not.sh"
 run_step "e2e_phase14_assert_distinct"      "bash test/e2e/phase14_assert_distinct.sh"
-run_step "e2e_phase14_partition_all"       "bash test/e2e/phase14_partition_all.sh"
 run_step "e2e_phase14_not_eq_run"          "bash test/e2e/phase14_not_eq_run.sh"
 run_step "e2e_phase14_peek_pop"            "bash test/e2e/phase14_peek_pop.sh"
-run_step "e2e_phase14_find"                "bash test/e2e/phase14_find.sh"
-run_step "e2e_phase14_int_char"            "bash test/e2e/phase14_int_char.sh"
 run_step "e2e_phase14_char_print"          "bash test/e2e/phase14_char_print.sh"
 run_step "e2e_phase14_subvec"              "bash test/e2e/phase14_subvec.sh"
-run_step "e2e_phase14_bounded_count"       "bash test/e2e/phase14_bounded_count.sh"
-run_step "e2e_phase14_lazy_cat"            "bash test/e2e/phase14_lazy_cat.sh"
-run_step "e2e_phase14_tree_seq"            "bash test/e2e/phase14_tree_seq.sh"
-run_step "e2e_phase14_rand"                "bash test/e2e/phase14_rand.sh"
-run_step "e2e_phase14_shuffle"             "bash test/e2e/phase14_shuffle.sh"
 run_step "e2e_phase14_float_div"           "bash test/e2e/phase14_float_div.sh"
 run_step "e2e_phase14_num_predicates"      "bash test/e2e/phase14_num_predicates.sh"
 run_step "e2e_phase14_ratio_accessors"     "bash test/e2e/phase14_ratio_accessors.sh"
 run_step "e2e_phase14_rationalize"         "bash test/e2e/phase14_rationalize.sh"
 run_step "e2e_phase14_ratio_arith"         "bash test/e2e/phase14_ratio_arith.sh"
-run_step "e2e_phase14_quot_rem_mod_tower"  "bash test/e2e/phase14_quot_rem_mod_tower.sh"
-run_step "e2e_phase14_long_num_bitandnot"   "bash test/e2e/phase14_long_num_bitandnot.sh"
-run_step "e2e_phase14_parse"                "bash test/e2e/phase14_parse.sh"
-run_step "e2e_phase14_double_float"        "bash test/e2e/phase14_double_float.sh"
-run_step "e2e_phase14_reductions_splitat"  "bash test/e2e/phase14_reductions_splitat.sh"
-run_step "e2e_phase14_counted_reversible"  "bash test/e2e/phase14_counted_reversible.sh"
-run_step "e2e_phase14_doseq"                "bash test/e2e/phase14_doseq.sh"
-run_step "e2e_phase14_for"                  "bash test/e2e/phase14_for.sh"
-run_step "e2e_phase14_format"               "bash test/e2e/phase14_format.sh"
-run_step "e2e_phase14_bit_ops"              "bash test/e2e/phase14_bit_ops.sh"
-run_step "e2e_phase14_string_indexed"       "bash test/e2e/phase14_string_indexed.sh"
 run_step "e2e_phase14_namespaced_maps"      "bash test/e2e/phase14_namespaced_maps.sh"
 run_step "e2e_phase14_atom_watch"           "bash test/e2e/phase14_atom_watch.sh"
 run_step "e2e_phase14_ref_var_validator"    "bash test/e2e/phase14_ref_var_validator.sh"
@@ -596,33 +652,13 @@ run_step "e2e_phase14_parallel_seq"         "bash test/e2e/phase14_parallel_seq.
 run_step "e2e_phase14_alter_var_root"       "bash test/e2e/phase14_alter_var_root.sh"
 run_step "e2e_phase14_syntax_quote"         "bash test/e2e/phase14_syntax_quote.sh"
 run_step "e2e_phase14_with_redefs"          "bash test/e2e/phase14_with_redefs.sh"
-run_step "e2e_phase15_namespace"            "bash test/e2e/phase15_namespace.sh"
-run_step "e2e_phase15_dynamic_var"          "bash test/e2e/phase15_dynamic_var.sh"
 run_step "e2e_phase15_watch_recursion"      "bash test/e2e/phase15_watch_recursion.sh"
-run_step "e2e_phase15_clojure_test"         "bash test/e2e/phase15_clojure_test.sh"
-run_step "e2e_phase15_clojure_test_output"  "bash test/e2e/phase15_clojure_test_output.sh"
-run_step "e2e_phase15_test_junit"           "bash test/e2e/phase15_test_junit.sh"
-run_step "e2e_phase15_repl_discovery"       "bash test/e2e/phase15_repl_discovery.sh"
-run_step "e2e_phase15_spec"                 "bash test/e2e/phase15_spec.sh"
-run_step "e2e_phase15_tap"                  "bash test/e2e/phase15_tap.sh"
-run_step "e2e_phase15_java_time_instant"    "bash test/e2e/phase15_java_time_instant.sh"
-run_step "e2e_phase15_java_time_duration"   "bash test/e2e/phase15_java_time_duration.sh"
-run_step "e2e_phase15_java_time_local_date_time"  "bash test/e2e/phase15_java_time_local_date_time.sh"
-run_step "e2e_phase15_java_time_local_date"  "bash test/e2e/phase15_java_time_local_date.sh"
-run_step "e2e_phase15_java_time_compare"     "bash test/e2e/phase15_java_time_compare.sh"
-run_step "e2e_phase15_java_time_sort"       "bash test/e2e/phase15_java_time_sort.sh"
-run_step "e2e_phase15_java_time_local_date_arith"  "bash test/e2e/phase15_java_time_local_date_arith.sh"
-run_step "e2e_phase15_java_time_ldt_arith"  "bash test/e2e/phase15_java_time_ldt_arith.sh"
-run_step "e2e_phase15_java_time_arith3"     "bash test/e2e/phase15_java_time_arith3.sh"
-run_step "e2e_phase15_java_time_duration_between"  "bash test/e2e/phase15_java_time_duration_between.sh"
-run_step "e2e_phase15_java_time_dow_month"  "bash test/e2e/phase15_java_time_dow_month.sh"
-run_step "e2e_phase15_java_time_ldt_calendar"  "bash test/e2e/phase15_java_time_ldt_calendar.sh"
+run_step "e2e_clojure_test_model"           "bash test/e2e/clojure_test_model.sh"
+run_step "e2e_cljw_test_runner"             "bash test/e2e/cljw_test_runner.sh"
+run_step "e2e_macro_throw_catchable"        "bash test/e2e/macro_throw_catchable.sh"
+run_step "e2e_temporal_hash_eq"          "bash test/e2e/temporal_hash_eq.sh"
 run_step "e2e_phase15_require_fs"           "bash test/e2e/phase15_require_fs.sh"
-run_step "e2e_phase15_use_refer_all"        "bash test/e2e/phase15_use_refer_all.sh"
-run_step "e2e_phase15_use_libspec_filter"   "bash test/e2e/phase15_use_libspec_filter.sh"
 run_step "e2e_phase15_system_property"      "bash test/e2e/phase15_system_property.sh"
-run_step "e2e_phase15_set_bang"             "bash test/e2e/phase15_set_bang.sh"
-run_step "e2e_phase15_stm_dosync"           "bash test/e2e/phase15_stm_dosync.sh"
 run_step "e2e_phase16_locking"              "bash test/e2e/phase16_locking.sh"
 run_step "e2e_phase16_agent"                "bash test/e2e/phase16_agent.sh"
 run_step "e2e_phase16_concurrency_stress"   "bash test/e2e/phase16_concurrency_stress.sh"
@@ -630,6 +666,7 @@ run_step "e2e_phase16_http_server"          "bash test/e2e/phase16_http_server.s
 run_step "e2e_phase16_http_client"          "bash test/e2e/phase16_http_client.sh"
 run_step "e2e_phase16_eval_budget"          "bash test/e2e/phase16_eval_budget.sh"
 run_step "e2e_phase16_file_io_errors"       "bash test/e2e/phase16_file_io_errors.sh"
+run_step "e2e_phase16_special_file_read"    "bash test/e2e/phase16_special_file_read.sh"
 run_step "e2e_phase16_repl_classpath"       "bash test/e2e/phase16_repl_classpath.sh"
 run_step "e2e_phase16_extend_via_metadata"  "bash test/e2e/phase16_extend_via_metadata.sh"
 run_step "e2e_phase16_fs_jail"              "bash test/e2e/phase16_fs_jail.sh"
@@ -639,56 +676,48 @@ run_step "e2e_phase16_host_stream"          "bash test/e2e/phase16_host_stream.s
 run_step "e2e_phase16_stdin_read_line"      "bash test/e2e/phase16_stdin_read_line.sh"
 run_step "e2e_phase16_clojure_java_io_streams" "bash test/e2e/phase16_clojure_java_io_streams.sh"
 run_step "e2e_phase16_clojure_repl" "bash test/e2e/phase16_clojure_repl.sh"
+run_step "e2e_phase16_clojure_core_reducers" "bash test/e2e/phase16_clojure_core_reducers.sh"
 run_step "e2e_phase16_clojure_java_io_copy" "bash test/e2e/phase16_clojure_java_io_copy.sh"
 run_step "e2e_phase16_cljw_json_fs"         "bash test/e2e/phase16_cljw_json_fs.sh"
 run_step "e2e_phase16_tokenizer_long_input" "bash test/e2e/phase16_tokenizer_long_input.sh"
+run_step "e2e_bulk_literal"                 "bash test/e2e/bulk_literal.sh"
 # Wasm-FFI execution e2e — now part of the DEFAULT full gate (F-001 amended
 # 2026-06-12: zwasm v2 is complete, so the gate builds `-Dwasm` throughout and
 # exercises the headline FFI path). They reuse the shared -Dwasm binary
 # (CLJW_SKIP_BUILD), so no per-step rebuild. On a host where `zig build -Dwasm`
 # cannot resolve zwasm, build_cljw fails first — wasm is a gate prerequisite now.
 run_step "e2e_phase16_wasm_ffi"             "bash test/e2e/phase16_wasm_ffi.sh"
+run_step "e2e_phase16_wasm_memory"          "bash test/e2e/phase16_wasm_memory.sh"
 run_step "e2e_phase16_wasm_engine_select"   "bash test/e2e/phase16_wasm_engine_select.sh"
 run_step "e2e_phase16_wasm_run"             "bash test/e2e/phase16_wasm_run.sh"
+# D-349: the third budget axis. Fuel bounds instructions; how many bytes an
+# instruction writes is the guest's choice, so only a capture cap bounds host
+# memory. Measured pre-fix: 64 MB per 1e6 fuel, ~6.4 GB RSS at 1e8.
+run_step "e2e_phase16_wasm_run_output_cap" "bash test/e2e/phase16_wasm_run_output_cap.sh"
 run_step "e2e_phase16_wasm_component"       "bash test/e2e/phase16_wasm_component.sh"
 run_step "e2e_phase16_wasm_require_component" "bash test/e2e/phase16_wasm_require_component.sh"
-run_step "e2e_phase15_for_while"            "bash test/e2e/phase15_for_while.sh"
-run_step "e2e_phase15_ns_import"            "bash test/e2e/phase15_ns_import.sh"
-run_step "e2e_phase15_dot_form"             "bash test/e2e/phase15_dot_form.sh"
-run_step "e2e_phase15_var_get_set"          "bash test/e2e/phase15_var_get_set.sh"
-run_step "e2e_phase15_with_local_vars"      "bash test/e2e/phase15_with_local_vars.sh"
-run_step "e2e_phase15_campaign_keywords"    "bash test/e2e/phase15_campaign_keywords.sh"
-run_step "e2e_phase15_macro_literals"       "bash test/e2e/phase15_macro_literals.sh"
-run_step "e2e_phase15_alias"                "bash test/e2e/phase15_alias.sh"
-run_step "e2e_phase15_aliased_macro"        "bash test/e2e/phase15_aliased_macro.sh"
-run_step "e2e_phase15_dotdot"               "bash test/e2e/phase15_dotdot.sh"
-run_step "e2e_phase15_clojure_template"     "bash test/e2e/phase15_clojure_template.sh"
-run_step "e2e_phase15_class_methods"        "bash test/e2e/phase15_class_methods.sh"
+# Caller-set :fuel / :max-memory-pages on wasm/load-component, and the fuel
+# diagnostic on both call paths (a budget kill must not read as a guest trap).
+run_step "e2e_phase16_wasm_component_budget" "bash test/e2e/phase16_wasm_component_budget.sh"
+# docs/examples/polyglot: the C / Zig / Rust / Go guests the README shows, run
+# as committed AND rebuilt from their source headers (each toolchain on PATH),
+# plus hosts.cljc on every Clojure host present. A README claim with a gate.
+run_step "e2e_phase16_wasm_polyglot"        "bash test/e2e/phase16_wasm_polyglot.sh"
+# docs/examples/zig-native: one Zig source as a wasm guest and as a native
+# library through cljw.ffi, committed wasm AND rebuilt from the header recipe.
+run_step "e2e_phase16_zig_native"           "bash test/e2e/phase16_zig_native.sh"
+# Fractal example: committed scalar/SIMD parity and reproducible header recipes.
+run_step "e2e_phase16_fractal_kernel"       "bash test/e2e/phase16_fractal_kernel.sh"
+# Fractal example server: routes, verbatim wasm bytes, tiles on every engine.
+run_step "e2e_phase16_fractal_server"       "bash test/e2e/phase16_fractal_server.sh"
+# The reswap coverage moved to suites/wasm-require-component-reswap-test: it
+# asserts values, not the process boundary, so it runs in-process now.
 run_step "e2e_phase15_deferred_host_ref"    "bash test/e2e/phase15_deferred_host_ref.sh"
-run_step "e2e_phase15_defmulti_defmethod"   "bash test/e2e/phase15_defmulti_defmethod.sh"
-run_step "e2e_phase15_with_open"            "bash test/e2e/phase15_with_open.sh"
-run_step "e2e_phase15_defprotocol_docstring" "bash test/e2e/phase15_defprotocol_docstring.sh"
-run_step "e2e_phase15_marker_protocol"      "bash test/e2e/phase15_marker_protocol.sh"
-run_step "e2e_phase15_ns_binding_roundtrip" "bash test/e2e/phase15_ns_binding_roundtrip.sh"
-run_step "e2e_phase15_ns_runtime_fns"       "bash test/e2e/phase15_ns_runtime_fns.sh"
-run_step "e2e_phase15_defmethod_destructure" "bash test/e2e/phase15_defmethod_destructure.sh"
-run_step "e2e_phase15_new_ctor"             "bash test/e2e/phase15_new_ctor.sh"
-run_step "e2e_phase15_import_macro"         "bash test/e2e/phase15_import_macro.sh"
-run_step "e2e_phase15_require_runtime_fn"   "bash test/e2e/phase15_require_runtime_fn.sh"
-run_step "e2e_phase15_class_as_value"       "bash test/e2e/phase15_class_as_value.sh"
-run_step "e2e_phase15_pr_newline"           "bash test/e2e/phase15_pr_newline.sh"
-run_step "e2e_phase15_ns_docstring"         "bash test/e2e/phase15_ns_docstring.sh"
-run_step "e2e_phase15_reader_conditional"   "bash test/e2e/phase15_reader_conditional.sh"
-run_step "e2e_phase15_persistent_queue"     "bash test/e2e/phase15_persistent_queue.sh"
-run_step "e2e_phase15_clojure_stacktrace"   "bash test/e2e/phase15_clojure_stacktrace.sh"
-run_step "e2e_phase15_clojure_uuid"         "bash test/e2e/phase15_clojure_uuid.sh"
-run_step "e2e_phase15_clojure_instant"      "bash test/e2e/phase15_clojure_instant.sh"
-run_step "e2e_phase15_clojure_test_tap"     "bash test/e2e/phase15_clojure_test_tap.sh"
 run_step "e2e_phase16_vm_error_loc_sidecar" "bash test/e2e/phase16_vm_error_loc_sidecar.sh"
 run_step "e2e_phase16_gc_torture"           "bash test/e2e/phase16_gc_torture.sh"
+run_step "e2e_phase16_load_file_source"     "bash test/e2e/phase16_load_file_source.sh"
 run_step "e2e_phase16_bfs_queue_gc"         "bash test/e2e/phase16_bfs_queue_gc.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
-run_step "e2e_phase14_core_cluster"          "bash test/e2e/phase14_core_cluster.sh"
 run_step "e2e_phase14_print_family"          "bash test/e2e/phase14_print_family.sh"
 run_step "e2e_phase14_var_special"           "bash test/e2e/phase14_var_special.sh"
 run_step "e2e_phase14_deps_edn"              "bash test/e2e/phase14_deps_edn.sh"
@@ -698,31 +727,20 @@ run_step "e2e_phase9_record_extmap"          "bash test/e2e/phase9_record_extmap
 run_step "e2e_phase14_redef"                 "bash test/e2e/phase14_redef.sh"
 run_step "e2e_phase14_var_metadata"          "bash test/e2e/phase14_var_metadata.sh"
 run_step "e2e_phase14_defn_meta"             "bash test/e2e/phase14_defn_meta.sh"
-run_step "e2e_phase14_empty_list"            "bash test/e2e/phase14_empty_list.sh"
-run_step "e2e_phase14_object_methods"        "bash test/e2e/phase14_object_methods.sh"
-run_step "e2e_phase14_map_entry"             "bash test/e2e/phase14_map_entry.sh"
 run_step "e2e_phase14_inst_literal"          "bash test/e2e/phase14_inst_literal.sh"
-run_step "e2e_phase14_exception_ctor"        "bash test/e2e/phase14_exception_ctor.sh"
 run_step "e2e_phase14_doc"                   "bash test/e2e/phase14_doc.sh"
-run_step "e2e_phase14_coll_helpers"          "bash test/e2e/phase14_coll_helpers.sh"
-run_step "e2e_phase14_map_helpers"           "bash test/e2e/phase14_map_helpers.sh"
-run_step "e2e_phase14_hamt_map"              "bash test/e2e/phase14_hamt_map.sh"
-run_step "e2e_phase14_ifn_callable"          "bash test/e2e/phase14_ifn_callable.sh"
-run_step "e2e_phase14_atom"                  "bash test/e2e/phase14_atom.sh"
 run_step "e2e_phase14_hash_gensym"           "bash test/e2e/phase14_hash_gensym.sh"
-run_step "e2e_phase14_volatile"              "bash test/e2e/phase14_volatile.sh"
-run_step "e2e_phase14_comparator"            "bash test/e2e/phase14_comparator.sh"
-run_step "e2e_phase14_vector_keys"           "bash test/e2e/phase14_vector_keys.sh"
-run_step "e2e_phase14_memoize"               "bash test/e2e/phase14_memoize.sh"
 run_step "e2e_phase14_metadata"              "bash test/e2e/phase14_metadata.sh"
 run_step "e2e_phase14_symbol_metadata"       "bash test/e2e/phase14_symbol_metadata.sh"
 run_step "e2e_phase14_deftype_collection_base" "bash test/e2e/phase14_deftype_collection_base.sh"
+run_step "e2e_phase14_script_cli_args" "bash test/e2e/phase14_script_cli_args.sh"
 run_step "e2e_phase14_deftype_inherited_method" "bash test/e2e/phase14_deftype_inherited_method.sh"
 run_step "e2e_phase14_reify_remap" "bash test/e2e/phase14_reify_remap.sh"
 run_step "e2e_phase14_reify_destructure_param" "bash test/e2e/phase14_reify_destructure_param.sh"
 run_step "e2e_phase14_reify_metadata" "bash test/e2e/phase14_reify_metadata.sh"
 run_step "e2e_phase14_macro_shadow_builtin" "bash test/e2e/phase14_macro_shadow_builtin.sh"
 run_step "e2e_phase14_macro_return_hashmap" "bash test/e2e/phase14_macro_return_hashmap.sh"
+run_step "e2e_phase14_macro_return_hashset" "bash test/e2e/phase14_macro_return_hashset.sh"
 run_step "e2e_phase14_deftype_sorted" "bash test/e2e/phase14_deftype_sorted.sh"
 run_step "e2e_phase14_deftype_kvreduce_blocking" "bash test/e2e/phase14_deftype_kvreduce_blocking.sh"
 run_step "e2e_phase14_unicode_case" "bash test/e2e/phase14_unicode_case.sh"
@@ -730,43 +748,33 @@ run_step "e2e_phase14_deftype_transient_family" "bash test/e2e/phase14_deftype_t
 run_step "e2e_phase14_print_method"          "bash test/e2e/phase14_print_method.sh"
 run_step "e2e_phase14_member_on_native"      "bash test/e2e/phase14_member_on_native.sh"
 run_step "e2e_phase14_java_method_grouping"  "bash test/e2e/phase14_java_method_grouping.sh"
+run_step "e2e_semaphore"                     "bash test/e2e/semaphore.sh"
+run_step "e2e_concurrent_atomics"            "bash test/e2e/concurrent_atomics.sh"
+run_step "e2e_concurrent_interfaces"         "bash test/e2e/concurrent_interfaces.sh"
+run_step "e2e_linked_blocking_queue"         "bash test/e2e/linked_blocking_queue.sh"
+run_step "e2e_vector_seq_view"               "bash test/e2e/vector_seq_view.sh"
 run_step "e2e_phase14_fn_prepost"            "bash test/e2e/phase14_fn_prepost.sh"
 run_step "e2e_phase14_deftype_ideref"        "bash test/e2e/phase14_deftype_ideref.sh"
-run_step "e2e_phase14_equality"              "bash test/e2e/phase14_equality.sh"
 run_step "e2e_phase14_realworld_program"     "bash test/e2e/phase14_realworld_program.sh"
-run_step "e2e_phase14_dedup_group"           "bash test/e2e/phase14_dedup_group.sh"
-run_step "e2e_phase14_seq_helpers2"          "bash test/e2e/phase14_seq_helpers2.sh"
-run_step "e2e_phase14_reduce_helpers"        "bash test/e2e/phase14_reduce_helpers.sh"
-run_step "e2e_phase14_accessors"             "bash test/e2e/phase14_accessors.sh"
-run_step "e2e_phase14_compare"               "bash test/e2e/phase14_compare.sh"
-run_step "e2e_phase14_sort"                  "bash test/e2e/phase14_sort.sh"
-run_step "e2e_phase14_sorted"                "bash test/e2e/phase14_sorted.sh"
-run_step "e2e_phase14_transducers"           "bash test/e2e/phase14_transducers.sh"
-run_step "e2e_phase14_hierarchy"             "bash test/e2e/phase14_hierarchy.sh"
-run_step "e2e_phase14_class_type"            "bash test/e2e/phase14_class_type.sh"
 run_step "e2e_phase14_deftype_object"        "bash test/e2e/phase14_deftype_object.sh"
 run_step "e2e_phase14_deftype_mutable"       "bash test/e2e/phase14_deftype_mutable.sh"
-run_step "e2e_phase14_arrays"                "bash test/e2e/phase14_arrays.sh"
-run_step "e2e_phase14_random"                "bash test/e2e/phase14_random.sh"
 run_step "e2e_phase14_uri"                   "bash test/e2e/phase14_uri.sh"
 run_step "e2e_phase14_extend_protocol_targets" "bash test/e2e/phase14_extend_protocol_targets.sh"
 run_step "e2e_phase14_extend_fn"             "bash test/e2e/phase14_extend_fn.sh"
 run_step "e2e_phase14_extend_abstract_base"  "bash test/e2e/phase14_extend_abstract_base.sh"
 run_step "e2e_phase14_deftype_imeta"         "bash test/e2e/phase14_deftype_imeta.sh"
+run_step "e2e_phase14_core_surface_protocols" "bash test/e2e/phase14_core_surface_protocols.sh"
+run_step "e2e_phase14_file_var"              "bash test/e2e/phase14_file_var.sh"
+run_step "e2e_phase16_wasm_component_multiexport" "bash test/e2e/phase16_wasm_component_multiexport.sh"
 run_step "e2e_phase14_deftype_iseq"          "bash test/e2e/phase14_deftype_iseq.sh"
 run_step "e2e_phase14_deftype_overload_arity" "bash test/e2e/phase14_deftype_overload_arity.sh"
 run_step "e2e_phase14_deftype_indexed"       "bash test/e2e/phase14_deftype_indexed.sh"
 run_step "e2e_phase14_deftype_ireduce"       "bash test/e2e/phase14_deftype_ireduce.sh"
-run_step "e2e_phase14_catch_fqcn_exceptions" "bash test/e2e/phase14_catch_fqcn_exceptions.sh"
 run_step "e2e_phase14_destructure_fn"        "bash test/e2e/phase14_destructure_fn.sh"
 run_step "e2e_phase14_deftype_cross_ns_import" "bash test/e2e/phase14_deftype_cross_ns_import.sh"
 run_step "e2e_phase14_prefix_list_libspec"   "bash test/e2e/phase14_prefix_list_libspec.sh"
-run_step "e2e_phase14_regex_lookahead"       "bash test/e2e/phase14_regex_lookahead.sh"
 run_step "e2e_phase14_re_matcher"            "bash test/e2e/phase14_re_matcher.sh"
-run_step "e2e_phase14_locale"                "bash test/e2e/phase14_locale.sh"
-run_step "e2e_phase14_short_byte"            "bash test/e2e/phase14_short_byte.sh"
 run_step "e2e_phase14_syntax_quote_exclude"   "bash test/e2e/phase14_syntax_quote_exclude.sh"
-run_step "e2e_phase14_hex_bigint"             "bash test/e2e/phase14_hex_bigint.sh"
 run_step "e2e_phase14_ns_form_leniency"       "bash test/e2e/phase14_ns_form_leniency.sh"
 run_step "e2e_phase14_cljc_libspec"          "bash test/e2e/phase14_cljc_libspec.sh"
 run_step "e2e_phase14_empty_catch"           "bash test/e2e/phase14_empty_catch.sh"
@@ -775,27 +783,20 @@ run_step "e2e_phase14_deftype_method_lowering" "bash test/e2e/phase14_deftype_me
 run_step "e2e_phase14_clojure_lang_util"     "bash test/e2e/phase14_clojure_lang_util.sh"
 run_step "e2e_phase14_compiler_specials"     "bash test/e2e/phase14_compiler_specials.sh"
 run_step "e2e_phase14_opaque_host_class"     "bash test/e2e/phase14_opaque_host_class.sh"
-run_step "e2e_phase14_bigdecimal_setscale"   "bash test/e2e/phase14_bigdecimal_setscale.sh"
-run_step "e2e_phase14_ratio_interop"        "bash test/e2e/phase14_ratio_interop.sh"
 run_step "e2e_phase14_class_names"           "bash test/e2e/phase14_class_names.sh"
 run_step "e2e_phase14_pattern_quote"         "bash test/e2e/phase14_pattern_quote.sh"
 run_step "e2e_phase14_var_resolve"           "bash test/e2e/phase14_var_resolve.sh"
-run_step "e2e_phase14_biginteger"            "bash test/e2e/phase14_biginteger.sh"
-run_step "e2e_phase14_format_char_int"       "bash test/e2e/phase14_format_char_int.sh"
 run_step "e2e_phase14_throwable_map"         "bash test/e2e/phase14_throwable_map.sh"
 run_step "e2e_phase14_defmacro_destructure"  "bash test/e2e/phase14_defmacro_destructure.sh"
 run_step "e2e_phase14_read_string"           "bash test/e2e/phase14_read_string.sh"
-run_step "e2e_phase14_range_indexed"         "bash test/e2e/phase14_range_indexed.sh"
-run_step "e2e_phase14_lazy_seq"              "bash test/e2e/phase14_lazy_seq.sh"
-run_step "e2e_phase14_lazy_map"              "bash test/e2e/phase14_lazy_map.sh"
-run_step "e2e_phase14_chunked_seq"           "bash test/e2e/phase14_chunked_seq.sh"
-run_step "e2e_phase14_lazy_seq_cycle3"       "bash test/e2e/phase14_lazy_seq_cycle3.sh"
-run_step "e2e_phase14_lazy_seq_cycle4"       "bash test/e2e/phase14_lazy_seq_cycle4.sh"
 run_step "e2e_phase14_tagged_literal"        "bash test/e2e/phase14_tagged_literal.sh"
 run_step "e2e_phase14_print_control"         "bash test/e2e/phase14_print_control.sh"
 run_step "e2e_phase14_uuid_literal"          "bash test/e2e/phase14_uuid_literal.sh"
 run_step "e2e_phase14_clojure_lang_coll_hash" "bash test/e2e/phase14_clojure_lang_coll_hash.sh"
 run_step "e2e_phase14_multipair_assoc_extend" "bash test/e2e/phase14_multipair_assoc_extend.sh"
+run_step "e2e_phase14_assoc_ex_deftype"      "bash test/e2e/phase14_assoc_ex_deftype.sh"
+run_step "e2e_phase14_net_listen"            "bash test/e2e/phase14_net_listen.sh"
+run_step "e2e_phase14_net_unix"              "bash test/e2e/phase14_net_unix.sh"
 run_step "e2e_phase14_deftype_equiv"          "bash test/e2e/phase14_deftype_equiv.sh"
 run_step "e2e_phase14_deftype_key_hash"       "bash test/e2e/phase14_deftype_key_hash.sh"
 run_step "e2e_phase14_instaparse_substrate"   "bash test/e2e/phase14_instaparse_substrate.sh"
@@ -823,18 +824,53 @@ fi
 # Backstop for the silent perf cliff (D-385): re-assert the shared binary is
 # STILL optimised right before the expensive parallel pool. assert_e2e_releasesafe
 # ran right after build_cljw, but a later serial step that does a bare `zig build`
-# (Debug) — the test_clj_tier_a class of bug — could have reverted it since. Catch
+# (Debug), the test_clj_tier_a class of bug, could have reverted it since. Catch
 # it here so the ~3200-spawn pool never runs ~100x slow on Debug.
-_pool_mode=$(zig-out/bin/cljw --version 2>/dev/null | sed -nE 's/.*\((.*)\)/\1/p')
-if [ -z "$_pool_mode" ] || [ "$_pool_mode" = "Debug" ]; then
-    echo "==> FATAL: e2e binary build mode=${_pool_mode:-unknown} before the parallel pool" >&2
-    echo "    — a step ran a bare 'zig build' (Debug). Aborting; the pool would run ~100x slow (D-385)." >&2
-    exit 1
+# Only when the pool has work: a selection that queues no e2e (`--only
+# zig_fmt_check`) does not need the binary. `|| true` keeps a MISSING binary
+# from killing the script silently under `set -euo pipefail` (exit 127 with no
+# message); it reaches the FATAL below as mode=unknown instead.
+if (( ${#E2E_QUEUE[@]} > 0 )); then
+    _pool_mode=$(zig-out/bin/cljw --version 2>/dev/null | sed -nE 's/.*\((.*)\)/\1/p' || true)
+    if [ -z "$_pool_mode" ] || [ "$_pool_mode" = "Debug" ]; then
+        echo "==> FATAL: e2e binary build mode=${_pool_mode:-unknown} before the parallel pool" >&2
+        echo "    A step ran a bare 'zig build' (Debug), or zig-out/bin/cljw is missing. Aborting: the pool would run ~100x slow (D-385)." >&2
+        exit 1
+    fi
 fi
 
 # Drain the deferred functional-e2e pool (no-op under --serial-e2e, where
 # they already ran inline).
 flush_e2e_queue
+
+# A step selector that matches NOTHING silently narrows the run instead of
+# failing. 2026-08-31: `--smoke phase16_stdin_read_line` (the registered name is
+# e2e_phase16_stdin_read_line) selected NO e2e at all, and the run still printed
+# per-step [pass] lines and a green summary — so the smoke authorised a commit
+# while the very e2e that commit added had never executed. That is the same
+# false-assurance test_reach / e2e_reach exist to prevent, one level up: there
+# the test file is unregistered, here the SELECTOR is unknown. Both must be a
+# hard error, never a quiet zero.
+if [[ -n "$ONLY_STEPS" ]]; then
+    unmatched_selectors=()
+    IFS=',' read -ra selectors <<< "$ONLY_STEPS"
+    for sel in "${selectors[@]}"; do
+        [[ -z "$sel" ]] && continue
+        hit=0
+        for known in "${ALL_STEP_NAMES[@]}"; do
+            [[ "$known" == "$sel" ]] && { hit=1; break; }
+        done
+        (( hit )) || unmatched_selectors+=("$sel")
+    done
+    if [[ ${#unmatched_selectors[@]} -gt 0 ]]; then
+        echo "" >&2
+        echo "==> FATAL: step selector matched no registered step:" >&2
+        printf '    - %s\n' "${unmatched_selectors[@]}" >&2
+        echo "    e2e steps are registered with an 'e2e_' prefix (e.g. e2e_phase16_stdin_read_line)." >&2
+        echo "    'bash test/run_all.sh --list' prints every registered step name." >&2
+        exit 1
+    fi
+fi
 
 if print_summary; then
     if (( SMOKE_MODE )); then

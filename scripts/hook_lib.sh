@@ -21,10 +21,24 @@
 #                                     (or $HOOK_COMMAND). Returns 0 if
 #                                     so, else 1.
 #   hook_is_git_commit [CMD]       — same for `git commit`.
-#   hook_iter_unpushed CALLBACK    — for each commit in `@{u}..HEAD`
-#                                     (or `HEAD` if no upstream), call
-#                                     CALLBACK with the SHA. Fails
+#   hook_nested_worktree_paths     — print each git worktree nested
+#                                     INSIDE this checkout, one
+#                                     repo-relative path per line.
+#                                     Empty when there are none.
+#   hook_rg_exclude_worktrees      — print `--glob !<path>/**` argument
+#                                     pairs (one per line) for those
+#                                     worktrees; read into an array and
+#                                     pass to `rg` so a tree walk stays
+#                                     inside this checkout.
+#   hook_unpushed_shas             — print (one SHA per line) every
+#                                     commit reachable from HEAD but NOT
+#                                     from any remote-tracking branch
+#                                     (`HEAD --not --remotes`) — i.e.
+#                                     genuinely unpublished work. Fails
 #                                     closed if `git rev-list` errors.
+#   hook_iter_unpushed CALLBACK    — call CALLBACK with each SHA from
+#                                     hook_unpushed_shas. Fails closed if
+#                                     `git rev-list` errors.
 #
 # Discipline source: Wave 16 (2026-05-26) C7 extraction; before this
 # the JSON-parse + project-root-cd + git-push regex was duplicated
@@ -81,33 +95,60 @@ print((data.get("tool_input") or {}).get("command", "") or "")
 
 hook_is_git_push() {
   local _cmd="${1:-${HOOK_COMMAND:-}}"
-  printf '%s' "$_cmd" | grep -qE '(^|[ ;&|])git[[:space:]]+push([[:space:]]|$)'
+  grep -qE '(^|[ ;&|])git[[:space:]]+push([[:space:]]|$)' <<<"$_cmd"
 }
 
 hook_is_git_commit() {
   local _cmd="${1:-${HOOK_COMMAND:-}}"
-  printf '%s' "$_cmd" | grep -qE '(^|[ ;&|])git[[:space:]]+commit([[:space:]]|$)'
+  grep -qE '(^|[ ;&|])git[[:space:]]+commit([[:space:]]|$)' <<<"$_cmd"
+}
+
+hook_nested_worktree_paths() {
+  local _root _wt
+  _root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  git worktree list --porcelain 2>/dev/null \
+    | while read -r _key _wt; do
+        [[ "$_key" == "worktree" ]] || continue
+        [[ "$_wt" == "$_root" ]] && continue
+        [[ "$_wt" == "$_root"/* ]] || continue
+        printf '%s\n' "${_wt#"$_root"/}"
+      done
+}
+
+hook_rg_exclude_worktrees() {
+  local _rel
+  while IFS= read -r _rel; do
+    [[ -z "$_rel" ]] && continue
+    printf '%s\n%s\n' "--glob" "!${_rel}/**"
+  done < <(hook_nested_worktree_paths)
+}
+
+# Emit the SHAs of commits that exist on HEAD but on NO remote-tracking
+# branch — the commits a push would genuinely publish for the first time.
+#
+# Supersedes the old `@{u}..HEAD` range. `@{u}` resolves to the CURRENT
+# branch's single upstream (origin/main for `main`), so a cross-branch push
+# — `git push origin main:staging` — measured "unpushed" against origin/main
+# and re-flagged commits ALREADY published on origin/staging, deadlocking the
+# two branches against each other ([CLJW-SMELLHOOK]). `--not --remotes` asks
+# the branch-independent question the gates actually mean: "is this commit
+# published to the remote yet?" Already-published commits (on any remote
+# branch, including release commits the CI cut) are exempt; only new local
+# work is inspected. Fails closed (exit 1) on any git error.
+hook_unpushed_shas() {
+  local _rev_out
+  if ! _rev_out="$(git rev-list HEAD --not --remotes 2>&1)"; then
+    echo "internal: git rev-list HEAD --not --remotes failed — failing closed" >&2
+    echo "$_rev_out" >&2
+    exit 1
+  fi
+  printf '%s\n' "$_rev_out"
 }
 
 hook_iter_unpushed() {
   local _callback="$1"
-  local _upstream _range _rev_out
-
-  _upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo '')"
-  if [[ -n "$_upstream" ]]; then
-    _range="$_upstream..HEAD"
-  else
-    _range="HEAD"
-  fi
-
-  if ! _rev_out="$(git rev-list "$_range" 2>&1)"; then
-    echo "internal: git rev-list $_range failed — failing closed" >&2
-    echo "$_rev_out" >&2
-    exit 1
-  fi
-
   while IFS= read -r _sha; do
     [[ -z "$_sha" ]] && continue
     "$_callback" "$_sha"
-  done <<< "$_rev_out"
+  done < <(hook_unpushed_shas)
 }

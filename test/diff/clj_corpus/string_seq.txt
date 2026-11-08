@@ -1,0 +1,66 @@
+(seq "hello")
+;;=> (\h \e \l \l \o)
+(seq "")
+;;=> nil
+(count (seq "héllo"))
+;;=> 5
+(first (seq "café"))
+;;=> \c
+(rest (seq "café"))
+;;=> (\a \f \é)
+(next (seq "ab"))
+;;=> (\b)
+(next (seq "a"))
+;;=> nil
+(vec (seq "abc"))
+;;=> [\a \b \c]
+(apply str (seq "abc"))
+;;=> "abc"
+(= (seq "ab") (list \a \b))
+;;=> true
+(= (seq "ab") [\a \b])
+;;=> true
+(= (hash (seq "ab")) (hash [\a \b]))
+;;=> true
+(map int (seq "AB"))
+;;=> (65 66)
+(reverse (seq "abc"))
+;;=> (\c \b \a)
+(last (seq "abcd"))
+;;=> \d
+(second (seq "abc"))
+;;=> \b
+(nth (vec (seq "wörld")) 1)
+;;=> \ö
+(take 2 (seq "abcde"))
+;;=> (\a \b)
+(drop 2 (seq "abcde"))
+;;=> (\c \d \e)
+(into [] (seq "ab"))
+;;=> [\a \b]
+(reduce str "" (seq "abc"))
+;;=> "abc"
+(seq? (seq "ab"))
+;;=> true
+(sequential? (seq "ab"))
+;;=> true
+(coll? (seq "ab"))
+;;=> true
+(string? (seq "ab"))
+;;=> false
+(count (rest (seq "abc")))
+;;=> 2
+(cons \x (seq "ab"))
+;;=> (\x \a \b)
+(concat (seq "ab") (seq "cd"))
+;;=> (\a \b \c \d)
+(filter #(not= % \b) (seq "abc"))
+;;=> (\a \c)
+(map inc (map int (seq "AB")))
+;;=> (66 67)
+(get {(seq "ab") :x} (list \a \b))
+;;=> :x
+(empty? (seq "a"))
+;;=> false
+(first (drop 3 (seq "abcde")))
+;;=> \d

@@ -24,12 +24,12 @@
 (def diff nil)
 
 ;; `(diff a b)` for non-collections: equal → [nil nil a], else [a b nil].
-(def atom-diff (fn* [a b] (if (= a b) [nil nil a] [a b nil])))
+(def ^:private atom-diff (fn* [a b] (if (= a b) [nil nil a] [a b nil])))
 
 ;; Convert a sparse {index → value} map back to a vector, nil-filling gaps.
 ;; Length is max-index+1 so every key indexes in-bounds (JVM relies on
 ;; assoc-at-count append; the +1 form avoids depending on that).
-(def vectorize
+(def ^:private vectorize
   (fn* [m]
     (if (seq m)
       (reduce (fn* [result kv] (assoc result (nth kv 0) (nth kv 1)))
@@ -39,7 +39,7 @@
 
 ;; Diff associative a and b at a single key k → [in-a-only in-b-only in-both],
 ;; each a singleton map {k _} or nil. Recurses into the values via diff.
-(def diff-associative-key
+(def ^:private diff-associative-key
   (fn* [a b k]
     (let* [va (get a k)
            vb (get b k)
@@ -55,14 +55,14 @@
        (when same {k ab})])))
 
 ;; Diff a and b over the keys ks, merging the per-key triples.
-(def diff-associative
+(def ^:private diff-associative
   (fn* [a b ks]
     (reduce (fn* [d1 d2] (map merge d1 d2))
             [nil nil nil]
             (map (fn* [k] (diff-associative-key a b k)) ks))))
 
 ;; Diff two sequentials by index (treated as associative), results vectorized.
-(def diff-sequential
+(def ^:private diff-sequential
   (fn* [a b]
     (vec (map vectorize
               (diff-associative (if (vector? a) a (vec a))
@@ -70,18 +70,20 @@
                                 (range (max (count a) (count b))))))))
 
 ;; Clojure's equality-partition: which of the four diff shapes x belongs to.
-(def equality-partition
-  (fn* [x]
-    (cond (nil? x) :atom
-          (set? x) :set
-          (map? x) :map
-          (sequential? x) :sequential
-          :else :atom)))
+(defn equality-partition
+  "Implementation detail. Subject to change."
+  [x]
+  (cond (nil? x) :atom
+        (set? x) :set
+        (map? x) :map
+        (sequential? x) :sequential
+        :else :atom))
 
 ;; Diff two like-partitioned values. Sets are never subdiffed.
-(def diff-similar
-  (fn* [a b]
-    (let* [ep (equality-partition a)]
+(defn diff-similar
+  "Implementation detail. Subject to change."
+  [a b]
+  (let* [ep (equality-partition a)]
       (cond
         (= ep :set)
         (let* [av (if (set? a) a (set a))
@@ -91,13 +93,24 @@
            (not-empty (clojure.set/intersection av bv))])
         (= ep :sequential) (diff-sequential a b)
         (= ep :map) (diff-associative a b (clojure.set/union (set (keys a)) (set (keys b))))
-        :else (atom-diff a b)))))
+        :else (atom-diff a b))))
 
 ;; `(diff a b)` → [things-only-in-a things-only-in-b things-in-both].
-(def diff
-  (fn* [a b]
-    (if (= a b)
-      [nil nil a]
-      (if (= (equality-partition a) (equality-partition b))
-        (diff-similar a b)
-        (atom-diff a b)))))
+(defn diff
+  "Recursively compares a and b, returning a tuple of
+  [things-only-in-a things-only-in-b things-in-both].
+  Comparison rules:
+
+  * For equal a and b, return [nil nil a].
+  * Maps are subdiffed where keys match and values differ.
+  * Sets are never subdiffed.
+  * All sequential things are treated as associative collections
+    by their indexes, with results returned as vectors.
+  * Everything else (including strings!) is treated as
+    an atom and compared for equality."
+  [a b]
+  (if (= a b)
+    [nil nil a]
+    (if (= (equality-partition a) (equality-partition b))
+      (diff-similar a b)
+      (atom-diff a b))))

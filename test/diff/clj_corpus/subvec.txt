@@ -1,0 +1,62 @@
+(subvec [0 1 2 3 4 5 6 7 8 9] 2 7)
+;;=> [2 3 4 5 6]
+(count (subvec [0 1 2 3 4 5 6 7 8 9] 2 7))
+;;=> 5
+(nth (subvec [0 1 2 3 4 5 6 7 8 9] 2 7) 1)
+;;=> 3
+(conj (subvec [0 1 2 3 4 5 6 7 8 9] 2 7) 99)
+;;=> [2 3 4 5 6 99]
+(assoc (subvec [0 1 2 3 4 5 6 7 8 9] 2 7) 0 -1)
+;;=> [-1 3 4 5 6]
+(pop (subvec [0 1 2 3 4 5 6 7 8 9] 2 7))
+;;=> [2 3 4 5]
+(subvec (subvec [0 1 2 3 4 5 6 7 8 9] 2 8) 1 3)
+;;=> [3 4]
+(seq (subvec [1 2 3 4] 1 3))
+;;=> (2 3)
+(rseq (subvec [1 2 3 4] 0 3))
+;;=> (3 2 1)
+(peek (subvec [1 2 3 4] 1 3))
+;;=> 3
+(vector? (subvec [1 2 3] 0 2))
+;;=> true
+(seq? (subvec [1 2 3] 0 2))
+;;=> false
+(= (subvec [1 2 3] 0 2) [1 2])
+;;=> true
+(= (subvec [1 2 3] 0 2) (list 1 2))
+;;=> true
+(= (hash (subvec [1 2 3] 0 2)) (hash [1 2]))
+;;=> true
+((subvec [10 20 30] 0 2) 1)
+;;=> 20
+(reduce + (subvec [1 2 3 4] 1 3))
+;;=> 5
+(into [] (subvec [1 2 3] 0 2))
+;;=> [1 2]
+(into {} [(subvec [:a 1] 0 2)])
+;;=> {:a 1}
+(map inc (subvec [1 2 3 4] 1 3))
+;;=> (3 4)
+(first (subvec [1 2 3 4] 1 3))
+;;=> 2
+(last (subvec [1 2 3 4] 1 3))
+;;=> 3
+(rest (subvec [1 2 3 4] 1 4))
+;;=> (3 4)
+(empty (subvec [1 2 3] 0 2))
+;;=> []
+(get (subvec [1 2 3] 0 2) 1)
+;;=> 2
+(contains? (subvec [1 2 3] 0 2) 1)
+;;=> true
+(compare (subvec [1 2] 0 2) [1 2])
+;;=> 0
+(subvec [1 2 3] 1 1)
+;;=> []
+(subvec [1 2 3] 0 3)
+;;=> [1 2 3]
+(get {(subvec [1 2 3] 0 2) :x} [1 2])
+;;=> :x
+(count (hash-set (subvec [1 2 3] 0 2) [1 2]))
+;;=> 1

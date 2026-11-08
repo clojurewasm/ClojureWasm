@@ -1,1 +1,0 @@
-.:/Users/shota.508/.m2/repository/org/clojure/clojure/1.12.4/clojure-1.12.4.jar:/Users/shota.508/.gitlibs/libs/org.clojure/data.zip/c4d090b5769a3a4c5772de193e073d4d45e1ea4b/src/main/clojure:/Users/shota.508/.m2/repository/org/clojure/core.specs.alpha/0.4.74/core.specs.alpha-0.4.74.jar:/Users/shota.508/.m2/repository/org/clojure/spec.alpha/0.5.238/spec.alpha-0.5.238.jar

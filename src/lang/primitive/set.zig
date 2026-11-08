@@ -34,7 +34,9 @@ pub fn hashSet(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     _ = env;
     _ = loc;
     var s = set_collection.empty();
-    for (args) |a| s = try set_collection.conj(rt, s, a);
+    for (args) |a| {
+        s = try set_collection.conj(rt, s, a);
+    }
     return s;
 }
 
@@ -49,7 +51,8 @@ pub fn hashMap(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     var m = map_collection.empty();
     var i: usize = 0;
     while (i < args.len) : (i += 2) {
-        m = try map_collection.assoc(rt, m, args[i], args[i + 1]);
+        const key = args[i];
+        m = try map_collection.assoc(rt, m, key, args[i + 1]);
     }
     return m;
 }

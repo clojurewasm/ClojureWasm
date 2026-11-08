@@ -13,7 +13,7 @@
 #   _host_api.zig
 #   _README.md
 #
-# See .claude/rules/feature_name_consistency.md R2 for the contract.
+# See memory 20260909234605-3f9e2aa8 (feature_name_consistency) R2 for the contract.
 #
 # Modes (mirror zone_check.sh):
 #   bash scripts/check_surface_marker.sh           informational; exits 0

@@ -15,7 +15,7 @@ const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const sorted = @import("../../runtime/collection/sorted.zig");
-const lazy_seq = @import("../../runtime/lazy_seq.zig");
+const seqable = @import("../../runtime/seqable.zig");
 const class_name = @import("../../runtime/class_name.zig");
 const list_mod = @import("../../runtime/collection/list.zig");
 const root_set = @import("../../runtime/gc/root_set.zig");
@@ -135,13 +135,13 @@ fn sortedSeqAsc(rt: *Runtime, env: *Env, sc: Value, ascending: bool, loc: Source
 
 /// Eager `(take-while include coll)` — the result is bounded by the sorted
 /// collection, so eagerness is safe. Rooted per the realizeSeqWalk pattern
-/// (GC-ROOT: the cursor + accumulated items live in Zig locals across
+/// (GC-ROOT: the cursor, fresh head, and accumulated items live in Zig locals across
 /// VM-re-entrant seq/first/rest + include calls [ref: .dev/gc_rooting.md §C]).
 fn takeWhileBound(rt: *Runtime, env: *Env, bound: *const BoundFn, coll: Value) anyerror!Value {
     var items: std.ArrayList(Value) = .empty;
     defer items.deinit(rt.gpa);
-    var cur_root: [1]Value = .{coll};
-    var cur_sp: u16 = 1;
+    var cur_root: [2]Value = .{ coll, .nil_val };
+    var cur_sp: u16 = 2;
     var gc_frame: root_set.EvalFrame = .{ .stack = &cur_root, .sp = &cur_sp, .locals = items.items, .parent = root_set.eval_frame_head };
     root_set.eval_frame_head = &gc_frame;
     defer root_set.eval_frame_head = gc_frame.parent;
@@ -149,29 +149,23 @@ fn takeWhileBound(rt: *Runtime, env: *Env, bound: *const BoundFn, coll: Value) a
     while (true) {
         cur_root[0] = cur;
         gc_frame.locals = items.items;
-        const s = try lazy_seq.seq(rt, env, cur);
+        const s = try seqable.seq(rt, env, cur, bound.loc);
         if (s.tag() == .nil) break;
         cur_root[0] = s;
-        const e = try lazy_seq.first(rt, env, s);
-        if (!try bound.includes(e)) break;
-        try items.append(rt.gpa, e);
+        cur_root[1] = try seqable.first(rt, env, s, bound.loc);
+        if (!try bound.includes(cur_root[1])) break;
+        try items.append(rt.gpa, cur_root[1]);
         gc_frame.locals = items.items;
-        cur = try lazy_seq.rest(rt, env, s);
+        cur = try seqable.rest(rt, env, s, bound.loc);
     }
     var out = try list_mod.emptyList(rt);
     var i = items.items.len;
     while (i > 0) {
         i -= 1;
-        out = try list_mod.consHeap(rt, items.items[i], out);
+        // `.cons`, not `.list`: subseq/rsubseq yield a tree Seq in clj (list? false).
+        out = try list_mod.consSeqHeap(rt, items.items[i], out);
     }
     return out;
-}
-
-/// `(next s)` over a possibly-lazy seq: nil when fewer than 2 elements.
-fn seqNext(rt: *Runtime, env: *Env, s: Value) anyerror!Value {
-    const r = try lazy_seq.rest(rt, env, s);
-    const n = try lazy_seq.seq(rt, env, r);
-    return if (n.tag() == .nil) Value.nil_val else n;
 }
 
 /// subseq/rsubseq over a clojure.lang.Sorted deftype — the cljw form of
@@ -179,10 +173,17 @@ fn seqNext(rt: *Runtime, env: *Env, s: Value) anyerror!Value {
 fn subseqSorted(rt: *Runtime, env: *Env, args: []const Value, ascending: bool, loc: SourceLocation) anyerror!Value {
     const sc = args[0];
     var cs: dispatch.CallSite = .{};
-    const comparator_fn = try dispatch.dispatch(rt, env, &cs, sc, "Sorted", "-sorted-comparator", &.{sc}, loc);
+    var roots = [_]Value{ try dispatch.dispatch(rt, env, &cs, sc, "Sorted", "-sorted-comparator", &.{sc}, loc), .nil_val, .nil_val };
+    var sp: u16 = roots.len;
+    // GC-ROOT: A12 — custom Sorted methods can return a fresh comparator,
+    // cursor, and head. Keep them across coercion and bound callbacks
+    // [ref: .dev/gc_rooting.md §A].
+    var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
 
     if (args.len == 3) {
-        const bound: BoundFn = .{ .rt = rt, .env = env, .sc = sc, .comparator_fn = comparator_fn, .test_fn = args[1], .key = args[2], .loc = loc };
+        const bound: BoundFn = .{ .rt = rt, .env = env, .sc = sc, .comparator_fn = roots[0], .test_fn = args[1], .key = args[2], .loc = loc };
         // subseq: > / >= start FROM the key ascending; rsubseq: < / <= start
         // FROM the key descending. The other tests scan the full seq.
         const from_key = if (ascending)
@@ -190,10 +191,11 @@ fn subseqSorted(rt: *Runtime, env: *Env, args: []const Value, ascending: bool, l
         else
             (isCoreTest(env, args[1], "<") or isCoreTest(env, args[1], "<="));
         if (from_key) {
-            const s = try lazy_seq.seq(rt, env, try sortedSeqFrom(rt, env, sc, args[2], ascending, loc));
-            if (s.tag() == .nil) return .nil_val;
-            const e = try lazy_seq.first(rt, env, s);
-            return if (try bound.includes(e)) s else try seqNext(rt, env, s);
+            roots[1] = try sortedSeqFrom(rt, env, sc, args[2], ascending, loc);
+            roots[1] = try seqable.seq(rt, env, roots[1], loc);
+            if (roots[1].tag() == .nil) return .nil_val;
+            roots[2] = try seqable.first(rt, env, roots[1], loc);
+            return if (try bound.includes(roots[2])) roots[1] else try seqable.next(rt, env, roots[1], loc);
         }
         return takeWhileBound(rt, env, &bound, try sortedSeqAsc(rt, env, sc, ascending, loc));
     }
@@ -204,28 +206,24 @@ fn subseqSorted(rt: *Runtime, env: *Env, args: []const Value, ascending: bool, l
     const near_key = if (ascending) args[2] else args[4];
     const far_test = if (ascending) args[3] else args[1];
     const far_key = if (ascending) args[4] else args[2];
-    const near: BoundFn = .{ .rt = rt, .env = env, .sc = sc, .comparator_fn = comparator_fn, .test_fn = near_test, .key = near_key, .loc = loc };
-    const far: BoundFn = .{ .rt = rt, .env = env, .sc = sc, .comparator_fn = comparator_fn, .test_fn = far_test, .key = far_key, .loc = loc };
-    const s = try lazy_seq.seq(rt, env, try sortedSeqFrom(rt, env, sc, near_key, ascending, loc));
-    if (s.tag() == .nil) return .nil_val;
-    const e = try lazy_seq.first(rt, env, s);
-    const start = if (try near.includes(e)) s else try seqNext(rt, env, s);
-    if (start.tag() == .nil) return .nil_val;
-    return takeWhileBound(rt, env, &far, start);
+    const near: BoundFn = .{ .rt = rt, .env = env, .sc = sc, .comparator_fn = roots[0], .test_fn = near_test, .key = near_key, .loc = loc };
+    const far: BoundFn = .{ .rt = rt, .env = env, .sc = sc, .comparator_fn = roots[0], .test_fn = far_test, .key = far_key, .loc = loc };
+    roots[1] = try sortedSeqFrom(rt, env, sc, near_key, ascending, loc);
+    roots[1] = try seqable.seq(rt, env, roots[1], loc);
+    if (roots[1].tag() == .nil) return .nil_val;
+    roots[2] = try seqable.first(rt, env, roots[1], loc);
+    if (!try near.includes(roots[2])) roots[1] = try seqable.next(rt, env, roots[1], loc);
+    if (roots[1].tag() == .nil) return .nil_val;
+    return takeWhileBound(rt, env, &far, roots[1]);
 }
 
-/// `(sorted? coll)` — true for sorted maps/sets.
+/// `(sorted? coll)` — `(instance? clojure.lang.Sorted coll)`: the sorted maps /
+/// sets, and a deftype / reify declaring Sorted (e.g. data.priority-map).
 pub fn sortedQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("sorted?", args, 1, loc);
-    const t = args[0].tag();
-    if (t == .sorted_map or t == .sorted_set) return Value.true_val;
-    // A deftype/reify implementing clojure.lang.Sorted is sorted? in clj
-    // ((sorted? x) == (instance? clojure.lang.Sorted x)) — e.g. data.priority-map.
-    if ((t == .typed_instance or t == .reified_instance) and
-        class_name.isInstance(args[0], "clojure.lang.Sorted")) return Value.true_val;
-    return Value.false_val;
+    return Value.initBoolean(class_name.implementsInterface(args[0], "Sorted"));
 }
 
 // --- registration ---

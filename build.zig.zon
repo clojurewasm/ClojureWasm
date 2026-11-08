@@ -1,34 +1,114 @@
 .{
     .name = .cljw,
-    .version = "1.5.1",
+    .version = "1.15.6",
     .fingerprint = 0x1869d207073beffa,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .zlinter = .{
             .url = "git+https://github.com/kurtwagner/zlinter?ref=0.16.x#9b4d67b9725e7137ac876cc628fe5dd2ca5a2681",
             .hash = "zlinter-0.0.1-OjQ08c7oCwDIwhlde7eDKMACNTsqAhGXy5vB7GdfGobG",
+            // Development-only: build-lint.zig is configured only by
+            // `zig build lint`; normal and release builds must stay offline.
+            .lazy = true,
         },
         // zwasm v2 embedding API (F-001 / D-037). `lazy` so the DEFAULT build +
         // gate never resolve it — only `-Dwasm` (b.lazyDependency) does.
-        // PINNED to STABLE tag **v2.3.0** (2026-07-17): the WASI-0.3.0-official
-        // inventory-sweep release (docs truth-sweep + wasi:clocks/system-clock
-        // host support + Homebrew packaging). NO embedding-API or JIT-output
-        // change — a pure engine follow for cljw (the new surface is
-        // component-host-level WASI 0.3.0 clocks). Prior v2.2.1 (2026-07-16)
-        // was the binary-size-campaign release (zwasm ADR-0204 / D-522: JIT
-        // host-callback thunk collapse, zwasm CLI -21% — to_cljw_06);
-        // v2.2.0 (2026-07-09) the AOT-full-fidelity release (ADR-0203).
-        // cljw's embedding surface (Engine/Module/Instance via `.auto`
-        // =JIT-default, D-488) is unchanged. lazy + flag-guard means a
-        // churning dep cannot break the default gate.
+        //
+        // 2026-10-24: pinned to 787bf6c9, the head of fork PR #9
+        // (fix/component-go-reactor-init), stacked on #8 (22c2dc9f,
+        // fix/interp-frame-depth: the interp call-frame stack grows past 256
+        // with a configurable cap) and #7 (d77568a0, below). #9: a canon
+        // lower that returns a list or string allocates through the realloc
+        // named by its own canonopt, not the lift-side cabi_realloc. A Go
+        // reactor component built with the preview1 adapter (lazywal) now
+        // loads and answers. Same fix-branch caveat as #7: re-point to fork
+        // `main` once #7, #8 and #9 land.
+        //
+        // 2026-10-23: pinned to d77568a0, the head of fork PR #7
+        // (fix/wasi-p2-adapter-imports, one commit on fork `main` e9d74934):
+        // a component built with the wasi_snapshot_preview1 adapter
+        // (`wasm-tools component new --adapt`, any preview1 guest) links.
+        // The adapter's `env::memory` re-export now resolves, and three 0.2
+        // rows are served (filesystem-error-code, wall-clock/monotonic-clock
+        // `resolution`). Upstream: zwasm/zwasm#634. This pins a fix branch
+        // only because the fork's Actions are disabled, so #7 cannot merge
+        // with CI green. Its merge commit has the same tree, so the `.hash`
+        // stays valid: re-point `?ref=main#<merge sha>` once #7 lands.
+        //
+        // 2026-10-22: the fork's `main` is cljw's zwasm integration line:
+        // upstream zwasm/zwasm `main` plus patches found and proven here, each
+        // listed with its evidence in the fork's FORK.md and upstreamed once a
+        // cljw release has carried it. Pin a commit of fork `main`, never a
+        // fix branch. Now at e9d74934, on d74e63b4:
+        //   fork PR #2  the interp's native-stack limit is the calling
+        //               thread's, not the Runtime's (CLJW-WASM-INTERP-THREAD-TRAP)
+        //   fork PR #3  a by-name JIT invoke resolves the export from
+        //               `CompiledWasm.exports` instead of re-parsing the module
+        //               per call (zwasm/D-585, CLJW-WASM-JIT-PERCALL-SCALES)
+        //   fork PR #4  FORK.md, the evidence ledger
+        //
+        // 2026-10-21: PINNED to `main` of THIS FORK, BuddhiLW/zwasm, at
+        // d74e63b4 (fork main fast-forwarded to upstream zwasm/zwasm main,
+        // version string still 2.7.0, no newer tag). Upstream now carries all
+        // three cljw fixes listed below (851cd0e7 component re-export,
+        // f3067d03 metadata-hash, 767b808a PreparedWasi), so the `cljw`
+        // branch's patches are no longer needed. The pin returns to a
+        // zwasm/zwasm tag when the next one is cut.
+        //
+        // Before 2026-10-21: PINNED to the `cljw` branch of THIS FORK, BuddhiLW/zwasm
+        // (2026-09-14, user direction: "use our zwasm for now"). That branch
+        // is upstream v2.7.0 (d09d9248) plus two fixes found from cljw that
+        // upstream does not carry yet: every exported interface of a
+        // component resolves (fix/instance-reexport, cljw card
+        // ZWASM-INSTANCE-REEXPORT) and a rust-std wasip2 guest that touches
+        // the filesystem links (fix/p2-metadata-hash-at: the 0.2
+        // metadata-hash / metadata-hash-at rows plus the shifted 0.2
+        // error-code ordinals, cljw card CLJW-WASIP2-STD). Both are on the
+        // fork as PR-ready branches for github.com/zwasm/zwasm; when upstream
+        // carries them the pin returns to a zwasm/zwasm tag.
+        //
+        // 2026-10-07: pinned to `feat/captured-wasi-run` (one commit on top of
+        // `cljw`): `cli.run_prepared.PreparedWasi`, a WASI command compiled once
+        // and run many times, which `wasm/run`'s module cache needs (D-350
+        // amendment). PR-ready for upstream; the pin moves back to `cljw` once
+        // that branch carries it.
+        // 2026-10-07 later: `cljw` carries it (fork PR #1, merge 70c8b7ee, same
+        // tree as e9fa9e70, so the `.hash` is unchanged); the pin is `cljw` again.
+        //
+        // Previous pin: stable tag v2.6.0 (2026-09-05). The v2.6.0 -> v2.7.0
+        // embedding-API delta is additive (five engine hooks,
+        // `Instance.engine()`, two appended trap kinds); one behaviour change,
+        // `.auto` no longer retries the interpreter on a JIT validity verdict.
+        // The per-call JIT cost: zwasm/D-585 is fixed by the 2026-10-22 pin,
+        // zwasm/D-584 is avoided by ADR-0195 (`.dev/wasm_percall_findings.md`).
+        //
+        // Bumping: `zig fetch` rejects the annotated TAG object (NotACommit);
+        // peel it with `git rev-parse 'vX.Y.Z^{}'` to get the commit sha. A
+        // branch pin names the commit the same way (`?ref=<branch>#<sha>`).
+        //
+        // Pin history: v2.6.0 (2026-09-05) StdinSource union (#257);
+        // v2.5.0 (2026-08-12) full WASI 0.3 coverage + the 81
+        // C-API symbols (#161); v2.4.1 (2026-08-04) two cljw-found fixes,
+        // #157 (multi-export components) and #158/#159 (captured-run output
+        // bound, D-349); v2.4.0 (2026-08-03) external-consumer release; v2.3.0
+        // (2026-07-17) WASI-0.3.0 sweep; v2.2.1 (2026-07-16) binary-size
+        // campaign; v2.2.0 (2026-07-09) AOT full fidelity. The embedding
+        // surface (Engine/Module/Instance on `.auto`, D-488) is unchanged
+        // since v2.2.0.
+        //
+        // Upstream is the `zwasm/zwasm` org; do NOT rely on GitHub's transfer
+        // redirect from `clojurewasm/zwasm`, which stops being an alias the
+        // moment anything else claims that name. The `.hash` is
+        // content-addressed, so the host of the URL never changes it.
         .zwasm = .{
-            .url = "git+https://github.com/clojurewasm/zwasm.git#v2.3.0",
-            .hash = "zwasm-2.3.0-FT1Fv8QhjQB0rGBMyCP2GebQU-A4xxuXl-6WF0EXo-ao",
+            .url = "git+https://github.com/BuddhiLW/zwasm.git?ref=fix/component-go-reactor-init#787bf6c93c2b799305c4ee35b7f7f183e0408e13",
+            .hash = "zwasm-2.7.0-FT1FvzhhnwCWJOlb95vNM0JTRiQDhERDVHbj-KpHF-9a",
             .lazy = true,
         },
     },
     .paths = .{
         "build.zig",
+        "build-lint.zig",
         "build.zig.zon",
         "src",
         "LICENSE",

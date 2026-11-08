@@ -29,14 +29,13 @@ const TypeDescriptor = @import("../../../runtime/type_descriptor.zig").TypeDescr
 ///                          `Var` Value (analyzer pre-resolves the
 ///                          pointer; the VM decodes and calls
 ///                          `Var.deref`)
-///   - `op_def`             operand = packed `(flags << 13) | name_idx`
+///   - `op_def`             operand = packed `(flags << 13) | var_idx`
 ///                          where the low 13 bits are the constants
-///                          index of the symbol-name `String` Value
-///                          (max `DEF_NAME_IDX_MAX`) and the high
+///                          index of the analyzed `Var` Value
+///                          (max `DEF_VAR_IDX_MAX`) and the high
 ///                          3 bits carry `DEF_FLAG_DYNAMIC /
 ///                          DEF_FLAG_MACRO / DEF_FLAG_PRIVATE`. The
-///                          VM passes the name bytes to `env.intern`
-///                          and stamps the flags on the resulting Var.
+///                          VM binds that Var and stamps its flags.
 ///   - `op_jump` /
 ///     `op_jump_if_false`   operand = signed instruction offset (bitcast to i16)
 ///   - `op_call` /
@@ -217,11 +216,10 @@ pub const Opcode = enum(u8) {
     /// the current ns and pushes nil. (D-235.)
     op_ns_import = 0x25,
 
-    /// `(def x)` no-init: intern an UNBOUND placeholder (operand layout = op_def:
-    /// name-idx + flag bits, but consumes NO stack value). Leaves an existing
-    /// root intact and `Var.bound` false (the unbound sentinel for `bound?` /
-    /// `defonce`). Pushes the Var ref. Distinct opcode because op_def's u16 is
-    /// full (13-bit name-idx + 3 flag bits, no spare bit for has_init).
+    /// `(def x)` no-init: return the captured Var without changing its root
+    /// or bound state. Operand layout = op_def (13-bit Var constant index +
+    /// 3 flag bits), but consumes NO stack value. A separate opcode carries
+    /// has_init because the packed operand has no spare bit.
     op_def_unbound = 0x26,
 
     /// `(set! field v)` on a deftype mutable field (ADR-0104 / D-288).
@@ -235,15 +233,16 @@ pub const Opcode = enum(u8) {
     /// ADR-0130: `(+ a b)` arithmetic intrinsic — emitted by the compiler when
     /// the callee resolves (by Var pointer identity) to canonical `clojure.core/+`
     /// with exactly 2 args. No operand. Stack on entry: `[…, a, b]`; pops both,
-    /// pushes the sum. Dispatch: if `rt.core_arith_pristine` and both operands are
-    /// inline fixnums → `intrinsic.fastBinaryFixnum(.add)` (= `promote.addPromoting`,
-    /// F-005 overflow→bigint); else `vt.callFn` the cached `+` builtin Var (full
+    /// pushes the sum. Dispatch: if `rt.core_arith_pristine` and the operands are
+    /// two inline fixnums or a float with a float/fixnum →
+    /// `intrinsic.fastBinaryNumber(.add)` (= `promote.addPromoting`, F-005
+    /// overflow→bigint by deferring); else `vt.callFn` the cached `+` builtin Var (full
     /// numeric-tower + arg-precise error parity). Net stack effect −1 (not a pure
     /// push). First cut of the intrinsic family (op_sub/op_mul/op_lt… follow).
     op_add = 0x28,
     /// ADR-0130 + am1: the rest of the binary arith/comparison intrinsic family,
-    /// same shape as op_add (no operand; pop a,b; fixnum fast path via
-    /// `intrinsic.fastBinaryFixnum`, else defer to the cached builtin Var). `=`
+    /// same shape as op_add (no operand; pop a,b; fixnum/float fast path via
+    /// `intrinsic.fastBinaryNumber`, else defer to the cached builtin Var). `=`
     /// (op_eq) is fixnum-only — any non-(fixnum,fixnum) pair defers to the builtin
     /// `=` for full value-equality semantics.
     op_sub = 0x29,
@@ -312,7 +311,7 @@ pub const Opcode = enum(u8) {
 
     /// O-030 (ADR-0146 redirect / 9.2.S): fixnum `mod`/`rem`/`quot` intrinsics,
     /// same shape as the op_add family (no operand; pop a,b; fixnum fast path via
-    /// `intrinsic.fastBinaryFixnum` — `@mod`/`@rem`/`@divTrunc` — else defer to the
+    /// `intrinsic.fastBinaryNumber` — `@mod`/`@rem`/`@divTrunc` — else defer to the
     /// cached builtin Var for the full numeric tower / divide-by-zero raise). Net
     /// stack effect −1.
     op_mod = 0x47,
@@ -362,6 +361,20 @@ pub const Opcode = enum(u8) {
     /// artifact — fixing the pre-existing loss where a `cljw build` app's
     /// docstrings vanished while the lazy-source bootstrap kept them.
     op_var_meta = 0x56,
+    /// Append a bounded chunk of evaluated elements to the collection below
+    /// them on the operand stack. Operand is the element count (map: key and
+    /// value each count as one). Unlike the small-literal opcodes, these keep
+    /// the already-built collection rooted on the stack during the append.
+    op_vector_extend = 0x57,
+    op_map_extend = 0x58,
+    op_set_extend = 0x59,
+
+    /// O-102: unary `(inc x)` / `(dec x)` intrinsics for canonical
+    /// `clojure.core/inc`/`dec` (Var pointer identity, `core_arith_pristine`
+    /// deopt). Pop x, push the result (net 0). `intrinsic.fastUnary` handles
+    /// an i48 fixnum or a float; anything else calls the cached Var.
+    op_inc = 0x5A,
+    op_dec = 0x5B,
 
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
@@ -395,6 +408,9 @@ pub const Opcode = enum(u8) {
             .op_vector_literal,
             .op_map_literal,
             .op_set_literal,
+            .op_vector_extend,
+            .op_map_extend,
+            .op_set_extend,
             .op_require,
             .op_ns_with_refer_clojure,
             .op_ctor_call,
@@ -456,6 +472,8 @@ pub const Opcode = enum(u8) {
             .op_get,
             .op_nth,
             .op_nth2,
+            .op_inc,
+            .op_dec,
             => false,
         };
     }
@@ -493,6 +511,9 @@ pub const Opcode = enum(u8) {
             .op_vector_literal,
             .op_map_literal,
             .op_set_literal,
+            .op_vector_extend,
+            .op_map_extend,
+            .op_set_extend,
             .op_require,
             .op_ns_with_refer_clojure,
             .op_ctor_call,
@@ -555,14 +576,16 @@ pub const Opcode = enum(u8) {
             .op_get,
             .op_nth,
             .op_nth2,
+            .op_inc,
+            .op_dec,
             => false,
         };
     }
 };
 
 /// `op_def` operand layout — see the Opcode docstring.
-pub const DEF_NAME_IDX_MASK: u16 = 0x1FFF;
-pub const DEF_NAME_IDX_MAX: u16 = DEF_NAME_IDX_MASK;
+pub const DEF_VAR_IDX_MASK: u16 = 0x1FFF;
+pub const DEF_VAR_IDX_MAX: u16 = DEF_VAR_IDX_MASK;
 pub const DEF_FLAG_DYNAMIC: u16 = 1 << 13;
 pub const DEF_FLAG_MACRO: u16 = 1 << 14;
 pub const DEF_FLAG_PRIVATE: u16 = 1 << 15;
@@ -671,9 +694,12 @@ pub const LibspecEntry = struct {
 /// here (not packed into the operand) so it carries full width — the old
 /// `(name_idx << 8) | arg_count` packing truncated name_idx to 8 bits and
 /// corrupted ctor calls in chunks with > 255 constants. `type_name` is
-/// analyzer-arena-owned, chunk lifetime.
+/// analyzer-arena-owned, chunk lifetime. `definer_ns` is the namespace the
+/// form was analyzed in (empty when none), which qualifies a bare user-type
+/// name at run time, where the current namespace is the caller's.
 pub const CtorEntry = struct {
     type_name: []const u8,
+    definer_ns: []const u8 = "",
     arg_count: u16,
 };
 

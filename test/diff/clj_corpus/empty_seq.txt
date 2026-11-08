@@ -128,6 +128,12 @@
 ;;=> 0
 (empty? ())
 ;;=> true
+(empty? (range))
+;;=> false
+(empty? (iterate inc 0))
+;;=> false
+(empty? (repeat 1))
+;;=> false
 (pr-str ())
 ;;=> "()"
 (str ())

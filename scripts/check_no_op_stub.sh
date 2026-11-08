@@ -5,7 +5,7 @@
 #
 # On-demand audit (D-547 relabel; the phase model is retired, ADR-0142).
 # Activation as hard gate deferred — the heuristic
-# at L113 of `.claude/rules/no_op_stub_forbidden.md` needs concrete
+# at L113 of `memory 20260909235201-72836234 (no_op_stub_forbidden)` needs concrete
 # bash/grep recipes before the gate becomes block-grade. Informational
 # is the current correct shape (no new debt row needed).
 

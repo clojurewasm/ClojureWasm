@@ -1,0 +1,32 @@
+(read-string ";foo\r3\n5")
+;;=> 3
+(read-string "#!x\r3")
+;;=> 3
+(read-string "[a@b]")
+;;=> [a (clojure.core/deref b)]
+(read-string "[x~y]")
+;;=> [x (clojure.core/unquote y)]
+(read-string "[x~@y]")
+;;=> [x (clojure.core/unquote-splicing y)]
+(read-string "[:k^m x]")
+;;=> [:k x]
+(meta (second (read-string "[:k^m x]")))
+;;=> {:tag m}
+(read-string "[a`b]")
+;;=> [a (quote user/b)]
+(read-string "[q'r]")
+;;=> [q'r]
+(read-string "[g#]")
+;;=> [g#]
+(read-string "[\\a@b]")
+;;=> [\a (clojure.core/deref b)]
+(read-string "[\\@]")
+;;=> [\@]
+(read-string "[1@a]")
+;;=> [1 (clojure.core/deref a)]
+(clojure.edn/read-string ";foo\r3\n5")
+;;=> 3
+(read-string "[:a@b]")
+;;=> [:a (clojure.core/deref b)]
+(pr-str (read-string "[a^:m b]"))
+;;=> "[a b]"

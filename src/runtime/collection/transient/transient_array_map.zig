@@ -53,8 +53,12 @@ const SourceLocation = error_mod.SourceLocation;
 const tag_ops = @import("../../gc/tag_ops.zig");
 const gc_heap_mod = @import("../../gc/gc_heap.zig");
 const mark_sweep = @import("../../gc/mark_sweep.zig");
+
+const root_set = @import("../../gc/root_set.zig");
 const map_mod = @import("../map.zig");
+const editable_hamt = @import("editable_hamt.zig");
 const vector_mod = @import("../vector.zig");
+const sub_vector_mod = @import("../sub_vector.zig");
 const map_entry_mod = @import("../map_entry.zig");
 const equal = @import("../../equal.zig");
 
@@ -87,6 +91,8 @@ fn keyEq(a: Value, b: Value) bool {
 /// `map.assoc` is copy-on-write, so the source is never mutated).
 /// `.nil` produces an empty transient.
 pub fn fromMap(rt: *Runtime, source: Value) !Value {
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const tm = try rt.gc.alloc(TransientArrayMap);
     tm.* = .{ .header = HeapHeader.init(.transient_map) };
 
@@ -98,14 +104,20 @@ pub fn fromMap(rt: *Runtime, source: Value) !Value {
             tm.count = am.count;
             var i: u32 = 0;
             while (i < 2 * am.count) : (i += 1) {
-                tm.entries[i] = am.entries[i];
+                tm.entries[i] = am.entries()[i];
             }
             tm.meta = am.meta;
         },
         .hash_map => {
-            tm.overflow = source;
-            tm.count = map_mod.count(source);
-            tm.meta = map_mod.metaOf(source);
+            // The wrapper is mutable while transient, but its trie is shared
+            // until the first owner-checked edit. Never mutate the source map.
+            const src = source.decodePtr(*const map_mod.PersistentHashMap);
+            const copy = try rt.gc.alloc(map_mod.PersistentHashMap);
+            copy.* = src.*;
+            copy.header = HeapHeader.init(.hash_map);
+            tm.overflow = Value.encodeHeapPtr(.hash_map, copy);
+            tm.count = src.count;
+            tm.meta = src.meta;
         },
         else => unreachable, // caller (primitive layer) gates the tag set
     }
@@ -129,6 +141,7 @@ pub fn toPersistent(rt: *Runtime, tm_val: Value, loc: SourceLocation) !Value {
             out = try map_mod.assoc(rt, out, tm.entries[2 * i], tm.entries[2 * i + 1]);
         }
     } else {
+        editable_hamt.freeze(tm.overflow, @intFromPtr(tm));
         out = tm.overflow; // already a persistent .hash_map
     }
     if (tm.meta.isNil()) return out;
@@ -142,7 +155,7 @@ pub fn assoc(rt: *Runtime, tm_val: Value, k: Value, v: Value, loc: SourceLocatio
     // Hash mode: delegate to the persistent HAMT (dedups + promotes for
     // free; the result equals the persistent-conj path byte-for-byte).
     if (!tm.overflow.isNil()) {
-        tm.overflow = try map_mod.assoc(rt, tm.overflow, k, v);
+        try editable_hamt.assoc(rt, tm.overflow, k, v, @intFromPtr(tm));
         tm.count = map_mod.count(tm.overflow);
         return tm_val;
     }
@@ -183,29 +196,27 @@ pub fn count(tm_val: Value) u32 {
     return tm_val.decodePtr(*const TransientArrayMap).count;
 }
 
-/// True iff key `k` is present (both flat + hash modes). Powers
-/// `contains?` / the `get` lookup on a transient map.
-pub fn contains(tm_val: Value, k: Value) !bool {
+/// The STORED entry for `k` (both flat + hash modes), or null when absent.
+/// `contains` / `get` project it, as on the persistent map.
+pub fn entryAt(tm_val: Value, k: Value) !?map_mod.Entry {
     const tm = tm_val.decodePtr(*const TransientArrayMap);
-    if (!tm.overflow.isNil()) return map_mod.contains(tm.overflow, k); // hash mode
+    if (!tm.overflow.isNil()) return map_mod.entryAt(tm.overflow, k); // hash mode
     var i: u32 = 0;
     while (i < tm.count) : (i += 1) {
-        if (keyEq(tm.entries[2 * i], k)) return true;
+        if (keyEq(tm.entries[2 * i], k)) return .{ .key = tm.entries[2 * i], .val = tm.entries[2 * i + 1] };
     }
-    return false;
+    return null;
+}
+
+/// True iff key `k` is present. Powers `contains?` on a transient map.
+pub fn contains(tm_val: Value, k: Value) !bool {
+    return (try entryAt(tm_val, k)) != null;
 }
 
 /// Value for key `k`, or nil when absent (callers guard via `contains`
-/// for the not-found-vs-nil-value distinction, mirroring the persistent
-/// `getFn` path). Both flat + hash modes.
+/// for the not-found-vs-nil-value distinction).
 pub fn get(tm_val: Value, k: Value) !Value {
-    const tm = tm_val.decodePtr(*const TransientArrayMap);
-    if (!tm.overflow.isNil()) return map_mod.get(tm.overflow, k); // hash mode
-    var i: u32 = 0;
-    while (i < tm.count) : (i += 1) {
-        if (keyEq(tm.entries[2 * i], k)) return tm.entries[2 * i + 1];
-    }
-    return Value.nil_val;
+    return if (try entryAt(tm_val, k)) |e| e.val else Value.nil_val;
 }
 
 pub fn dissoc(rt: *Runtime, tm_val: Value, k: Value, loc: SourceLocation) !Value {
@@ -215,6 +226,7 @@ pub fn dissoc(rt: *Runtime, tm_val: Value, k: Value, loc: SourceLocation) !Value
     // Hash mode: delegate to persistent dissoc. Stays in hash mode even
     // if count drops ≤ 8 (matches the persistent side's no demotion).
     if (!tm.overflow.isNil()) {
+        editable_hamt.freeze(tm.overflow, @intFromPtr(tm));
         tm.overflow = try map_mod.dissoc(rt, tm.overflow, k);
         tm.count = map_mod.count(tm.overflow);
         return tm_val;
@@ -246,22 +258,57 @@ pub fn dissoc(rt: *Runtime, tm_val: Value, k: Value, loc: SourceLocation) !Value
 /// vector `[k v]` OR a distinct MapEntry (D-209 / ADR-0078; the `into {}`
 /// path conj!s the entries a map-seq yields, which are now `.map_entry`).
 pub fn conjEntry(rt: *Runtime, tm_val: Value, entry: Value, loc: SourceLocation) !Value {
+    // clj's `conj!` on a map accepts everything persistent `conj` on a map
+    // accepts, not just a [k v] pair: `(conj! tm nil)` is a no-op and
+    // `(conj! tm {:a 1})` merges every entry. Both used to raise here, which
+    // also made `(into (transient {}) {…})` fail. Verified against the oracle:
+    // clj answers {} , {} and {:a 1} for nil / {} / {:a 1}.
+    if (entry.isNil()) return tm_val;
+
+    if (entry.tag() == .array_map or entry.tag() == .hash_map) {
+        // Same shape as the persistent `map.mergeInto` right above this file's
+        // import of it: iterate the overlay through the shared `forEachEntry`
+        // rather than re-deriving a walk per map representation.
+        //
+        // GC-ROOT: `assoc` below allocates, so a collect mid-merge would sweep
+        // the source map and the accumulator, neither of which the GC can see
+        // in a Zig local [ref: .dev/gc_rooting.md §C].
+        var croots: [2]Value = .{ entry, tm_val };
+        var csp: u16 = 2;
+        var cframe: root_set.EvalFrame = .{ .stack = &croots, .sp = &csp, .locals = &.{}, .parent = root_set.eval_frame_head };
+        root_set.eval_frame_head = &cframe;
+        defer root_set.eval_frame_head = cframe.parent;
+
+        const Ctx = struct { rt: *Runtime, acc: Value, loc: SourceLocation, roots: *[2]Value };
+        var ctx = Ctx{ .rt = rt, .acc = tm_val, .loc = loc, .roots = &croots };
+        try map_mod.forEachEntry(entry, &ctx, struct {
+            fn put(c: *Ctx, k: Value, v: Value) anyerror!void {
+                c.acc = try assoc(c.rt, c.acc, k, v, c.loc);
+                c.roots[1] = c.acc;
+            }
+        }.put);
+        return ctx.acc;
+    }
+
     if (entry.tag() == .map_entry) {
         return try assoc(rt, tm_val, map_entry_mod.keyOf(entry), map_entry_mod.valOf(entry), loc);
     }
-    if (entry.tag() != .vector or vector_mod.count(entry) != 2) {
-        // A non-[k v] entry conj!-ed into a transient map → IllegalArgumentException
-        // in clj (mirrors the persistent `(conj {} 1)` path), NOT the
-        // ClassCastException of a wrong-transient-KIND mismatch. D-459 (this is the
-        // path `(into {} [1])` takes — into builds via a transient).
+    const entry_is_sub = entry.tag() == .sub_vector;
+    const entry_cnt = if (entry_is_sub) sub_vector_mod.count(entry) else vector_mod.count(entry);
+    if ((entry.tag() != .vector and !entry_is_sub) or entry_cnt != 2) {
+        // A non-nil, non-map, non-[k v] entry conj!-ed into a transient map →
+        // IllegalArgumentException in clj (mirrors the persistent `(conj {} 1)`
+        // path), NOT the ClassCastException of a wrong-transient-KIND mismatch.
+        // D-459 (this is the path `(into {} [1])` takes — into builds via a
+        // transient).
         return error_catalog.raise(.arg_value_invalid, loc, .{
             .fn_name = "conj!",
             .expected = "2-element [k v] vector",
             .actual = @tagName(entry.tag()),
         });
     }
-    const k = vector_mod.nth(entry, 0);
-    const v = vector_mod.nth(entry, 1);
+    const k = if (entry_is_sub) sub_vector_mod.nth(entry, 0) else vector_mod.nth(entry, 0);
+    const v = if (entry_is_sub) sub_vector_mod.nth(entry, 1) else vector_mod.nth(entry, 1);
     return try assoc(rt, tm_val, k, v, loc);
 }
 

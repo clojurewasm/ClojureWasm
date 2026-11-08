@@ -1,0 +1,17 @@
+;; Add-only bytecode archive amendment, 2026-10-14 (ADR-0034 D11, ADR-0198,
+;; ADR-0201, [CLJW-CTOR-ANALYZE-TIME]). Earlier records remain unchanged.
+;; v13 keeps the chunk-body framing of chunk-v12.edn except for one field
+;; added to each ctor_sites entry, so a decoder of an older version must
+;; reject the chunk.
+{:chunk-format
+ {:version 13
+  :magic "CLJW"
+  :base-layout "chunk-v12.edn"
+  :semantic-history
+  [{:version 13
+    :change "A ctor site carries definer_ns, the namespace its `(Name. args)` form was analyzed in, so a bare user-type name resolves to <definer_ns>.<Name> before any reading the calling namespace could give it (ADR-0198, ADR-0201)."}]
+  :ctor-site
+  {:fields [{:name :type_name :body "u32 length, then bytes"}
+            {:name :definer_ns :body "u32 length, then bytes; empty when the name was qualified at analysis or no namespace was current"}
+            {:name :arg_count :body "u16"}]}
+  :compatibility "The runtime rejects a chunk version unequal to 13; rebuild older payloads."}}

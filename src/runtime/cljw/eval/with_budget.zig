@@ -55,20 +55,32 @@ pub fn withBudgetFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     // Save the prior budget + heap cap; restore over the dynamic extent so the
     // process's ambient budget (CLI env arming) and any enclosing with-budget
     // are unaffected once this call returns.
-    const saved_budget = rt.eval_budget;
+    //
+    // The budget is a refcounted heap object, NOT a Runtime field (D-571):
+    // spawners inside the extent capture references, so a worker that outlives
+    // the extent keeps being metered by the same deadline + shared step
+    // counter. This extent holds the creating reference and drops it on exit;
+    // the object lives on for exactly as long as some spawned work still
+    // holds it.
+    const saved_budget = eval_budget.current;
     const saved_heap = rt.gc.heap_ceiling;
     const saved_hook = rt.gc.heap_exceeded_hook;
+    var owned: ?*eval_budget.EvalBudget = null;
     defer {
-        rt.eval_budget = saved_budget;
+        eval_budget.current = saved_budget;
+        if (owned) |b| b.unref();
         rt.gc.heap_ceiling = saved_heap;
         rt.gc.heap_exceeded_hook = saved_hook;
     }
 
-    rt.eval_budget = if (max_steps != null or deadline_ms != null) .{
-        .step_ceiling = if (max_steps) |s| @intCast(s) else null,
-        .deadline_ns = if (deadline_ms) |ms| clock.nanoTime(rt.io) + ms * std.time.ns_per_ms else null,
-        .deadline_ms = deadline_ms orelse 0,
-    } else null;
+    if (max_steps != null or deadline_ms != null) {
+        owned = try eval_budget.EvalBudget.create(rt.gpa, .{
+            .step_ceiling = if (max_steps) |s| @intCast(s) else null,
+            .deadline_ns = if (deadline_ms) |ms| clock.nanoTime(rt.io) + ms * std.time.ns_per_ms else null,
+            .deadline_ms = deadline_ms orelse 0,
+        });
+    }
+    eval_budget.current = owned;
     if (max_heap_mb) |mb| {
         rt.gc.heap_ceiling = @as(usize, @intCast(mb)) * 1024 * 1024;
         rt.gc.heap_exceeded_hook = &eval_budget.heapExceededHook;
@@ -83,16 +95,16 @@ pub fn withBudgetFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
         error.ResourceExhausted, error.OutOfMemory => {
             const axis: []const u8 = if (err == error.OutOfMemory)
                 "heap"
-            else if (rt.eval_budget) |b| (switch (b.tripped) {
+            else if (owned) |b| (switch (b.trippedAxis()) {
                 .deadline => "deadline",
                 else => "steps",
             }) else "steps";
             // Restore the prior budget + heap cap BEFORE building the result map:
             // the breaching budget is still installed here, so a heap breach would
             // re-trip on the map's own allocations (and a step/deadline budget
-            // would keep counting). The `defer` above also restores — redundant,
-            // not harmful.
-            rt.eval_budget = saved_budget;
+            // would keep counting). The `defer` above also restores the slot —
+            // redundant, not harmful; the unref stays with the defer.
+            eval_budget.current = saved_budget;
             rt.gc.heap_ceiling = saved_heap;
             rt.gc.heap_exceeded_hook = saved_hook;
             error_mod.clearLastError();

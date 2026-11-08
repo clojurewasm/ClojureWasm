@@ -124,6 +124,12 @@ pub fn contains(ts_val: Value, e: Value) !bool {
     return transient_array_map.contains(ts.inner_map, e);
 }
 
+/// The STORED member `=` to `e`, or null (the transient peer of `set.get`).
+pub fn get(ts_val: Value, e: Value) !?Value {
+    const ts = ts_val.decodePtr(*const TransientHashSet);
+    return if (try transient_array_map.entryAt(ts.inner_map, e)) |en| en.key else null;
+}
+
 pub fn traceTransientHashSet(gc_ptr: *anyopaque, header: *HeapHeader) void {
     const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
     const ts: *TransientHashSet = @ptrCast(@alignCast(header));

@@ -1,0 +1,42 @@
+(Float/parseFloat "3.14")
+;;=> 3.14
+(Float/parseFloat "-0.5")
+;;=> -0.5
+(Float/parseFloat " 3.14 ")
+;;=> 3.14
+(Float/valueOf "2.5")
+;;=> 2.5
+Float/SIZE
+;;=> 32
+Float/BYTES
+;;=> 4
+Float/MAX_EXPONENT
+;;=> 127
+Float/MIN_EXPONENT
+;;=> -126
+(Float/toString (Float/parseFloat "1.5"))
+;;=> "1.5"
+(Float/isNaN (Float/parseFloat "NaN"))
+;;=> true
+(Float/isInfinite (Float/parseFloat "Infinity"))
+;;=> true
+(Float/isFinite (Float/parseFloat "1.0"))
+;;=> true
+(Float/compare (Float/parseFloat "1.0") (Float/parseFloat "2.0"))
+;;=> -1
+(Float/compare (Float/parseFloat "-0.0") (Float/parseFloat "0.0"))
+;;=> -1
+(Float/max (Float/parseFloat "1.0") (Float/parseFloat "2.0"))
+;;=> 2.0
+(Float/min (Float/parseFloat "1.0") (Float/parseFloat "2.0"))
+;;=> 1.0
+(Float/sum (Float/parseFloat "1.0") (Float/parseFloat "2.0"))
+;;=> 3.0
+(Float/floatToIntBits (Float/parseFloat "1.0"))
+;;=> 1065353216
+(Float/floatToRawIntBits (Float/parseFloat "1.0"))
+;;=> 1065353216
+(Float/intBitsToFloat 1065353216)
+;;=> 1.0
+(Float/hashCode (Float/parseFloat "1.0"))
+;;=> 1065353216

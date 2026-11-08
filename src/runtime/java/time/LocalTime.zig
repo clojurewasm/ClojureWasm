@@ -9,8 +9,9 @@
 //! parse) populate `method_table` via the `init` callback (D-462) and mint a
 //! `.typed_instance` LocalTime VALUE (`runtime/time/local_time_value.zig`)
 //! whose per-Runtime descriptor carries the instance methods (getHour /
-//! getMinute / getSecond / getNano). The time parser is reused from the sibling
-//! `runtime/time/instant.zig` (F-009 neutral home).
+//! getMinute / getSecond / getNano). `parse` / `from` / `.format` go through
+//! the java.time.format engine (`runtime/time/date_time_formatter_value.zig`),
+//! so a bad string is the JVM DateTimeParseException.
 //!
 //! method_table is populated in `initLocalTime` (runtime) rather than at
 //! module scope because `Value.initBuiltinFn(&fn)` calls `@intFromPtr(&fn)`
@@ -26,7 +27,7 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const instant = @import("../../time/instant.zig");
 const lt_value = @import("../../time/local_time_value.zig");
-const string_collection = @import("../../collection/string.zig");
+const dtf_value = @import("../../time/date_time_formatter_value.zig");
 
 const MS_PER_DAY: i64 = 86_400_000;
 const NANO_PER_SECOND: i64 = 1_000_000_000;
@@ -62,18 +63,30 @@ fn now(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerr
     return lt_value.make(rt, @mod(ms, MS_PER_DAY) * 1_000_000);
 }
 
-/// `(java.time.LocalTime/parse s)` — parse an ISO local time
-/// `HH:mm[:ss[.fraction]]`. JVM throws `DateTimeParseException`; cljw raises the
-/// same `inst_string_invalid` the `#inst` reader uses.
+/// `(java.time.LocalTime/parse s)` = `parse(s, DateTimeFormatter/ISO_LOCAL_TIME)`, and
+/// `(java.time.LocalTime/parse s formatter)` (JVM `LocalTime.parse`). A failure is
+/// the JVM DateTimeParseException.
 fn parse(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    try error_catalog.checkArity("java.time.LocalTime/parse", args, 1, loc);
-    if (args[0].tag() != .string)
-        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "java.time.LocalTime/parse", .actual = @tagName(args[0].tag()) });
-    const s = string_collection.asString(args[0]);
-    const nod = instant.parseLocalTime(s) catch
-        return error_catalog.raise(.inst_string_invalid, loc, .{ .s = s });
-    return lt_value.make(rt, nod);
+    try error_catalog.checkArityRange("java.time.LocalTime/parse", args, 1, 2, loc);
+    if (args.len == 2) return dtf_value.parseTo(rt, .local_time, args[0], args[1], "java.time.LocalTime/parse", loc);
+    return dtf_value.parseIso(rt, .local_time, args[0], "ISO_LOCAL_TIME", "java.time.LocalTime/parse", loc);
+}
+
+/// `(LocalTime/from temporal)` — JVM `LocalTime.from(TemporalAccessor)`.
+fn from(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.time.LocalTime/from", args, 1, loc);
+    return dtf_value.convert(rt, .local_time, args[0], loc);
+}
+
+/// `(.format x formatter)` — JVM `LocalTime.format(DateTimeFormatter)`.
+fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("format", args, 2, loc);
+    if (!dtf_value.isFormatter(args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".format", .expected = "a DateTimeFormatter", .actual = dtf_value.classNameOf(args[1]) });
+    return dtf_value.formatValue(rt, args[1], args[0], loc);
 }
 
 const NANO_PER_DAY: i64 = 86_400_000_000_000;
@@ -117,6 +130,8 @@ fn initLocalTime(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) an
             .{ "parse", &parse },
             .{ "ofSecondOfDay", &ofSecondOfDay },
             .{ "ofNanoOfDay", &ofNanoOfDay },
+            .{ "from", &from },
+            .{ "format", &formatFn },
         });
     }
     td.temporal_print = .iso_local_time;

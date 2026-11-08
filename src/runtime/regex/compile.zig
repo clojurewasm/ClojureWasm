@@ -16,12 +16,16 @@
 //!
 //! Supported: literal bytes, `.` wildcard, concatenation,
 //! alternation `|`, greedy AND reluctant quantifiers `*` / `+` / `?`
-//! / `*?` / `+?` / `??`, bounded `{n,m}` / `{n,m}?`,
-//! character classes `[...]`, escapes (`\d \w \s` etc.),
-//! anchors (`^ $ \b \B`), capture + non-capturing groups, and the
-//! inline flags `(?i) (?m) (?s)` plus `\Q...\E` and POSIX
-//! `\p{Alpha}`-style classes. Not supported: named groups,
-//! lookaround, and Unicode category `\p{L}` / script names.
+//! / `*?` / `+?` / `??`, bounded `{n,m}` / `{n,m}?`, character
+//! classes `[...]` including nested unions `[a[b]]` and `&&`
+//! intersection, escapes (`\d \w \s` etc.), anchors
+//! (`^ $ \b \B \A \z \Z`), capture / non-capturing / named
+//! `(?<name>…)` groups, lookahead `(?=)(?!)` and lookbehind
+//! `(?<=)(?<!)`, Unicode categories `\p{L}` and the inline flags
+//! `(?imsux)` plus `\Q...\E` and POSIX `\p{Alpha}`-style classes.
+//! Not supported, by design: backreferences `\1` / `\k<name>` —
+//! they require backtracking, which ADR-0031's Pike-NFA invariant
+//! rules out (the RE2 posture; RE2 rejects them too).
 
 const std = @import("std");
 const unicode_case = @import("../unicode_case.zig");
@@ -68,6 +72,14 @@ pub const REPEAT_INF: u16 = std.math.maxInt(u16);
 /// 1 GB at `(a{5000}){5000}`). The Pike-NFA matcher is already ReDoS-immune for
 /// untrusted *input*; this guards the compile side against untrusted *patterns*.
 pub const MAX_PROGRAM_INSTS: usize = 100_000;
+
+/// Upper bound on a pattern's capturing groups. The matcher sizes its
+/// capture slots per program (`match.zig:slotCount`), so this is a resource
+/// guard, not an encoding limit: each group costs 2 i32 slots per live thread,
+/// and a thread list holds at most one thread per instruction. 1024 groups is
+/// far beyond any real pattern (Java has no fixed limit) while bounding the
+/// slot slab of an untrusted `(re-pattern …)`; over it, `TooManyGroups`.
+pub const MAX_CAPTURE_GROUPS: u16 = 1024;
 
 pub const Node = union(enum) {
     /// A single literal byte (e.g. `a`).
@@ -126,6 +138,13 @@ pub const CharClass = struct {
 pub const Anchor = enum {
     line_start,
     line_end,
+    /// `\A` — input start, regardless of MULTILINE.
+    input_start,
+    /// `\z` — input end, regardless of MULTILINE.
+    input_end,
+    /// `\Z` — input end, or just before a FINAL line terminator (`\n`,
+    /// `\r`, `\r\n`), regardless of MULTILINE (Java parity).
+    input_end_final,
     /// `(?m)` MULTILINE variants: `^`/`$` also match at embedded line
     /// boundaries (after / before a line terminator), not just input ends.
     line_start_multi,
@@ -162,10 +181,19 @@ pub const Inst = union(enum) {
 /// Compiled program — the IR boundary between parser/optimiser
 /// and the runtime matcher (NFA / DFA). Lifetime equals the
 /// `Pattern` Value that owns it.
+/// A `(?<name>…)` group's name → capture index binding (Java named groups).
+pub const NamedGroup = struct {
+    name: []const u8,
+    index: u16,
+};
+
 pub const Program = struct {
     insts: []const Inst,
     capture_count: u16,
     flags: Flags,
+    /// `(?<name>e)` name→index bindings, alloc-owned (deinit frees). Group
+    /// numbering is shared with unnamed groups, exactly as Java numbers them.
+    group_names: []const NamedGroup = &.{},
     /// PERF: leading first-byte set for the scan prefilter (O-036, ADR-0147 S2).
     /// `null` disables the prefilter — set only when every match must consume a
     /// determinable first byte; then `match.zig:scanFrom` skips positions whose
@@ -184,6 +212,8 @@ pub const Program = struct {
             }
         }
         alloc.free(self.insts);
+        for (self.group_names) |g| alloc.free(g.name);
+        if (self.group_names.len > 0) alloc.free(self.group_names);
     }
 };
 
@@ -191,10 +221,19 @@ pub const CompileError = error{
     /// Pattern source uses a feature that is recognised but not
     /// implemented: named groups, lookaround, Unicode category
     /// `\\p{L}` / script names, the `(?x)` extended / `(?m)`-only
-    /// mid-pattern flag forms, more than 8 capture groups, and an
-    /// escaped range endpoint inside `[...]`. Per
-    /// `no_op_stub_forbidden`, the error is explicit, not silent.
+    /// mid-pattern flag forms, and an escaped range endpoint inside
+    /// `[...]`. Per `no_op_stub_forbidden`, the error is explicit, not
+    /// silent.
     NotImplemented,
+
+    /// A backreference `\1`..`\9` / `\k<name>`. Valid Java, permanently
+    /// declined (AD-060, the RE2 posture): it needs a backtracking engine,
+    /// which ADR-0031's linear-time Pike-NFA invariant rules out.
+    Backreference,
+
+    /// The pattern declares more than `MAX_CAPTURE_GROUPS` capturing groups.
+    /// A resource bound (like `PatternTooLarge`), not a missing feature.
+    TooManyGroups,
 
     /// Parser-level syntax error: stray metacharacter, dangling
     /// quantifier, etc. Replaces JVM's `PatternSyntaxException`
@@ -265,13 +304,34 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) Comp
         pat = try stripExtended(arena.allocator(), pat, f.extended);
     }
     var group_count: u16 = 0;
-    const node = try parsePattern(arena.allocator(), pat, f, &group_count);
+    var names: []const NamedGroup = &.{};
+    const node = try parsePattern(arena.allocator(), pat, f, &group_count, &names);
     if (f.case_insensitive) try foldCase(arena.allocator(), @constCast(node), f.unicode_case);
     // D-344: a single global compile budget shared across the top-level program
     // and every lookahead sub-program, so the TOTAL emitted instruction count is
     // bounded (not just each program by the per-emitNode cap).
     var budget: usize = MAX_PROGRAM_INSTS;
-    return try emit(alloc, node, f, group_count, &budget);
+    var prog = try emit(alloc, node, f, group_count, &budget);
+    if (names.len > 0) {
+        // Dupe the arena-backed names onto the Program's allocator (the arena
+        // dies with this function; the Program outlives it).
+        const owned = alloc.alloc(NamedGroup, names.len) catch |e| {
+            prog.deinit(alloc);
+            return e;
+        };
+        var filled: usize = 0;
+        errdefer {
+            for (owned[0..filled]) |g| alloc.free(g.name);
+            alloc.free(owned);
+            prog.deinit(alloc);
+        }
+        for (names, 0..) |g, k| {
+            owned[k] = .{ .name = try alloc.dupe(u8, g.name), .index = g.index };
+            filled = k + 1;
+        }
+        prog.group_names = owned;
+    }
+    return prog;
 }
 
 /// Java extended-mode (`(?x)`) preprocessor: returns `pat` with unescaped
@@ -503,7 +563,7 @@ fn foldConcatUnicode(arena: std.mem.Allocator, node: *Node, children: []Node) Co
 /// class_item := escape | byte ('-' byte)?
 /// escape  := '\' ('d'|'D'|'w'|'W'|'s'|'S'|'t'|'n'|'r'|'f'|meta_byte)
 /// ```
-pub fn parsePattern(arena: std.mem.Allocator, pattern: []const u8, flags: Flags, group_count_out: *u16) CompileError!*const Node {
+pub fn parsePattern(arena: std.mem.Allocator, pattern: []const u8, flags: Flags, group_count_out: *u16, names_out: ?*[]const NamedGroup) CompileError!*const Node {
     if (pattern.len == 0) {
         // `#""` / `(re-pattern "")` — an empty pattern matches the empty string
         // at every position (clj parity). An empty `.concat` emits no insts, so
@@ -517,12 +577,16 @@ pub fn parsePattern(arena: std.mem.Allocator, pattern: []const u8, flags: Flags,
     const node = try parser.parseAlt();
     if (!parser.atEnd()) return CompileError.UnexpectedToken;
     group_count_out.* = parser.group_count;
+    if (names_out) |out| out.* = parser.names.items;
     return node;
 }
 
 const Parser = struct {
     src: []const u8,
     pos: usize,
+    /// `(?<name>e)` bindings collected during the parse (arena-backed; the
+    /// emit step dupes them onto the Program's allocator).
+    names: std.ArrayList(NamedGroup) = .empty,
     arena: std.mem.Allocator,
     /// Next capturing-group index to assign (1-based; group 0 is the whole
     /// match, carried by MatchResult.start/end, not a slot pair).
@@ -586,7 +650,16 @@ const Parser = struct {
             const atom = try self.parseQuant();
             try children.append(self.arena, atom.*);
         }
-        if (children.items.len == 0) return CompileError.NotImplemented;
+        if (children.items.len == 0) {
+            // An empty alternative / group body is LEGAL in Java — `()`
+            // matches empty, `a|` has an empty right arm. Mirror the empty-
+            // pattern shape (parsePattern): a no-inst concat. Treating it as
+            // an error also misrouted `"("` to the uncatchable unsupported
+            // signal instead of the catchable UnclosedGroup.
+            const empty = try self.arena.create(Node);
+            empty.* = .{ .concat = &.{} };
+            return empty;
+        }
         if (children.items.len == 1) {
             const single = try self.arena.create(Node);
             single.* = children.items[0];
@@ -723,16 +796,36 @@ const Parser = struct {
                     node.* = .{ .look = .{ .child = look_child, .negate = negate } };
                     return node;
                 }
-                // Lookbehind `(?<=e)` / `(?<!e)`. `(?<name>e)` named groups
-                // (next char alphabetic) stay NotImplemented.
+                // Lookbehind `(?<=e)` / `(?<!e)`, or a named group `(?<name>e)`
+                // (next char a letter — Java: [a-zA-Z][a-zA-Z0-9]*).
                 if (self.peek() == @as(?u8, '<')) {
                     _ = self.advance(); // consume '<'
-                    const nx = self.peek() orelse return CompileError.NotImplemented;
-                    if (nx != '=' and nx != '!') return CompileError.NotImplemented;
-                    const negate = self.advance().? == '!';
-                    const lb_child = try self.parseAlt();
+                    const nx = self.peek() orelse return CompileError.UnclosedGroup;
+                    if (nx == '=' or nx == '!') {
+                        const negate = self.advance().? == '!';
+                        const lb_child = try self.parseAlt();
+                        if (self.advance() != @as(?u8, ')')) return CompileError.UnclosedGroup;
+                        node.* = .{ .look_behind = .{ .child = lb_child, .negate = negate } };
+                        return node;
+                    }
+                    if (!std.ascii.isAlphabetic(nx)) return CompileError.UnexpectedToken;
+                    const name_start = self.pos;
+                    while (true) {
+                        const g = self.advance() orelse return CompileError.UnclosedGroup;
+                        if (g == '>') break;
+                        if (!std.ascii.isAlphanumeric(g)) return CompileError.UnexpectedToken;
+                    }
+                    const gname = self.src[name_start .. self.pos - 1];
+                    if (self.group_count >= MAX_CAPTURE_GROUPS) return CompileError.TooManyGroups;
+                    self.group_count += 1;
+                    // Java forbids duplicate names.
+                    for (self.names.items) |existing| {
+                        if (std.mem.eql(u8, existing.name, gname)) return CompileError.UnexpectedToken;
+                    }
+                    try self.names.append(self.arena, .{ .name = gname, .index = self.group_count });
+                    const named_child = try self.parseAlt();
                     if (self.advance() != @as(?u8, ')')) return CompileError.UnclosedGroup;
-                    node.* = .{ .look_behind = .{ .child = lb_child, .negate = negate } };
+                    node.* = .{ .group = .{ .child = named_child, .index = self.group_count } };
                     return node;
                 }
                 if (self.peek() == @as(?u8, ':')) {
@@ -755,9 +848,9 @@ const Parser = struct {
                     }
                 }
             } else {
+                if (self.group_count >= MAX_CAPTURE_GROUPS) return CompileError.TooManyGroups;
                 self.group_count += 1;
                 idx = self.group_count;
-                if (idx >= 8) return CompileError.NotImplemented; // MAX_SLOTS_INLINE/2
             }
             // DOTALL / MULTILINE are parse-time (the `.` bitmap and `^`/`$`
             // anchor variants are built during the child parse), so set them for
@@ -781,7 +874,78 @@ const Parser = struct {
         return node;
     }
 
+    /// Character-class member accumulator: an ASCII byte bitmap plus a
+    /// codepoint RangeSet for Unicode members. One per nesting level — Java
+    /// classes nest (`[a[b]]` is a UNION) and intersect (`[a-z&&[^m]]`), so
+    /// `parseClassSet` recurses and combines these.
+    const ClassSet = struct {
+        cls: CharClass = .{},
+        uset: RangeSet = .{},
+        has_unicode: bool = false,
+        has_members: bool = false,
+
+        /// Fold everything into one codepoint RangeSet (bytes become 1-wide
+        /// ranges). Used when a level needs full set algebra.
+        fn toRanges(self: *const ClassSet, arena: std.mem.Allocator) CompileError!RangeSet {
+            var out: RangeSet = .{};
+            try out.addRanges(arena, @constCast(&self.uset).items());
+            var b: u16 = 0;
+            while (b < 256) : (b += 1) {
+                if (self.cls.contains(@intCast(b))) try out.add(arena, @intCast(b), @intCast(b));
+            }
+            return out;
+        }
+
+        fn fromRanges(arena: std.mem.Allocator, set: RangeSet) CompileError!ClassSet {
+            var out: ClassSet = .{ .has_unicode = true, .has_members = true };
+            try out.uset.addRanges(arena, @constCast(&set).items());
+            return out;
+        }
+    };
+
+    fn classUnion(arena: std.mem.Allocator, a: *ClassSet, b: ClassSet) CompileError!void {
+        for (0..a.cls.bits.len) |i| a.cls.bits[i] |= b.cls.bits[i];
+        if (b.has_unicode) {
+            a.has_unicode = true;
+            try a.uset.addRanges(arena, @constCast(&b.uset).items());
+        }
+        a.has_members = a.has_members or b.has_members;
+    }
+
+    /// `A ∩ B = ¬(¬A ∪ ¬B)` over the codepoint space when either side has
+    /// Unicode members; a plain bitmap AND otherwise.
+    fn classIntersect(arena: std.mem.Allocator, a: ClassSet, b: ClassSet) CompileError!ClassSet {
+        if (!a.has_unicode and !b.has_unicode) {
+            var out: ClassSet = .{ .has_members = true };
+            for (0..out.cls.bits.len) |i| out.cls.bits[i] = a.cls.bits[i] & b.cls.bits[i];
+            return out;
+        }
+        var ra = try a.toRanges(arena);
+        try ra.complement(arena);
+        var rb = try b.toRanges(arena);
+        try rb.complement(arena);
+        try ra.addRanges(arena, rb.items());
+        try ra.complement(arena);
+        return ClassSet.fromRanges(arena, ra);
+    }
+
     fn parseCharClass(self: *Parser) CompileError!Node {
+        var set = try self.parseClassSet();
+        if (!set.has_unicode) return .{ .class = set.cls };
+        // Merge residual byte members into the codepoint set and lower.
+        var b: u16 = 0;
+        while (b < 0x80) : (b += 1) {
+            if (set.cls.contains(@intCast(b))) try set.uset.add(self.arena, @intCast(b), @intCast(b));
+        }
+        if (self.case_insensitive and self.unicode_case) try foldExpand(self.arena, &set.uset);
+        return cpRangesToNode(self.arena, set.uset.items());
+    }
+
+    /// Parse one class level: `'['` already consumed; consumes through the
+    /// matching `']'`. Members union; `&&` runs intersect over the operand
+    /// sequence; a leading `^` negates THIS level's combined set (Java
+    /// scoping). A nested `[` recurses.
+    fn parseClassSet(self: *Parser) CompileError!ClassSet {
         var negate = false;
         if (self.peek() == @as(?u8, '^')) {
             _ = self.advance();
@@ -789,21 +953,30 @@ const Parser = struct {
         }
         if (self.atEnd()) return CompileError.UnclosedClass;
         if (self.peek() == @as(?u8, ']')) {
-            // Empty class `[]` / `[^]` — unsupported. JVM treats
-            // `[]` as a syntax error and `[^]` as "anything",
-            // neither of which is needed.
+            // Empty class `[]` / `[^]` — Java rejects both.
             return CompileError.NotImplemented;
         }
-        var cls: CharClass = .{};
-        // Unicode members (a `\p{...}` category, a `\uXXXX` ≥ 0x80, or a raw
-        // non-ASCII codepoint — D-409) collect into a codepoint RangeSet; the
-        // whole class then lowers to the byte-level alternation. A pure-ASCII
-        // class keeps the single-bitmap fast shape.
-        var uset: RangeSet = .{};
-        var has_unicode = false;
+        var acc: ?ClassSet = null;
+        var cur: ClassSet = .{};
         while (true) {
             const c = self.advance() orelse return CompileError.UnclosedClass;
             if (c == ']') break;
+            if (c == '&' and self.peek() == @as(?u8, '&')) {
+                _ = self.advance(); // consume the second '&'
+                if (!cur.has_members) return CompileError.UnexpectedToken; // Java: `[&&a]` is a syntax error
+                acc = if (acc) |a| try classIntersect(self.arena, a, cur) else cur;
+                cur = .{};
+                continue;
+            }
+            if (c == '[') {
+                // Nested class — a UNION member (Java `[a[b]]` = {a,b}; this is
+                // also what makes `[[:alpha:]]` behave as Java's nested-union
+                // reading rather than the POSIX bracket-class it resembles).
+                const sub = try self.parseClassSet();
+                try classUnion(self.arena, &cur, sub);
+                continue;
+            }
+            cur.has_members = true;
             if (c == '\\') {
                 // `\Q…\E` quote block inside a class (Java allows it;
                 // cuerdas builds trim classes as `[\Q\n\f\r\t \E]` via
@@ -819,10 +992,10 @@ const Parser = struct {
                         }
                         if (qc >= 0x80) {
                             const qcp = try self.decodeClassCodepoint(qc);
-                            has_unicode = true;
-                            try uset.add(self.arena, qcp, qcp);
+                            cur.has_unicode = true;
+                            try cur.uset.add(self.arena, qcp, qcp);
                         } else {
-                            cls.set(qc);
+                            cur.cls.set(qc);
                         }
                     }
                     continue;
@@ -833,17 +1006,17 @@ const Parser = struct {
                     switch (try self.parsePropRaw()) {
                         .posix => |sub| {
                             const eff = if (neg) negateClass(sub) else sub;
-                            for (0..cls.bits.len) |i| cls.bits[i] |= eff.bits[i];
+                            for (0..cur.cls.bits.len) |i| cur.cls.bits[i] |= eff.bits[i];
                         },
                         .uni => |ranges| {
-                            has_unicode = true;
+                            cur.has_unicode = true;
                             if (neg) {
                                 var tmp: RangeSet = .{};
                                 try tmp.addRanges(self.arena, ranges);
                                 try tmp.complement(self.arena);
-                                try uset.addRanges(self.arena, tmp.items());
+                                try cur.uset.addRanges(self.arena, tmp.items());
                             } else {
-                                try uset.addRanges(self.arena, ranges);
+                                try cur.uset.addRanges(self.arena, ranges);
                             }
                         },
                     }
@@ -853,18 +1026,18 @@ const Parser = struct {
                     _ = self.advance();
                     const cp = try self.parseHex4();
                     if (cp < 0x80) {
-                        cls.set(@intCast(cp));
+                        cur.cls.set(@intCast(cp));
                     } else {
-                        has_unicode = true;
-                        try uset.add(self.arena, cp, cp);
+                        cur.has_unicode = true;
+                        try cur.uset.add(self.arena, cp, cp);
                     }
                     continue;
                 }
                 const esc = try self.parseEscape();
                 switch (esc) {
-                    .lit => |b| cls.set(b),
+                    .lit => |b| cur.cls.set(b),
                     .class => |sub| {
-                        for (0..cls.bits.len) |i| cls.bits[i] |= sub.bits[i];
+                        for (0..cur.cls.bits.len) |i| cur.cls.bits[i] |= sub.bits[i];
                     },
                     else => return CompileError.InvalidEscape,
                 }
@@ -873,7 +1046,7 @@ const Parser = struct {
             if (c >= 0x80) {
                 // Decode the full UTF-8 codepoint from the pattern source.
                 const cp = try self.decodeClassCodepoint(c);
-                has_unicode = true;
+                cur.has_unicode = true;
                 // A cp-cp range (`[à-ö]`).
                 if (self.peek() == @as(?u8, '-') and
                     self.pos + 1 < self.src.len and
@@ -884,9 +1057,9 @@ const Parser = struct {
                     if (c2 < 0x80) return CompileError.NotImplemented;
                     const cp2 = try self.decodeClassCodepoint(c2);
                     if (cp > cp2) return CompileError.InvalidQuantifier;
-                    try uset.add(self.arena, cp, cp2);
+                    try cur.uset.add(self.arena, cp, cp2);
                 } else {
-                    try uset.add(self.arena, cp, cp);
+                    try cur.uset.add(self.arena, cp, cp);
                 }
                 continue;
             }
@@ -901,27 +1074,28 @@ const Parser = struct {
                 if (hi == '\\') return CompileError.NotImplemented;
                 if (c > hi) return CompileError.InvalidQuantifier;
                 var b: u16 = c;
-                while (b <= hi) : (b += 1) cls.set(@intCast(b));
+                while (b <= hi) : (b += 1) cur.cls.set(@intCast(b));
             } else {
-                cls.set(c);
+                cur.cls.set(c);
             }
         }
-        if (!has_unicode) {
-            if (negate) {
-                for (0..cls.bits.len) |i| cls.bits[i] = ~cls.bits[i];
+        var result: ClassSet = undefined;
+        if (acc) |a| {
+            if (!cur.has_members) return CompileError.UnexpectedToken; // `[a&&]`
+            result = try classIntersect(self.arena, a, cur);
+        } else {
+            result = cur;
+        }
+        if (negate) {
+            if (!result.has_unicode) {
+                for (0..result.cls.bits.len) |i| result.cls.bits[i] = ~result.cls.bits[i];
+            } else {
+                var r = try result.toRanges(self.arena);
+                try r.complement(self.arena);
+                result = try ClassSet.fromRanges(self.arena, r);
             }
-            return .{ .class = cls };
         }
-        // Merge the byte bitmap into the codepoint set, then negate/lower.
-        var b: u16 = 0;
-        while (b < 0x80) : (b += 1) {
-            if (cls.contains(@intCast(b))) try uset.add(self.arena, @intCast(b), @intCast(b));
-        }
-        // Bytes ≥ 0x80 set via escapes cannot occur here (raw bytes decoded
-        // above; \xNN escapes are not part of the surface).
-        if (self.case_insensitive and self.unicode_case) try foldExpand(self.arena, &uset);
-        if (negate) try uset.complement(self.arena);
-        return cpRangesToNode(self.arena, uset.items());
+        return result;
     }
 
     /// Decode one UTF-8 codepoint whose FIRST byte (already consumed) is
@@ -977,6 +1151,17 @@ const Parser = struct {
             'f' => .{ .lit = 12 },
             'b' => .{ .anchor = .word_boundary },
             'B' => .{ .anchor = .non_word_boundary },
+            'A' => .{ .anchor = .input_start },
+            'z' => .{ .anchor = .input_end },
+            'Z' => .{ .anchor = .input_end_final },
+            // Backreferences are recognised and REJECTED: they need a
+            // backtracking engine, which ADR-0031's non-backtracking invariant
+            // (the RE2 posture — RE2 rejects them too) rules out. Backreference
+            // (not InvalidEscape) so the raise stays the uncatchable
+            // unsupported-feature signal, distinct from a malformed pattern,
+            // and names the construct instead of a generic "unsupported".
+            '1', '2', '3', '4', '5', '6', '7', '8', '9' => CompileError.Backreference,
+            'k' => CompileError.Backreference,
             // POSIX named classes `\p{Alpha}` / negated `\P{Alpha}` (ASCII —
             // Java's POSIX `\p{…}` set is ASCII by definition, so exact parity).
             // Routed through here so they also work inside `[…]` (parseCharClass
@@ -1663,9 +1848,15 @@ test "compile rejects unsupported metas / stray quantifier" {
     try testing.expectError(CompileError.UnexpectedToken, compile(testing.allocator, "*", .{}));
     try testing.expectError(CompileError.UnexpectedToken, compile(testing.allocator, "+", .{}));
     try testing.expectError(CompileError.UnexpectedToken, compile(testing.allocator, "?", .{}));
-    // Cycle-1 unsupported metas: explicit not-implemented.
-    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "(", .{}));
+    // A malformed pattern is a SYNTAX-class error (catchable at the surface,
+    // Java PatternSyntaxException parity — D-447), distinct from an
+    // unsupported feature: `(` is an unclosed group, not a missing feature.
+    try testing.expectError(CompileError.UnclosedGroup, compile(testing.allocator, "(", .{}));
     try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "{", .{}));
+    // Backreferences: recognised and DECLINED (AD-060, RE2 posture) — the
+    // unsupported signal, NOT a syntax error.
+    try testing.expectError(CompileError.Backreference, compile(testing.allocator, "(a)\\1", .{}));
+    try testing.expectError(CompileError.Backreference, compile(testing.allocator, "(?<n>a)\\k<n>", .{}));
     // Lone trailing backslash: parseEscape sees end-of-input.
     try testing.expectError(CompileError.InvalidEscape, compile(testing.allocator, "\\", .{}));
     // Unclosed character class.

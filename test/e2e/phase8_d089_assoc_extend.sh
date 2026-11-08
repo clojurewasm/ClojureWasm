@@ -46,6 +46,15 @@ EOF
 ) || fail "case2: non-zero exit ($got)"
 assert_eq 'long_dissoc_via_extend_type' "$(last_line "$got")" ':without-on-int'
 
+# --- Case 2b: multi-key -without folds over repeated single-key dispatch ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(def Long (cljw.internal/__native-type :integer))
+(extend-type Long IPersistentMap (-without [n k] n))
+(prn (dissoc 42 :a :b :c))
+EOF
+) || fail "case2b: non-zero exit ($got)"
+assert_eq 'long_dissoc_multikey_fold' "$(last_line "$got")" '42'
+
 # --- Case 3: native Tag (Long) -keys via outer-else slow-path ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
 (def Long (cljw.internal/__native-type :integer))
@@ -85,4 +94,4 @@ assert_eq 'builtin_map_dissoc_preserved' "$(last_line "$got")" '{:b 2}'
 got=$("$BIN" -e '(contains? #{:a :b} :a)' 2>/dev/null) || fail "case8: non-zero exit ($got)"
 assert_eq 'builtin_set_contains_preserved' "$(last_line "$got")" 'true'
 
-echo "phase8_d089_assoc_extend: 8/8 cases pass"
+echo "phase8_d089_assoc_extend: 9/9 cases pass"

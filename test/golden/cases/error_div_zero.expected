@@ -1,0 +1,11 @@
+--- exit ---
+1
+--- stdout ---
+before
+--- stderr ---
+Arithmetic error at <ROOT>/test/golden/cases/error_div_zero.clj:2:5
+  Divide by zero
+
+  1 | (println "before")
+  2 | (/ 1 0)
+           ^--- Divide by zero

@@ -1,0 +1,5 @@
+(require '[clojure.string :as str] '[clojure.set :as set] '[clojure.walk :as walk])
+(prn (str/split "a,b,,c" #","))
+(prn (str/join "-" ["x" "y"]) (str/upper-case "ab") (str/trim "  p  ") (str/replace "aXa" "X" "-"))
+(prn (set/union #{1 2} #{2 3}) (set/difference #{1 2 3} #{2}) (set/intersection #{1 2} #{2 3}))
+(prn (walk/postwalk (fn [x] (if (number? x) (* 10 x) x)) {:a [1 {:b 2}]}))

@@ -57,7 +57,7 @@ esac
 
 # --- Case 5: EDN output is single-line (parseable by line-based tools) ---
 out=$(CLJW_ERROR_FORMAT=edn "$BIN" -e '(undefined-symbol)' 2>&1 1>/dev/null || true)
-line_count=$(echo "$out" | grep -c '^{:cljw/error' || true)
+line_count=$(grep -c '^{:cljw/error' <<<"$out" || true)
 [[ "$line_count" -eq 1 ]] || fail "error_format_edn_single_line: expected 1 EDN line, got $line_count"
 echo "PASS error_format_edn_single_line -> one EDN map per error"
 
@@ -151,11 +151,11 @@ out=$(printf '(prn (map (fn* [x] (/ x 0)) [1 2]))\n' | "$BIN" - 2>&1 || true)
 trace=$(printf '%s' "$out" | awk '/Trace:/{f=1} f')
 if [ -z "$trace" ]; then
     fail "error_trace_discipline: expected a Trace:, got '$out'"
-elif printf '%s' "$trace" | grep -q 'clojure\.'; then
+elif grep -q 'clojure\.' <<<"$trace"; then
     fail "error_trace_discipline: a clojure.* stdlib frame leaked into the trace: '$trace'"
-elif printf '%s' "$trace" | grep -qE '^  fn '; then
+elif grep -qE '^  fn ' <<<"$trace"; then
     fail "error_trace_discipline: a nameless internal 'fn' frame leaked into the trace: '$trace'"
-elif printf '%s' "$trace" | grep -q 'user/'; then
+elif grep -q 'user/' <<<"$trace"; then
     echo "PASS error_trace_discipline -> user-only trace (stdlib + host frames elided)"
 else
     fail "error_trace_discipline: expected a user/ frame in the trace, got '$trace'"
@@ -179,9 +179,9 @@ esac
 #     trace shows the user caller but NO java/Integer frame. ---
 out=$(printf '(defn run2 [] (Integer/parseInt "bad"))\n(run2)\n' | "$BIN" - 2>&1 || true)
 trace=$(printf '%s' "$out" | awk '/Trace:/{f=1} f')
-if printf '%s' "$trace" | grep -qiE 'java|integer|parseint'; then
+if grep -qiE 'java|integer|parseint' <<<"$trace"; then
     fail "error_trace_host_interop_elided: a host interop frame leaked: '$trace'"
-elif printf '%s' "$trace" | grep -q 'user/run2'; then
+elif grep -q 'user/run2' <<<"$trace"; then
     echo "PASS error_trace_host_interop_elided -> host interop frame elided (user/run2 only)"
 else
     fail "error_trace_host_interop_elided: expected user/run2 in the trace, got '$trace'"
@@ -288,6 +288,25 @@ case "$trace" in
         echo "PASS error_thrown_trace_inthread -> a re-thrown synth exception carries its Trace:" ;;
     *)
         fail "error_thrown_trace_inthread: expected a Trace: naming user/boom, got '$out'" ;;
+esac
+
+# --- Case 21: a >8-entry *error-context* map lands in the EDN event whole.
+#     Nine entries promote the map past the array_map ceiling (Discussion #12
+#     bug class); the EDN renderer used to skip the hash_map-backed context
+#     entirely — its own comment claimed "never silently truncated". ---
+ctx_log=$(mktemp -t cljw_ctxlog.XXXXXX)
+trap 'rm -f "$log_file" "$ctx_log"' EXIT
+CLJW_ERROR_LOG="$ctx_log" "$BIN" - 2>/dev/null <<'EOF' || true
+(require (quote cljw.error))
+(cljw.error/with-context {:k1 1 :k2 2 :k3 3 :k4 4 :k5 5 :k6 6 :k7 7 :k8 8 :k9 9}
+  (throw (ex-info "boom" {})))
+EOF
+contents=$(cat "$ctx_log")
+case "$contents" in
+    *":k9 9"*)
+        echo "PASS error_log_hashmap_context -> 9-entry context map present" ;;
+    *)
+        fail "error_log_hashmap_context: :k9 missing from '$contents'" ;;
 esac
 
 echo

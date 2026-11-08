@@ -1,0 +1,8 @@
+--- exit ---
+0
+--- stdout ---
+12 6 :unknown
+"hi ada" "HI"
+"ada" #user.Person{:name "bob"}
+true true
+--- stderr ---

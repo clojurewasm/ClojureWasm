@@ -49,6 +49,63 @@ interfaces:
       hasheq: { status: wired, wires_to: "hash consult — clj (hash x) prefers hasheq (D-280d5); hashFn consults Object/hasheq before hashCode" }
       equiv: { status: wired, wires_to: "= consult — clj collection value-equality (D-280d8); valueEqual consults Object/equiv before equals (same-type)" }
 
+  # --- java.util.concurrent functional interfaces: REIFY targets (not
+  # collection supertypes). A concurrency library hands a thread pool a
+  # ThreadFactory to mint workers and a Callable as the unit of work. These
+  # are method_family (the method IS dispatched through the reify's method
+  # table), not host_inert. They live here rather than in compat_tiers.yaml
+  # because reify rejects a class value outright ("expected protocol, got
+  # type_descriptor") — a reify-able host interface can ONLY be a marker name.
+  - name: java.util.concurrent.ThreadFactory
+    aliases: [ThreadFactory]
+    derives_from: "java.util.concurrent.ThreadFactory — the JDK's single-method worker-minting seam; the standard reify target when sizing/naming a pool's threads (java.util.concurrent, stable since 1.5)."
+    tier: A
+    recognised: true
+    note: >-
+      hive-weave.pool reifies it bare after :import; hive-weave.guarded names it
+      fully qualified inline. Both spellings carry a MARKERS row.
+    methods:
+      newThread: { status: wired, wires_to: "reify method dispatch — (.newThread tf r) resolves through the reify's own method_table; the executor tier calls it to mint each worker" }
+  - name: java.util.concurrent.Callable
+    aliases: [Callable]
+    derives_from: "java.util.concurrent.Callable — the JDK's value-returning unit of work; what ExecutorService/.submit accepts and what libraries reify (java.util.concurrent, stable since 1.5)."
+    tier: A
+    recognised: true
+    note: >-
+      cljw's executor tier also accepts a plain 0-arg fn as the unit of work
+      (clj's own submit does the IFn-is-Callable coercion); this row is for code
+      that reifies Callable explicitly.
+    methods:
+      call: { status: wired, wires_to: "reify method dispatch — (.call c) resolves through the reify's own method_table; the executor tier invokes it when the submitted work is a reified Callable rather than a fn" }
+  - name: java.lang.Runnable
+    aliases: [Runnable]
+    derives_from: "java.lang.Runnable — the JDK's void unit of work; what a Thread constructor takes and a standard reify target (java.lang, stable since 1.0)."
+    tier: A
+    recognised: true
+    note: >-
+      cljw's (Thread. f) already accepts a 0-arg fn directly; this row lets code
+      that reifies Runnable explicitly load and dispatch.
+    methods:
+      run: { status: wired, wires_to: "reify method dispatch — (.run r) resolves through the reify's own method_table" }
+  - name: java.util.concurrent.Future
+    aliases: [Future]
+    derives_from: "java.util.concurrent.Future — the JDK's handle on a pending result; libraries reify it to hand back an already-computed value through the same type a pool returns (java.util.concurrent, stable since 1.5)."
+    tier: A
+    recognised: true
+    note: >-
+      cljw's native (future …) value already answers these four methods — see
+      runtime/java/util/concurrent/Future.zig, which installs them on the
+      `.future` descriptor. This row is the separate REIFY seam: a library that
+      must synthesise a Future for an already-known value (hive-weave.pool's
+      rejected-fallback future, returned when the pool is shut down and the work
+      ran on the caller thread) reifies the interface instead of minting a real
+      worker thread.
+    methods:
+      get: { status: wired, wires_to: "reify method dispatch — (.get f) resolves through the reify's own method_table; on a NATIVE future it is deref's future arm instead" }
+      cancel: { status: wired, wires_to: "reify method dispatch — (.cancel f flag); on a native future it is future-cancel" }
+      isDone: { status: wired, wires_to: "reify method dispatch — (.isDone f); on a native future it is realized?" }
+      isCancelled: { status: wired, wires_to: "reify method dispatch — (.isCancelled f); on a native future it is future-cancelled?" }
+
   # --- clojure.lang.* deftype/reify supertype family (the closed set; 網羅) ---
   # recognised: false → enumerated as the planned closed set, NOT yet in the
   # host_interface.zig table. D-275 slices 3+ flip each to recognised: true by
@@ -330,6 +387,31 @@ interfaces:
   # Recognised so collection deftypes declaring them for java-interop LOAD; their
   # methods are inert (cljw has no java dispatch). `recognised: true`, `kind:
   # host_inert`; the gate set-bound matches the bare alias the source uses.
+  - name: java.util.Map$Entry
+    aliases: [Map$Entry]
+    derives_from: "java.util.Map.Entry: a key/value pair (Java, stable); clj's key/val are (.getKey ^Map$Entry e) / (.getValue ^Map$Entry e) and map-entry? is (instance? Map$Entry x). core.logic's Pair declares it."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "IMapEntry (defprotocol IMapEntry (-key [e]) (-val [e])); key/val/map-entry? consult it for a typed_instance/reified_instance after the native MapEntry fast path"
+    note: "Dispatched, not inert: getKey/getValue also stay dot-callable under their clj names (dual registration). hashCode/equals go to the Object method-family."
+    methods:
+      getKey: { status: wired, wires_to_protocol: IMapEntry, wires_to_method: "-key" }
+      getValue: { status: wired, wires_to_protocol: IMapEntry, wires_to_method: "-val" }
+      hashCode: { status: wired, wires_to: "Object method-family (hash consult, D-280d1)" }
+      equals: { status: wired, wires_to: "Object method-family (= consult, D-280d1)" }
+  - name: clojure.lang.IMapEntry
+    derives_from: "clojure.lang.IMapEntry: key/val on a map entry; extends java.util.Map$Entry (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "IMapEntry (same protocol as java.util.Map$Entry)"
+    note: "Qualified spelling only: the bare IMapEntry is the cljw protocol Var the remap targets."
+    methods:
+      key: { status: wired, wires_to_protocol: IMapEntry, wires_to_method: "-key" }
+      val: { status: wired, wires_to_protocol: IMapEntry, wires_to_method: "-val" }
+      getKey: { status: wired, wires_to_protocol: IMapEntry, wires_to_method: "-key" }
+      getValue: { status: wired, wires_to_protocol: IMapEntry, wires_to_method: "-val" }
   - name: java.util.Map
     aliases: [Map]
     derives_from: "java.util.Map — java-interop map compat; recognised-but-inert in cljw (no JVM dispatch, ADR-0059/ADR-0103). priority-map declares it (bare `Map`, line 374)."
@@ -414,7 +496,7 @@ interfaces:
     tier: A
     recognised: true
     kind: protocol_remap
-    note: "D-280c multi-target remap: clj groups these under IPersistentMap; cljw splits them across IPersistentCollection (-count/-cons/-empty), Associative (-assoc/-contains-key?), Seqable (-seq), IPersistentMap (-without). The macro regroups by target protocol. Object methods (hashCode/equals) + cljw-unmodeled (equiv/entryAt) that clj also allows here are NOT mapped → explicit feature_not_supported (slice 2 + D-280d), never silent drop."
+    note: "D-280c multi-target remap: clj groups these under IPersistentMap; cljw splits them across IPersistentCollection (-count/-cons/-empty), Associative (-assoc/-contains-key?), Seqable (-seq), IPersistentMap (-without/-assoc-ex). The macro regroups by target protocol. Object methods (hashCode/equals) + cljw-unmodeled (equiv/entryAt) that clj also allows here are NOT mapped → explicit feature_not_supported (slice 2 + D-280d), never silent drop."
     methods:
       count: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-count" }
       cons: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-cons" }
@@ -423,6 +505,7 @@ interfaces:
       containsKey: { status: wired, wires_to_protocol: Associative, wires_to_method: "-contains-key?" }
       seq: { status: wired, wires_to_protocol: Seqable, wires_to_method: "-seq" }
       without: { status: wired, wires_to_protocol: IPersistentMap, wires_to_method: "-without" }
+      assocEx: { status: wired, wires_to_protocol: IPersistentMap, wires_to_method: "-assoc-ex" }
       hashCode: { status: wired, wires_to: "Object method-family hashCode (D-280d1b — clj inherits Object under IPersistentMap; rewrite emits an Object section)" }
       equals: { status: wired, wires_to: "Object method-family equals (D-280d1b — same-type; cross-type is D-280d8)" }
       equiv: { status: wired, wires_to: "Object method-family equiv (D-280d8 — clj collection =; same-type, cross-type residual)" }

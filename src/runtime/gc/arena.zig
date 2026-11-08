@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Arena GC for Phase 1.
 //!
 //! Phase 1 allocates from a contiguous arena and never individually

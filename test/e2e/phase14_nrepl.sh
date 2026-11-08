@@ -39,12 +39,19 @@ rm -f "$PORT_FILE"
 SERVER_PID=$!
 trap 'kill $SERVER_PID 2>/dev/null || true; rm -f "$PORT_FILE" /tmp/cljw_nrepl_*.$$' EXIT
 
-# Wait up to 5s for .nrepl-port file (= bound + writing port file).
-deadline=$((SECONDS + 5))
+# Wait for the .nrepl-port file (= bind + writing the port file). The bound is
+# an ORDER OF MAGNITUDE, not a budget: the bind measures ~0.1 s even on the slow
+# tree_walk build, so 30 s still discriminates "the server never came up" from
+# "the runner is busy" — which is the only thing this assertion is for. It was
+# 5 s, and 5 s is what failed on a loaded shared runner (`.claude/rules/
+# test_taxonomy.md`: a wall-clock upper bound near the measured value is a flake
+# generator, and it eventually fails for the one reason it was not written to
+# detect).
+deadline=$((SECONDS + 30))
 while [[ ! -f "$PORT_FILE" ]] && [[ $SECONDS -lt $deadline ]]; do
     sleep 0.1
 done
-[[ -f "$PORT_FILE" ]] || fail "nrepl_port_file: .nrepl-port not created within 5s"
+[[ -f "$PORT_FILE" ]] || fail "nrepl_port_file: .nrepl-port not created within 30s"
 echo "PASS nrepl_port_file -> $(cat "$PORT_FILE")"
 
 # SE-9: the nREPL server binds LOOPBACK (127.0.0.1) by default, never 0.0.0.0.
@@ -52,8 +59,8 @@ echo "PASS nrepl_port_file -> $(cat "$PORT_FILE")"
 # lock it so a future "expose nREPL" change can't silently make eval reachable
 # from the network. Asserted via the startup banner (reflects the bind host).
 startup=$(cat "/tmp/cljw_nrepl_stdout.$$" 2>/dev/null || true)
-echo "$startup" | grep -q "127.0.0.1" || fail "nrepl_loopback: startup did not declare 127.0.0.1: $startup"
-if echo "$startup" | grep -q "0.0.0.0"; then fail "nrepl_loopback: server bound 0.0.0.0 — unauthenticated remote-eval exposed: $startup"; fi
+grep -q "127.0.0.1" <<<"$startup" || fail "nrepl_loopback: startup did not declare 127.0.0.1: $startup"
+if grep -q "0.0.0.0" <<<"$startup"; then fail "nrepl_loopback: server bound 0.0.0.0 — unauthenticated remote-eval exposed: $startup"; fi
 echo "PASS nrepl-loopback-default -> 127.0.0.1"
 
 # --- Case 2: eval (+ 1 2) returns value="3" via Python driver ---
@@ -247,7 +254,7 @@ PY
 # 3-message error protocol with the CLI-grade rich rendering,
 # completions / lookup / eldoc, describe deriving ops + real version,
 # ns-honoring + per-session ns isolation, *1/*2/*3 history. ---
-python3 - "$PORT" "$("$BIN" --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" <<'PY' || fail "nrepl_cider_fidelity: $(tail -5 /tmp/cljw_nrepl_stderr.$$ 2>/dev/null)"
+python3 - "$PORT" "$("$BIN" --version | sed -n 1p | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sed -n 1p)" <<'PY' || fail "nrepl_cider_fidelity: $(tail -5 /tmp/cljw_nrepl_stderr.$$ 2>/dev/null)"
 import socket, sys, time
 
 def encode(v):

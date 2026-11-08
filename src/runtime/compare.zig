@@ -12,9 +12,9 @@
 //! under `=`'s never-raise contract).
 //!
 //! Numeric scope (ADR-0053 D2): same-category exact via the existing
-//! Order fns; the int/float reach via f64; exact cross-category
-//! (ratio/decimal mixed, or big magnitudes beyond i64) is deferred to
-//! the numeric combine ladder (D-014a family) and raises for now.
+//! Order fns; a float operand orders as f64; any other cross-category pair
+//! (ratio/decimal mixed, or big magnitudes beyond i64) orders exactly, by the
+//! sign of its tower-promoting difference (`promote.orderNumeric`).
 
 const std = @import("std");
 const Order = std.math.Order;
@@ -23,7 +23,9 @@ const Runtime = @import("runtime.zig").Runtime;
 const SourceLocation = @import("error/info.zig").SourceLocation;
 const error_catalog = @import("error/catalog.zig");
 const string_mod = @import("collection/string.zig");
+const utf8_total = @import("utf8_total.zig");
 const vector = @import("collection/vector.zig");
+const sub_vector = @import("collection/sub_vector.zig");
 const map_entry_mod = @import("collection/map_entry.zig");
 const keyword = @import("keyword.zig");
 const symbol = @import("symbol.zig");
@@ -37,6 +39,11 @@ const local_date_value = @import("time/local_date_value.zig");
 const local_time_value = @import("time/local_time_value.zig");
 const local_date_time_value = @import("time/local_date_time_value.zig");
 const host_instance = @import("host_instance.zig");
+const date_mod = @import("time/date.zig");
+const timestamp_mod = @import("time/timestamp.zig");
+const uuid_mod = @import("uuid.zig");
+const dispatch = @import("dispatch.zig");
+const Env = @import("env.zig").Env;
 
 const NumCat = enum { integer, floating, ratio, decimal, none };
 
@@ -82,28 +89,45 @@ fn numericOrder(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!
     if (ca == cb) {
         return switch (ca) {
             .integer => intOrder(a, b),
-            .floating => std.math.order(a.asFloat(), b.asFloat()),
+            .floating => promote.floatOrder(a.asFloat(), b.asFloat()),
             .ratio => try ratio.compareValue(rt, a, b),
             .decimal => try big_decimal.compareValue(rt, a, b),
             .none => unreachable,
         };
     }
     // Cross-category: the exact sign of the tower-promoting difference (the
-    // D-014a combine ladder, now done exactly). Float contagion → f64 sign
+    // D-014a combine ladder, done exactly). Float contagion gives the f64 sign
     // (clj: `(compare 1N 1.0)`→0); a no-float mix (ratio/int/BigDecimal/BigInt)
-    // compares EXACTLY. Replaces the old lossy f64 collapse that raised on any
-    // ratio / BigDecimal / big-magnitude operand.
-    _ = loc;
-    return promote.orderNumeric(rt, a, b);
+    // compares EXACTLY. A Ratio meeting a BigDecimal becomes an exact
+    // BigDecimal, as clj's `Numbers.toBigDecimal` makes it, so a non-terminating
+    // one (`(compare 1/3 0.5M)`) is clj's ArithmeticException.
+    return promote.orderNumeric(rt, a, b) catch |err| switch (err) {
+        error.NonTerminatingDecimal => return error_catalog.raise(.non_terminating_decimal, loc, .{}),
+        error.RoundingNecessary => return error_catalog.raise(.rounding_necessary, loc, .{}),
+        else => return err,
+    };
 }
 
 /// Java `String.compareTo` over UTF-16 code units: the raw difference at
 /// the first mismatching unit, else the unit-count difference. clj's
 /// `compare` on strings returns this magnitude (not a clamped sign) —
-/// `(compare "a" "c")` → -2.
+/// `(compare "a" "c")` → -2. Total over arbitrary bytes: ill-formed spans
+/// compare as U+FFFD (`utf8_total`). When the unit sequences tie but the
+/// bytes differ (distinct ill-formed spans), the byte order decides with
+/// ±1, so 0 is returned exactly when the strings are `=`.
 fn javaStringCompareTo(a: []const u8, b: []const u8) i64 {
-    var ia = std.unicode.Utf8View.initUnchecked(a).iterator();
-    var ib = std.unicode.Utf8View.initUnchecked(b).iterator();
+    const d = javaStringUnitCompare(a, b);
+    if (d != 0) return d;
+    return switch (std.mem.order(u8, a, b)) {
+        .lt => -1,
+        .eq => 0,
+        .gt => 1,
+    };
+}
+
+fn javaStringUnitCompare(a: []const u8, b: []const u8) i64 {
+    var ia = utf8_total.Iterator.init(a);
+    var ib = utf8_total.Iterator.init(b);
     var ua: [2]u32 = undefined;
     var ub: [2]u32 = undefined;
     var na: usize = 0;
@@ -211,12 +235,20 @@ fn nsNameOrder(ns_a: ?[]const u8, name_a: []const u8, ns_b: ?[]const u8, name_b:
 
 /// Vector-like length (a MapEntry is a 2-vector, D-209).
 fn vecLikeCount(v: Value) u32 {
-    return if (v.tag() == .map_entry) 2 else vector.count(v);
+    return switch (v.tag()) {
+        .map_entry => 2,
+        .sub_vector => sub_vector.count(v),
+        else => vector.count(v),
+    };
 }
 
 /// Vector-like positional access (a MapEntry: 0→key, 1→val).
 fn vecLikeNth(v: Value, i: u32) Value {
-    return if (v.tag() == .map_entry) map_entry_mod.nth(v, i) else vector.nth(v, @intCast(i));
+    return switch (v.tag()) {
+        .map_entry => map_entry_mod.nth(v, i),
+        .sub_vector => sub_vector.nth(v, i),
+        else => vector.nth(v, @intCast(i)),
+    };
 }
 
 /// Compare two vector-like values (vector / MapEntry, any pairing)
@@ -242,6 +274,16 @@ fn vecOrder(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!Orde
 /// Mirrors the equal.zig per-type arms.
 fn temporalOrder(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!Order {
     _ = rt;
+    // java.util.Date is Comparable by epoch-ms (Date.compareTo).
+    if (date_mod.isDate(a) and date_mod.isDate(b)) {
+        return std.math.order(date_mod.epochMsOf(a), date_mod.epochMsOf(b));
+    }
+    // java.sql.Timestamp.compareTo(Timestamp): epoch-ms, then nanos. A
+    // Timestamp against a Date still raises (AD-075 keeps the two apart).
+    if (timestamp_mod.isTimestamp(a) and timestamp_mod.isTimestamp(b)) {
+        const o = std.math.order(timestamp_mod.epochMsOf(a), timestamp_mod.epochMsOf(b));
+        return if (o != .eq) o else std.math.order(timestamp_mod.nanosOf(a), timestamp_mod.nanosOf(b));
+    }
     if (instant_value.isInstant(a) and instant_value.isInstant(b)) {
         const o = std.math.order(instant_value.epochMsOf(a), instant_value.epochMsOf(b));
         return if (o != .eq) o else std.math.order(instant_value.nanosOf(a), instant_value.nanosOf(b));
@@ -263,6 +305,51 @@ fn temporalOrder(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror
     return raiseUncomparable(loc, a);
 }
 
+/// java.util.UUID.compareTo: the most-significant 64 bits as a SIGNED long,
+/// then the least-significant 64 bits as a signed long (so a UUID whose top
+/// bit is set sorts before one whose top bit is clear). Same ordering as the
+/// `(.compareTo u v)` host method.
+fn uuidOrder(a: Value, b: Value) Order {
+    const x = uuid_mod.asUuid(a).bytes;
+    const y = uuid_mod.asUuid(b).bytes;
+    const o = std.math.order(std.mem.readInt(i64, x[0..8], .big), std.mem.readInt(i64, y[0..8], .big));
+    if (o != .eq) return o;
+    return std.math.order(std.mem.readInt(i64, x[8..16], .big), std.mem.readInt(i64, y[8..16], .big));
+}
+
+/// The receiver's own compareTo result, when it declares one: a
+/// deftype/reify implementing java.lang.Comparable
+/// (`Comparable/-compare-to`), or a host instance whose descriptor carries
+/// a `compareTo` method (java.io.File). clj's `Util.compare` casts the
+/// first operand to Comparable and returns its compareTo int as is, so
+/// `(compare f1 f2)` on Files is the path difference, not its sign.
+/// Returns null when there is no such method (the caller then falls to the
+/// native arms); a non-integer result raises.
+pub fn comparableCompareTo(rt: *Runtime, env: *Env, a: Value, b: Value, loc: SourceLocation) anyerror!?i64 {
+    var cs: dispatch.CallSite = .{};
+    const r = switch (a.tag()) {
+        .typed_instance, .reified_instance => try dispatch.dispatchOrNull(rt, env, &cs, a, "Comparable", "-compare-to", &.{ a, b }, loc),
+        .host_instance => if (b.tag() == .host_instance and
+            host_instance.asHostInstance(a).descriptor == host_instance.asHostInstance(b).descriptor)
+            try dispatch.dispatchBareOrNull(rt, env, &cs, a, "compareTo", &.{ a, b }, loc)
+        else
+            null,
+        else => null,
+    } orelse return null;
+    if (r.tag() != .integer) return raiseUncomparable(loc, r);
+    return r.asInteger();
+}
+
+/// The sign of `comparableCompareTo`, for `valueCompare` (sort, sorted
+/// colls). Only consulted while the evaluator is ARMED
+/// (`dispatch.current_env`): invoking a user fn needs an env, and the
+/// rt-free / bootstrap paths must never reach user code.
+fn comparableOrder(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!?Order {
+    const env = dispatch.current_env orelse return null;
+    const c = (try comparableCompareTo(rt, env, a, b, loc)) orelse return null;
+    return std.math.order(c, 0);
+}
+
 /// `(compare a b)` semantics. See module docstring + ADR-0053.
 pub fn valueCompare(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!Order {
     if (@intFromEnum(a) == @intFromEnum(b)) return .eq;
@@ -280,8 +367,15 @@ pub fn valueCompare(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyer
     // Vector-like family (D-209): a MapEntry IS-A vector, so any
     // vector/map_entry pairing compares element-wise (`(compare (first {:a
     // 1}) [:a 1])`→0) — handled before the same-tag gate below.
-    if ((ta == .vector or ta == .map_entry) and (tb == .vector or tb == .map_entry)) {
+    if ((ta == .vector or ta == .sub_vector or ta == .map_entry) and (tb == .vector or tb == .sub_vector or tb == .map_entry)) {
         return vecOrder(rt, a, b, loc);
+    }
+
+    // A Comparable deftype/reify (or a host instance with compareTo) orders
+    // itself, before the same-tag gate, as clj hands the other operand to
+    // the receiver's compareTo whatever its type.
+    if (ta == .typed_instance or ta == .reified_instance or ta == .host_instance) {
+        if (try comparableOrder(rt, a, b, loc)) |o| return o;
     }
 
     // Beyond here a same-tag pairing is required; cross-type raises.
@@ -301,6 +395,7 @@ pub fn valueCompare(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyer
             const sb = symbol.asSymbol(b);
             break :blk nsNameOrder(sa.ns, sa.name, sb.ns, sb.name);
         },
+        .uuid => uuidOrder(a, b),
         // `.vector` (+ `.map_entry`) handled by the vector-like branch above.
         // java.time temporal values (D-462) compare by their fields.
         .typed_instance => try temporalOrder(rt, a, b, loc),

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Macro dispatch — Layer-1 entry point for macro expansion.
 //!
 //! ADR 0001 routes macro expansion through this module instead of
@@ -48,7 +49,7 @@ const list_collection = @import("../runtime/collection/list.zig");
 /// analyzer) so call sites in `analyze` can `try` the result without
 /// a type widen — see `reader.ReadError` / `analyzer.AnalyzeError`
 /// for the same pattern.
-pub const ExpandError = error_mod.ClojureWasmError;
+pub const ExpandError = error_mod.ClojureWasmError || error{ThrownValue};
 pub const ZigExpandFn = *const fn (
     arena: std.mem.Allocator,
     rt: *Runtime,
@@ -160,13 +161,21 @@ pub fn expandIfMacro(
 /// (cljw list Values carry meta even though symbols do not — ADR-0037).
 fn buildAmpForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, call_form: Form, loc: SourceLocation) ExpandError!Value {
     const analyzer_mod = @import("analyzer/analyzer.zig");
+    // D-430: `form_val` sits in a Zig local while the meta map is built, and
+    // `meta_val` while `withMeta` allocates the new list cell. Either alloc can
+    // collect (a nested load's analysis runs inside a live VM eval), so root
+    // both on the analysis frame. Unrooted, the meta map was swept and the
+    // `&form` list kept a dangling pointer to it: the next collect traced
+    // freed memory (`traceArrayMap` index 16 of 16 under alloc torture).
     const form_val = try analyzer_mod.formToValue(rt, env, call_form);
+    try root_set.pushAnalysisRoot(form_val);
     const meta_pairs = try arena.alloc(Form, 4);
     meta_pairs[0] = .{ .data = .{ .keyword = .{ .name = "line" } }, .location = loc };
     meta_pairs[1] = .{ .data = .{ .integer = @intCast(call_form.location.line) }, .location = loc };
     meta_pairs[2] = .{ .data = .{ .keyword = .{ .name = "column" } }, .location = loc };
     meta_pairs[3] = .{ .data = .{ .integer = @intCast(call_form.location.column) }, .location = loc };
     const meta_val = try analyzer_mod.formToValue(rt, env, .{ .data = .{ .map = meta_pairs }, .location = loc });
+    try root_set.pushAnalysisRoot(meta_val);
     if (form_val.tag() == .list)
         return list_collection.withMeta(rt, form_val, meta_val) catch |e| return narrowCallFnError(e, loc);
     return form_val;
@@ -219,6 +228,14 @@ pub fn narrowCallFnError(e: anyerror, loc: SourceLocation) ExpandError {
         error.IndexError => error.IndexError,
         error.IoError => error.IoError,
         error.InternalError => error.InternalError,
+        // A macro that THROWS — `(defmacro m [] (throw (ex-info …)))`, and
+        // every argument-validating macro in clojure.core — raises
+        // `error.ThrownValue` with the exception Value parked on the runtime.
+        // Re-raising it unchanged is what lets the caller's `catch` see the
+        // exception the macro threw; folding it into InternalError instead
+        // discards both the message and the catchability (clj surfaces a
+        // macroexpansion throw as a catchable exception carrying its cause).
+        error.ThrownValue => error.ThrownValue,
         // Anything outside the ClojureWasmError envelope (e.g. a Zig-
         // level error tag the runtime synthesised) lands as
         // InternalError so the AnalyzeError surface stays narrow.

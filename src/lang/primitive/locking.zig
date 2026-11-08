@@ -38,17 +38,50 @@ pub fn lockingFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     return vtable.callFn(rt, env, args[1], &.{}, loc);
 }
 
+/// `(monitor-enter obj)` — acquire obj's monitor without a body thunk, the
+/// half-primitive `locking` is built from. Returns nil; nil obj raises. The
+/// caller owns the matching `monitor-exit` (clj has the same contract).
+pub fn monitorEnter(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("monitor-enter", args, 1, loc);
+    if (args[0].isNil()) return error_catalog.raise(.locking_needs_object, loc, .{});
+    const hdr = args[0].heapHeader() orelse &immediate_monitor;
+    object_monitor.enter(hdr) catch
+        return error_catalog.raise(.locking_nest_overflow, loc, .{ .cap = object_monitor.HELD_CAP });
+    return Value.nil_val;
+}
+
+/// `(monitor-exit obj)` — release a monitor taken by `monitor-enter`. Returns
+/// nil; nil obj raises.
+pub fn monitorExit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("monitor-exit", args, 1, loc);
+    if (args[0].isNil()) return error_catalog.raise(.locking_needs_object, loc, .{});
+    const hdr = args[0].heapHeader() orelse &immediate_monitor;
+    object_monitor.exit(hdr);
+    return Value.nil_val;
+}
+
+const Meta = env_mod.MetadataMap;
+
 const Entry = struct {
     name: []const u8,
     f: dispatch.BuiltinFn,
+    meta: ?Meta = null,
 };
 
 const ENTRIES = [_]Entry{
     .{ .name = "__locking", .f = &lockingFn },
+    // :doc / :arglists for these two are attached in clojure/core.clj
+    // (alter-meta!), where `(:doc (meta v))` can see them.
+    .{ .name = "monitor-enter", .f = &monitorEnter },
+    .{ .name = "monitor-exit", .f = &monitorExit },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
     for (ENTRIES) |it| {
-        _ = try env.intern(rt_ns, it.name, Value.initBuiltinFn(it.f), null);
+        _ = try env.intern(rt_ns, it.name, Value.initBuiltinFn(it.f), it.meta);
     }
 }

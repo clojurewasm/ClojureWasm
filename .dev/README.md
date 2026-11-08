@@ -2,37 +2,38 @@
 
 Project-level design and operational metadata. Tracked in git. English.
 
-## Always present (load-bearing)
+## Load-bearing
 
-- [`ROADMAP.md`](./ROADMAP.md) — **the** authoritative mission, principles,
-  architecture, phase plan, success criteria, and quality-gate timeline.
-  Single source of truth. If anything elsewhere disagrees with this file,
-  this file wins.
-- [`handover.md`](./handover.md) — short, mutable, current session state.
-  Read at session start, updated at session end. **Framing discipline
-  enforced** via [`.claude/rules/handover_framing.md`](../.claude/rules/handover_framing.md)
-  (≤ 100 lines, no log accumulation, no forecast tables, no stop-
-  rationalisation phrases).
-- [`cw_v0_parity_and_gap_plan.md`](./cw_v0_parity_and_gap_plan.md) — the
-  2026-05-29 cw-v0-vs-cw-v1 parity snapshot + the plan for incorporating
-  v0's gaps into cw v1 (redesigned, not copied; per-gap ordering +
-  ROADMAP-amendment hooks). CLOSED 2026-07-02 (banner in the file; the
-  phase model is retired, ADR-0142). Historical reference only.
-- [`orbstack_setup.md`](./orbstack_setup.md) — **retired** OrbStack x86_64
-  gate setup (ADR-0049; kept for history). The live Linux gate is
-  [`ubuntunote_setup.md`](./ubuntunote_setup.md) + `scripts/run_remote_ubuntu.sh`.
-- [`decisions/`](./decisions/) — Architectural Decision Records.
-  - `README.md` — convention.
-  - `0000_template.md` — copy this when adding a new ADR.
-  - `NNNN_<slug>.md` — accumulated decisions.
+- [`ROADMAP.md`](./ROADMAP.md): the authoritative mission, principles,
+  architecture, plan and quality-gate timeline. If anything elsewhere
+  disagrees with it, it wins.
+- [`project_facts.md`](./project_facts.md): the `F-NNN` invariants. Every
+  other document is edited to align with them; they are never amended by the
+  loop on its own.
+- [`debt.yaml`](./debt.yaml): the row-level debt ledger, one testable barrier
+  per row. The live SSOT for technical debt.
+- [`accepted_divergences.yaml`](./accepted_divergences.yaml): the `AD-NNN`
+  ledger of intentional divergences from JVM Clojure, each pinned by a test.
+- [`optimizations.md`](./optimizations.md): the `O-NNN` performance ledger;
+  `PERF:` markers in source anchor each row.
 
-## Created on demand (do NOT pre-create as empty stubs)
+## Decisions
 
-Empty files rot. Create them when they have real content, using the
-templates in **ROADMAP §15.2**:
+ADRs are cited by number (`ADR-NNNN`) in commit messages and in the ledgers
+above. The record itself moved out of the tree on 2026-09-11 and lives in the
+maintainer's knowledge base; numbers stay time-ordered and the newest wins on
+conflict.
 
-- `debt.yaml` — row-level debt ledger (ADR-0072; replaced the planned
-  `known_issues.md`). The live SSOT for technical debt.
-- `data/compat_tiers.yaml` — per-namespace/class Clojure tier table.
-- `data/placement.yaml` — Clojure-ns var placement SSOT (ADR-0033; covers the planned
-  `status/vars.yaml` var tracking, which was not built).
+## Reference material
+
+- `bench/`: the scaling probes behind `docs/works/collection_performance.md`.
+- `gc_rooting.md`, `wasm_percall_findings.md`, `zwasm_capabilities.md`,
+  `perf_v0_baseline.md`, `perf_campaign_essence.md`: measured findings that
+  later work builds on.
+- `mutation*`: the mutation-testing target list and equivalence records
+  (`scripts/mutation/`).
+- `ubuntunote_setup.md` and `scripts/run_remote_ubuntu.sh`: the native Linux
+  gate over SSH. `orbstack_setup.md` is the retired predecessor, kept for
+  history.
+- `archive/`, `ROADMAP_archive_phases_1-13.md`, `v0_v1_feature_parity.md`:
+  closed campaigns, historical only.

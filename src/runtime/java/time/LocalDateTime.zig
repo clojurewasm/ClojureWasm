@@ -11,7 +11,9 @@
 //! whose per-Runtime descriptor carries the instance methods (getYear /
 //! getMonthValue / getDayOfMonth / getHour / getMinute / getSecond / getNano).
 //! The civil↔epoch-day conversions are reused from the sibling
-//! `runtime/time/instant.zig` (F-009 neutral home).
+//! `runtime/time/instant.zig` (F-009 neutral home); `parse` / `from` /
+//! `.format` go through the java.time.format engine
+//! (`runtime/time/date_time_formatter_value.zig`).
 //!
 //! method_table is populated in `initLocalDateTime` (runtime) rather than at
 //! module scope because `Value.initBuiltinFn(&fn)` calls `@intFromPtr(&fn)`
@@ -27,7 +29,7 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const instant = @import("../../time/instant.zig");
 const ldt_value = @import("../../time/local_date_time_value.zig");
-const string_collection = @import("../../collection/string.zig");
+const dtf_value = @import("../../time/date_time_formatter_value.zig");
 
 const MS_PER_DAY: i64 = 86_400_000;
 
@@ -68,76 +70,30 @@ fn now(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerr
     return ldt_value.make(rt, epoch_day, nano_of_day);
 }
 
-/// `(java.time.LocalDateTime/parse s)` — parse an ISO local date-time
-/// `yyyy-MM-ddTHH:mm[:ss[.fraction]]` (NO offset/Z). JVM throws
-/// `DateTimeParseException`; cljw raises the same `inst_string_invalid` the
-/// `#inst` reader uses.
+/// `(java.time.LocalDateTime/parse s)` = `parse(s, DateTimeFormatter/ISO_LOCAL_DATE_TIME)`, and
+/// `(java.time.LocalDateTime/parse s formatter)` (JVM `LocalDateTime.parse`). A failure is
+/// the JVM DateTimeParseException.
 fn parse(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    try error_catalog.checkArity("java.time.LocalDateTime/parse", args, 1, loc);
-    if (args[0].tag() != .string)
-        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "java.time.LocalDateTime/parse", .actual = @tagName(args[0].tag()) });
-    const s = string_collection.asString(args[0]);
-    const f = parseLocalDateTime(s) catch
-        return error_catalog.raise(.inst_string_invalid, loc, .{ .s = s });
-    return ldt_value.make(rt, instant.daysFromCivil(f.y, f.m, f.d), nanoOfDay(f.h, f.mi, f.s, f.n));
+    try error_catalog.checkArityRange("java.time.LocalDateTime/parse", args, 1, 2, loc);
+    if (args.len == 2) return dtf_value.parseTo(rt, .local_date_time, args[0], args[1], "java.time.LocalDateTime/parse", loc);
+    return dtf_value.parseIso(rt, .local_date_time, args[0], "ISO_LOCAL_DATE_TIME", "java.time.LocalDateTime/parse", loc);
 }
 
-const ParseError = error{Invalid};
-const Fields = struct { y: i64, m: i64, d: i64, h: i64, mi: i64, s: i64, n: i64 };
-
-fn readN(s: []const u8, i: *usize, n: usize) ParseError!i64 {
-    if (i.* + n > s.len) return error.Invalid;
-    var acc: i64 = 0;
-    var k: usize = 0;
-    while (k < n) : (k += 1) {
-        const c = s[i.* + k];
-        if (c < '0' or c > '9') return error.Invalid;
-        acc = acc * 10 + (c - '0');
-    }
-    i.* += n;
-    return acc;
+/// `(LocalDateTime/from temporal)` — JVM `LocalDateTime.from(TemporalAccessor)`.
+fn from(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.time.LocalDateTime/from", args, 1, loc);
+    return dtf_value.convert(rt, .local_date_time, args[0], loc);
 }
 
-/// Parse `yyyy-MM-ddTHH:mm[:ss[.fraction]]` (no offset). The year is read as a
-/// positive 4-digit field (the e2e only needs positive years).
-fn parseLocalDateTime(s: []const u8) ParseError!Fields {
-    var i: usize = 0;
-    const y = try readN(s, &i, 4);
-    if (i >= s.len or s[i] != '-') return error.Invalid;
-    i += 1;
-    const m = try readN(s, &i, 2);
-    if (i >= s.len or s[i] != '-') return error.Invalid;
-    i += 1;
-    const d = try readN(s, &i, 2);
-    if (i >= s.len or s[i] != 'T') return error.Invalid;
-    i += 1;
-    const h = try readN(s, &i, 2);
-    if (i >= s.len or s[i] != ':') return error.Invalid;
-    i += 1;
-    const mi = try readN(s, &i, 2);
-    var sec: i64 = 0;
-    var nanos: i64 = 0;
-    if (i < s.len and s[i] == ':') {
-        i += 1;
-        sec = try readN(s, &i, 2);
-        if (i < s.len and s[i] == '.') {
-            i += 1;
-            // Fractional seconds: 1-9 digits scaled to nanos (pad / truncate to 9).
-            var digits: usize = 0;
-            var acc: i64 = 0;
-            while (i < s.len and s[i] >= '0' and s[i] <= '9') : (i += 1) {
-                if (digits < 9) acc = acc * 10 + (s[i] - '0');
-                digits += 1;
-            }
-            if (digits == 0) return error.Invalid;
-            while (digits < 9) : (digits += 1) acc *= 10;
-            nanos = acc;
-        }
-    }
-    if (i != s.len) return error.Invalid;
-    if (m < 1 or m > 12 or d < 1 or d > 31 or h > 23 or mi > 59 or sec > 59) return error.Invalid;
-    return .{ .y = y, .m = m, .d = d, .h = h, .mi = mi, .s = sec, .n = nanos };
+/// `(.format x formatter)` — JVM `LocalDateTime.format(DateTimeFormatter)`.
+fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("format", args, 2, loc);
+    if (!dtf_value.isFormatter(args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".format", .expected = "a DateTimeFormatter", .actual = dtf_value.classNameOf(args[1]) });
+    return dtf_value.formatValue(rt, args[1], args[0], loc);
 }
 
 fn initLocalDateTime(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
@@ -149,6 +105,8 @@ fn initLocalDateTime(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator
             .{ "of", &of },
             .{ "now", &now },
             .{ "parse", &parse },
+            .{ "from", &from },
+            .{ "format", &formatFn },
         });
     }
     td.temporal_print = .iso_local_date_time;
@@ -179,22 +137,3 @@ var descriptor: type_descriptor.TypeDescriptor = .{
     .meta = .nil_val,
     .temporal_print = .iso_local_date_time,
 };
-
-// --- tests ---
-
-const testing = std.testing;
-
-test "parseLocalDateTime: with / without seconds + fraction" {
-    const a = try parseLocalDateTime("2024-01-01T12:30");
-    try testing.expectEqual(@as(i64, 2024), a.y);
-    try testing.expectEqual(@as(i64, 30), a.mi);
-    try testing.expectEqual(@as(i64, 0), a.s);
-    try testing.expectEqual(@as(i64, 0), a.n);
-    const b = try parseLocalDateTime("2024-01-01T12:30:45");
-    try testing.expectEqual(@as(i64, 45), b.s);
-    const c = try parseLocalDateTime("2024-01-01T12:30:45.5");
-    try testing.expectEqual(@as(i64, 500_000_000), c.n);
-    try testing.expectError(error.Invalid, parseLocalDateTime("2024-01-01"));
-    try testing.expectError(error.Invalid, parseLocalDateTime("not-a-date"));
-    try testing.expectError(error.Invalid, parseLocalDateTime("2024-13-01T00:00"));
-}

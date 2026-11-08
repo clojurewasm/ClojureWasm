@@ -40,3 +40,7 @@
 ;;=> 0
 (compare ##NaN 1.5M)
 ;;=> 0
+(sort [1 ##NaN])
+;;=> (1 ##NaN)
+(sort [2.0 ##NaN])
+;;=> (2.0 ##NaN)

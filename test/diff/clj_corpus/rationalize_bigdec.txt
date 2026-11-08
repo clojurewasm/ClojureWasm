@@ -1,0 +1,58 @@
+(rationalize 1.5M)
+;;=> 3/2
+(rationalize 1.1M)
+;;=> 11/10
+(rationalize 1.50M)
+;;=> 3/2
+(rationalize -1.25M)
+;;=> -5/4
+(rationalize 1E-3M)
+;;=> 1/1000
+(rationalize 0.001M)
+;;=> 1/1000
+(rationalize 12345678901234567890.5M)
+;;=> 24691357802469135781/2
+(rationalize 3)
+;;=> 3
+(rationalize 3N)
+;;=> 3N
+(rationalize 3/4)
+;;=> 3/4
+(rationalize 0.1)
+;;=> 1/10
+(rationalize 1.5)
+;;=> 3/2
+(rationalize -0.25)
+;;=> -1/4
+(ratio? (rationalize 1.1M))
+;;=> true
+(integer? (rationalize 1.0M))
+;;=> true
+(= 11/10 (rationalize 1.1M))
+;;=> true
+(try (rationalize "x") (catch Exception e :threw))
+;;=> :threw
+(try (rationalize ##NaN) (catch Exception e :threw))
+;;=> :threw
+(try (rationalize ##Inf) (catch Exception e :threw))
+;;=> :threw
+(= 1 (rationalize 1.0M))
+;;=> true
+(= 0 (rationalize 0.0M))
+;;=> true
+(= 10 (rationalize 10.0M))
+;;=> true
+(= 1 (rationalize 1.00M))
+;;=> true
+(= 100 (rationalize 1E+2M))
+;;=> true
+(= 100 (rationalize 100M))
+;;=> true
+(integer? (rationalize 10.0M))
+;;=> true
+(= 2 (rationalize 2.0M))
+;;=> true
+(= -3 (rationalize -3.00M))
+;;=> true
+(= 12345678901234567890 (rationalize 12345678901234567890.00M))
+;;=> true

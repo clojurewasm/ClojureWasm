@@ -24,6 +24,7 @@
 //! reuses the outer transaction (clj semantics).
 
 const std = @import("std");
+const atomics = @import("../atomics.zig");
 const value_mod = @import("../value/value.zig");
 const Value = value_mod.Value;
 const Runtime = @import("../runtime.zig").Runtime;
@@ -46,7 +47,7 @@ const RETRY_LIMIT: u32 = 10000;
 /// Monotonic point counter — `getReadPoint`/`getCommitPoint` both
 /// increment-and-get (clj `lastPoint.incrementAndGet()`), so a read-point and
 /// a commit-point are distinct ordered ids.
-var last_point: std.atomic.Value(i64) = .init(0);
+var last_point: atomics.Value(i64) = .init(0);
 
 fn nextPoint() i64 {
     return last_point.fetchAdd(1, .monotonic) + 1;

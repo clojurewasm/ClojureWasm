@@ -1,11 +1,17 @@
 const std = @import("std");
-// TODO(adr-0003): drop zlinter dep when Zig ships @deprecated()
-// builtin + -fdeprecated flag (ziglang/zig#22822, accepted on
-// urgent milestone, expected 0.17+).
-const zlinter = @import("zlinter");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    // wasm32 needs the atomics + bulk_memory features (rationale: kanban
+    // CLJW-WASM32-PORT / hive memory). Added automatically so the target is
+    // just `-Dtarget=wasm32-wasi`, no hand-passed `-Dcpu`.
+    const target = blk: {
+        const t = b.standardTargetOptions(.{});
+        if (t.result.cpu.arch != .wasm32) break :blk t;
+        var q = t.query;
+        q.cpu_features_add.addFeature(@intFromEnum(std.Target.wasm.Feature.atomics));
+        q.cpu_features_add.addFeature(@intFromEnum(std.Target.wasm.Feature.bulk_memory));
+        break :blk b.resolveTargetQuery(q);
+    };
     const optimize = b.standardOptimizeOption(.{});
 
     // `-Dprofile` (D-450 perf campaign): keep the symbol table on an OPTIMISED
@@ -58,6 +64,16 @@ pub fn build(b: *std.Build) void {
     build_options.addOption([]const u8, "version", build_zon.version);
     build_options.addOption(bool, "embed_raw_clj_sources", false);
 
+    // Layer 7 (ADR-0186) — the property suite's seed and iteration count. Both
+    // are FIXED by default: a gate whose input set changes per run reports a
+    // different thing each time it is asked, and a failure nobody can reproduce
+    // is a failure nobody fixes. A sweep raises them deliberately:
+    //   zig build test -Dprop-seed=0xdecafbad -Dprop-iters=5000
+    // A property that only fails under a swept seed is still a real defect —
+    // pin its seed into the default when that happens, so the gate keeps it.
+    build_options.addOption(u64, "prop_seed", b.option(u64, "prop-seed", "Layer 7 property-test seed (ADR-0186)") orelse 0x1_0BE1_5EED);
+    build_options.addOption(usize, "prop_iters", b.option(usize, "prop-iters", "Layer 7 property-test iterations per property (ADR-0186)") orelse 60);
+
     // ROADMAP §9.6 / 4.8 / §349 — backend gate (ADR-0005 / ADR-0070 / F-012).
     // `vm` is the PRODUCTION DEFAULT (flipped 2026-06-02 once every D-196
     // parity blocker closed: check_vm_parity = 0 fails, corpus 375/375 + all
@@ -92,6 +108,20 @@ pub fn build(b: *std.Build) void {
     // when the flag is on (Phase-16-consistent: wasm becomes always-on there).
     if (zwasm_mod) |zm| exe_mod.addImport("zwasm", zm);
 
+    // `-Dffi`: the `cljw.ffi` C FFI surface (ADR-0202): dlopen + a
+    // register-only call shape, so it exists only where that shape is the C
+    // ABI (x86_64 SysV, aarch64 AAPCS64) on a dlopen host (Linux, macOS).
+    // On by default there; `-Dffi=false` drops it. Off on wasm and Windows.
+    const ffi_requested = b.option(bool, "ffi", "Build the cljw.ffi C FFI surface where the target supports it (ADR-0202).") orelse true;
+    const ffi_target = switch (target.result.cpu.arch) {
+        .x86_64, .aarch64 => target.result.os.tag == .linux or target.result.os.tag.isDarwin(),
+        else => false,
+    };
+    const ffi_enabled = ffi_requested and ffi_target;
+    build_options.addOption(bool, "ffi", ffi_enabled);
+    // dlopen/dlsym/dlerror come from libc: link it explicitly whenever ffi is on.
+    if (ffi_enabled) exe_mod.link_libc = true;
+
     exe_mod.addOptions("build_options", build_options);
 
     // ADR-0056 Cycle 2: AOT-compile the eager bootstrap (clojure.core) to a
@@ -113,8 +143,10 @@ pub fn build(b: *std.Build) void {
     cache_gen_options.addOption([]const u8, "version", build_zon.version);
     cache_gen_options.addOption(Backend, "backend", backend);
     cache_gen_options.addOption(bool, "wasm", wasm_enabled);
+    cache_gen_options.addOption(bool, "ffi", ffi_enabled);
     cache_gen_options.addOption(bool, "embed_raw_clj_sources", true);
     cache_gen_mod.addOptions("build_options", cache_gen_options);
+    if (ffi_enabled) cache_gen_mod.link_libc = true;
     if (zwasm_mod) |zm| cache_gen_mod.addImport("zwasm", zm);
     const cache_gen = b.addExecutable(.{ .name = "cache_gen", .root_module = cache_gen_mod });
     const run_cache_gen = b.addRunArtifact(cache_gen);
@@ -174,25 +206,25 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_exe_tests.step);
 
-    // `zig build lint` — zlinter rule chain (ADR-0003).
-    // Runs where zlinter can be fetched from GitHub; the gate skips it on
-    // hosts without network reach. Run with `--max-warnings 0` for strict
-    // CI semantics.
+    // `zig build lint` delegates to a separate build root. Keeping
+    // @import("zlinter") out of this file is load-bearing: Zig resolves build
+    // imports while configuring EVERY command, so an eager import made release
+    // builds fetch zlinter plus its transitive zls tree (CLJW-RELEASE-FETCH).
+    // The package is lazy in build.zig.zon and build-lint.zig is configured only
+    // when this step executes, preserving the public CLI without exposing
+    // normal/release builds to a development-only network dependency.
     const lint_step = b.step("lint", "Lint source code (zlinter).");
-    lint_step.dependOn(blk: {
-        var builder = zlinter.builder(b, .{});
-        // Phase A.
-        builder.addRule(.{ .builtin = .no_deprecated }, .{});
-        // Phase B (added one at a time — see ADR-0003 Update).
-        builder.addRule(.{ .builtin = .no_orelse_unreachable }, .{});
-        builder.addRule(.{ .builtin = .no_empty_block }, .{});
-        builder.addRule(.{ .builtin = .no_unused }, .{});
-        // Inspected, not adopted (rationale in ADR-0003 Update):
-        //   require_exhaustive_enum_switch — mismatched with the
-        //     Value.Tag dispatch idiom (36+ tags, intentionally
-        //     growing through Phases 4-15; arithmetic / collection
-        //     primitives use `else =>` to mean "all the kinds I do
-        //     not accept as operand").
-        break :blk builder.build();
+    const lint_cmd = b.addSystemCommand(&.{
+        b.graph.zig_exe,
+        "build",
+        "--build-file",
+        "build-lint.zig",
+        "lint",
     });
+    lint_cmd.setCwd(b.path("."));
+    if (b.args) |args| {
+        lint_cmd.addArg("--");
+        lint_cmd.addArgs(args);
+    }
+    lint_step.dependOn(&lint_cmd.step);
 }

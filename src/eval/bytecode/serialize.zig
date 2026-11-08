@@ -29,7 +29,8 @@
 //!                           + has_only:u8 + (only_count:u32
 //!                             + each: only_len:u32 + bytes)?
 //!   [...]     ctor_sites_count (u32 LE)
-//!             for each entry: type_name_len:u32 + bytes + arg_count:u16
+//!             for each entry: type_name_len:u32 + bytes
+//!                           + definer_ns_len:u32 + bytes + arg_count:u16
 //!   [...]     import_sites_count (u32 LE)
 //!             for each entry: simple_len:u32 + bytes + fqcn_len:u32 + bytes
 //!
@@ -41,8 +42,8 @@
 //! v0.1.0 tag set is the realistic compiler-produced constant
 //! universe: immediates (nil / true / false / integer / float /
 //! char) + interned literals (string / symbol / keyword / var_ref
-//! / regex) + quoted collections (list / vector / array_map /
-//! hash_set) + compiled `fn_val` (ADR-0034 am2) + class-value
+//! / regex) + quoted and folded literal collections (list / vector /
+//! array_map / hash_map / hash_set) + compiled `fn_val` (ADR-0034 am2) + class-value
 //! `type_descriptor` (ADR-0034 am5, re-resolved by name). Out of scope (raise
 //! explicit `UnsupportedValueTag`): atom / multi_fn / big_int /
 //! wasm_* / transient_* / any runtime-only Value (per
@@ -70,19 +71,41 @@ const keyword_mod = @import("../../runtime/keyword.zig");
 const symbol_mod = @import("../../runtime/symbol.zig");
 const list_mod = @import("../../runtime/collection/list.zig");
 const vector_mod = @import("../../runtime/collection/vector.zig");
+const sub_vector_mod = @import("../../runtime/collection/sub_vector.zig");
 const map_mod = @import("../../runtime/collection/map.zig");
 const set_mod = @import("../../runtime/collection/set.zig");
+const literal = @import("../../runtime/collection/literal.zig");
 const tree_walk = @import("../backend/tree_walk.zig");
 const Function = tree_walk.Function;
 
 pub const MAGIC: [4]u8 = .{ 'C', 'L', 'J', 'W' };
-pub const VERSION: u16 = 9; // v9 (D-563b): op_var_meta — def meta (:doc + :line/:column/:file) rides the wire, fixing the user-AOT docstring loss; v8 (ADR-0174): host-class fqcn identity unification — baked class-value constants carry JVM FQCNs ("java.util.Date", was "Date"/"cljw.java.*"), so ≤v7 artifacts are version-rejected; v7 (ADR-0173 C2'): 4B WireInstr wire + 4B-aligned instr sections + source_file/has_handlers in the chunk + interned-name constant pool (pool_ref) + headerless nested fn-method chunks; v6: rt ns merged into clojure.core (ADR-0171)
+// v14: a fn method carries its `frame_slots` (ADR-0130). Without it a
+// deserialized method fell back to the full MAX_LOCALS window per call, so
+// every bootstrap-cache fn on a recursion path (`map`, `first`, ...) paid 256
+// slots per level. A v13 method has no such field, so v13 is rejected.
+// v13: a ctor site carries `definer_ns`, the namespace its form was analyzed
+// in, so a bare user-type name is qualified lexically instead of by the
+// caller's namespace (ADR-0198, ADR-0201). A v12 ctor site has no such field,
+// so v12 is rejected.
+// v12 (D-346): the op_*_extend opcodes build a large literal in bounded steps,
+// and a folded constant literal may be a hash_map (new wire tag) or a set past
+// the array-map threshold. A v11 decoder cannot read either, so v11 is rejected.
+// v11: a `.type_descriptor` constant carries the `rt.types` KEY, which for a
+// user type is now `<defining_ns>.<Name>` rather than the simple name
+// (ADR-0198). A v10 artifact would resolve that constant against the new
+// qualified registry, miss, and silently fall through to whatever else
+// answers to the bare name, so v10 must be REJECTED rather than read.
+// v10: def operands capture Var constants instead of caller-relative names.
+// v9 added op_var_meta; v8 unified host-class FQCNs; v7 compacted WireInstr
+// and interned the name pool; v6 merged rt into clojure.core.
+// v15: the op_inc / op_dec opcodes (O-102). A
+// v14 decoder rejects them, so v14 is rejected too (as v9 did for op_var_meta).
+pub const VERSION: u16 = 15;
 
 pub const SerializeError = error{
     OutOfMemory,
     WriteFailed,
     UnsupportedValueTag,
-    HashMapNotSerializable,
     /// A `fn_val` constant carries `closure_bindings != null` — a runtime
     /// closure, which is never a compile-time constant (ADR-0034 am2 A2-D2).
     /// Raised as an invariant guard, not a feature gate.
@@ -159,6 +182,11 @@ pub const ValueTag = enum(u8) {
     /// interned-name tags (string / symbol / keyword / var_ref / regex /
     /// type_descriptor), deduplicated per blob/payload.
     pool_ref = 0x11,
+    /// v12 (D-346): a map past the array-map threshold, which a folded
+    /// constant literal can be. Body as `array_map` (count, then key/value
+    /// pairs); the decoder assoc-folds it the same way, and its entry order
+    /// carries no meaning.
+    hash_map = 0x12,
 };
 
 /// Parsed constant pool: each entry is a standalone constant encoding
@@ -383,31 +411,26 @@ fn writeValueRaw(ctx: *WriteCtx, w: *std.Io.Writer, v: Value) SerializeError!voi
             var i: u32 = 0;
             while (i < n) : (i += 1) try writeValue(ctx, w, vector_mod.nth(v, i));
         },
-        .array_map => {
-            try writeU8(w, @intFromEnum(ValueTag.array_map));
-            const am = v.decodePtr(*const map_mod.ArrayMap);
-            try writeU32(w, am.count);
+        // A subvec is a runtime VIEW; the view offset has no meaning to persist,
+        // so it materializes as a plain vector on the wire (reads back as one).
+        .sub_vector => {
+            try writeU8(w, @intFromEnum(ValueTag.vector));
+            const n = sub_vector_mod.count(v);
+            try writeU32(w, n);
             var i: u32 = 0;
-            while (i < am.count) : (i += 1) {
-                try writeValue(ctx, w, am.entries[2 * i]);
-                try writeValue(ctx, w, am.entries[2 * i + 1]);
-            }
+            while (i < n) : (i += 1) try writeValue(ctx, w, sub_vector_mod.nth(v, i));
         },
-        .hash_map => {
-            // The bytecode serializer does not yet walk a HAMT body
-            // (only the array_map path is wired); raise an explicit
-            // error so the user sees a concrete diagnostic rather than
-            // a partial archive.
-            return SerializeError.HashMapNotSerializable;
+        // The array_map tag keeps its entries in insertion order; a hash_map's
+        // walk order carries no meaning. Both decode by an assoc fold.
+        .array_map, .hash_map => {
+            try writeU8(w, @intFromEnum(if (v.tag() == .array_map) ValueTag.array_map else ValueTag.hash_map));
+            try writeU32(w, map_mod.count(v));
+            try writeEntries(ctx, w, v, .map);
         },
         .hash_set => {
             try writeU8(w, @intFromEnum(ValueTag.hash_set));
-            const s = v.decodePtr(*const set_mod.PersistentHashSet);
-            if (s.map.tag() != .array_map) return SerializeError.HashMapNotSerializable;
-            const am = s.map.decodePtr(*const map_mod.ArrayMap);
-            try writeU32(w, am.count);
-            var i: u32 = 0;
-            while (i < am.count) : (i += 1) try writeValue(ctx, w, am.entries[2 * i]);
+            try writeU32(w, set_mod.count(v));
+            try writeEntries(ctx, w, v, .set);
         },
         .var_ref => {
             try writeU8(w, @intFromEnum(ValueTag.var_ref));
@@ -449,18 +472,64 @@ fn writeValueRaw(ctx: *WriteCtx, w: *std.Io.Writer, v: Value) SerializeError!voi
         },
         .type_descriptor => {
             // ADR-0034 am5: a class-value constant. Write the descriptor's
-            // `fqcn` (its `rt.types` key — the SIMPLE name for a user
-            // deftype/record/protocol, the dotted FQCN for a host surface);
-            // readValue re-resolves it via `resolveClassValue` to the same
-            // canonical ref. An anonymous (reify) descriptor has no name and
-            // is never an analyze-time constant — guard it loudly.
+            // `rt.types` KEY, so the load path can re-resolve it
+            // import-blind via `resolveDescriptorByKey` (an import shadowing
+            // the name at deserialize time must not mis-resolve a baked
+            // constant). An anonymous (reify) descriptor has no name and is
+            // never an analyze-time constant, so guard it loudly.
+            //
+            // ADR-0198: the key is `<defining_ns>.<fqcn>` for a user type and
+            // the bare fqcn for a host surface, so it is built here rather
+            // than read off `fqcn`. Writing `fqcn` alone was correct only
+            // while the registry was keyed by the simple name; it is the one
+            // place where getting this wrong is SILENT (a stale entry would
+            // resolve to some other namespace's same-named record rather than
+            // failing), which is why `VERSION` moves with this change.
             const ref = v.decodePtr(*const @import("../../runtime/type_descriptor.zig").TypeDescriptorRef);
             const fqcn = ref.td_ptr.fqcn orelse return SerializeError.TypeDescriptorUnnamed;
             try writeU8(w, @intFromEnum(ValueTag.type_descriptor));
-            try writeLenPrefixed(w, fqcn);
+            if (ref.td_ptr.defining_ns) |dns| {
+                var kbuf: [512]u8 = undefined;
+                const key = std.fmt.bufPrint(&kbuf, "{s}.{s}", .{ dns, fqcn }) catch
+                    return SerializeError.TypeDescriptorUnnamed;
+                try writeLenPrefixed(w, key);
+            } else {
+                try writeLenPrefixed(w, fqcn);
+            }
         },
         else => return SerializeError.UnsupportedValueTag,
     }
+}
+
+/// Write each entry of a map (key, then value) or each element of a set, in
+/// the collection's own walk order. The walk's callback error set is
+/// `anyerror`, so the first write error is carried out through `err`.
+fn writeEntries(ctx: *WriteCtx, w: *std.Io.Writer, coll: Value, comptime kind: enum { map, set }) SerializeError!void {
+    const Sink = struct {
+        ctx: *WriteCtx,
+        w: *std.Io.Writer,
+        err: ?SerializeError = null,
+
+        fn put(s: *@This(), x: Value) anyerror!void {
+            writeValue(s.ctx, s.w, x) catch |e| {
+                s.err = e;
+                return e;
+            };
+        }
+
+        fn entry(s: *@This(), k: Value, x: Value) anyerror!void {
+            try s.put(k);
+            try s.put(x);
+        }
+    };
+    var sink: Sink = .{ .ctx = ctx, .w = w };
+    const walked = if (kind == .map)
+        map_mod.forEachEntry(coll, &sink, Sink.entry)
+    else
+        set_mod.forEachElem(coll, &sink, Sink.put);
+    // The caller dispatched on the collection's tag, so the walk itself
+    // cannot fail; only a write can.
+    walked catch return sink.err.?;
 }
 
 /// Serialize one function method: `arity` + `has_rest` + a length-prefixed
@@ -471,6 +540,7 @@ fn writeValueRaw(ctx: *WriteCtx, w: *std.Io.Writer, v: Value) SerializeError!voi
 fn writeFnMethod(ctx: *WriteCtx, w: *std.Io.Writer, m: tree_walk.FunctionMethod) SerializeError!void {
     try writeU16(w, m.arity);
     try writeU8(w, @intFromBool(m.has_rest));
+    try writeU16(w, m.frame_slots); // v14
     if (m.bytecode) |chunk| {
         try writeU8(w, 1);
         // v7: nested fn-method chunks are HEADERLESS bodies (no repeated
@@ -544,13 +614,14 @@ fn readValue(ctx: *ReadCtx, r: *ByteReader) DeserializeError!Value {
             // nil (D-164) — fold-from-nil would otherwise lose the distinct
             // `()` for a quoted empty list baked into the AOT blob.
             if (n == 0) return list_mod.emptyList(rt) catch return DeserializeError.OutOfMemory;
-            // Read forward into a stack-allocated buffer, then cons-fold
-            // back to preserve the head-first source order. Caps at a
-            // bounded stack alloc; very-large quoted lists are rare in
-            // the constant pool — long sequences come through `list`
-            // primitive at runtime.
-            const buf = std.heap.page_allocator.alloc(Value, n) catch return DeserializeError.OutOfMemory;
-            defer std.heap.page_allocator.free(buf);
+            // Read forward into a scratch buffer, then cons-fold back to
+            // preserve the head-first source order.
+            // PERF: scratch from the reader's allocator, as `readCollection`'s
+            // is; `page_allocator` cost one mmap + munmap + page fault per
+            // quoted list, 927 of them on every cold start [refs: O-090].
+            if (n > r.bytes.len - r.pos) return DeserializeError.BytecodeTruncated;
+            const buf = ctx.allocator.alloc(Value, n) catch return DeserializeError.OutOfMemory;
+            defer ctx.allocator.free(buf);
             // Fabrication region: `buf` elements + the growing `lst` are Zig
             // locals across the nested readValue/cons allocs — a collect in
             // the window would sweep the in-progress structure (the D-563b
@@ -568,70 +639,23 @@ fn readValue(ctx: *ReadCtx, r: *ByteReader) DeserializeError!Value {
             }
             return lst;
         },
-        .vector => {
-            const n = try r.readU32();
-            // Fabrication region: see the .list arm — `out` is unrooted
-            // across the per-element readValue/conj allocs.
-            rt.gc.enterFabrication();
-            defer rt.gc.exitFabrication();
-            var out = vector_mod.empty();
-            var i: u32 = 0;
-            while (i < n) : (i += 1) {
-                const elt = try readValue(ctx, r);
-                out = vector_mod.conj(rt, out, elt) catch return DeserializeError.OutOfMemory;
-            }
-            return out;
-        },
-        .array_map => {
-            const n = try r.readU32();
-            // Fabrication region: see the .list arm — `out` + the in-flight
-            // k are unrooted across the per-entry readValue/assoc allocs.
-            rt.gc.enterFabrication();
-            defer rt.gc.exitFabrication();
-            var out = map_mod.empty();
-            var i: u32 = 0;
-            while (i < n) : (i += 1) {
-                const k = try readValue(ctx, r);
-                const val = try readValue(ctx, r);
-                out = map_mod.assoc(rt, out, k, val) catch return DeserializeError.OutOfMemory;
-            }
-            return out;
-        },
-        .hash_set => {
-            const n = try r.readU32();
-            // Fabrication region: see the .list arm.
-            rt.gc.enterFabrication();
-            defer rt.gc.exitFabrication();
-            var out = set_mod.empty();
-            var i: u32 = 0;
-            while (i < n) : (i += 1) {
-                const elt = try readValue(ctx, r);
-                out = set_mod.conj(rt, out, elt) catch return DeserializeError.OutOfMemory;
-            }
-            return out;
-        },
+        .vector => return readCollection(ctx, r, .vector),
+        .array_map, .hash_map => return readCollection(ctx, r, .map),
+        .hash_set => return readCollection(ctx, r, .set),
         .var_ref => {
             const ns_bytes = try r.readLenPrefixed();
             const name_bytes = try r.readLenPrefixed();
-            const ns = env.findNs(ns_bytes) orelse {
-                // ns missing at deserialize time — a var_ref into a
-                // namespace no chunk has created yet. Lazy-require /
-                // cross-ns forward refs are a later cycle (ADR-0056 D3);
-                // a present-ns forward ref is handled below.
-                return DeserializeError.UnknownValueTag;
-            };
+            // Forward-declare a not-yet-created namespace, as the var is below.
+            const ns = env.findNs(ns_bytes) orelse
+                (env.findOrCreateNs(ns_bytes) catch return DeserializeError.OutOfMemory);
             // A var_ref may target a var the SAME chunk `def`s later — a
             // self-recursive `(def map (fn … (map …)))` whose constant
             // pool is read before the chunk's `op_def` runs — or a
             // forward ref to a not-yet-run later chunk. Forward-declare
-            // it: `env.intern` is get-or-create, so the eventual `op_def`
-            // binds this very var, and the captured var_ref points at it.
-            // cljw has no unbound sentinel, so the placeholder root is
-            // nil until the def runs — consistent with any not-yet-def'd
-            // var's nil-root default (ADR-0056 Cycle 1; this also fixes a
-            // latent recursive-fn gap in the `cljw build` embedded-run).
-            const v_ptr = ns.resolve(name_bytes) orelse
-                (env.intern(ns, name_bytes, .nil_val, null) catch return DeserializeError.OutOfMemory);
+            // it without binding its root. The serialized namespace is the
+            // Var's owner, so a referred name must not replace its local Var.
+            const v_ptr = env.internDeclare(ns, name_bytes) catch
+                return DeserializeError.OutOfMemory;
             return Value.encodeHeapPtr(.var_ref, v_ptr);
         },
         .regex => {
@@ -667,7 +691,7 @@ fn readValue(ctx: *ReadCtx, r: *ByteReader) DeserializeError!Value {
             // ADR-0034 am2: reconstruct a Function from its serialized
             // contents. Method bytecode sub-chunks are owned by `allocator`
             // (freed by `freeChunk` recursion); the Function itself is
-            // gpa+trackHeap like a compiled top-level fn (params dropped per
+            // a GC cell like a compiled top-level fn (params dropped per
             // D-139, body = sentinel, closure_bindings = null).
             const slot_base = try r.readU16();
             const methods_count = try r.readU32();
@@ -685,6 +709,28 @@ fn readValue(ctx: *ReadCtx, r: *ByteReader) DeserializeError!Value {
     }
 }
 
+/// Decode a vector, map or set constant: its elements (a map's as flat
+/// key/value pairs), then the collection, built by the construction the
+/// analyzer folded it with (`literal.build`), so the decoded value equals the
+/// source-built one. The count header is untrusted, so the buffer reserves
+/// only what the remaining bytes can hold, one byte per element at least.
+fn readCollection(ctx: *ReadCtx, r: *ByteReader, comptime kind: literal.Kind) DeserializeError!Value {
+    const count = try r.readU32();
+    const len = if (kind == .map) @as(usize, count) * 2 else count;
+    if (len > r.bytes.len - r.pos) return DeserializeError.BytecodeTruncated;
+    const items = ctx.allocator.alloc(Value, len) catch return DeserializeError.OutOfMemory;
+    defer ctx.allocator.free(items);
+    @memset(items, .nil_val);
+    // GC-ROOT: the decoded elements, across the nested decodes' allocations
+    // and the build (a collect may run there; nothing is held unrooted).
+    const sp: u16 = 0;
+    var frame: root_set.EvalFrame = .{ .stack = items.ptr, .sp = &sp, .locals = items, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
+    for (items) |*slot| slot.* = try readValue(ctx, r);
+    return literal.build(ctx.rt, kind, items) catch return DeserializeError.OutOfMemory;
+}
+
 /// Read one function method (arity + has_rest + optional length-prefixed
 /// recursive chunk). The chunk is deserialized into a fresh `allocator`-
 /// owned `*BytecodeChunk`; the reconstructed Function borrows it and
@@ -694,6 +740,7 @@ fn readFnMethod(ctx: *ReadCtx, r: *ByteReader) DeserializeError!tree_walk.Serial
     const allocator = ctx.allocator;
     const arity = try r.readU16();
     const has_rest = (try r.readU8()) != 0;
+    const frame_slots = try r.readU16(); // v14
     const has_bytecode = try r.readU8();
     var bytecode: ?*const BytecodeChunk = null;
     if (has_bytecode != 0) {
@@ -711,7 +758,7 @@ fn readFnMethod(ctx: *ReadCtx, r: *ByteReader) DeserializeError!tree_walk.Serial
         sub.* = chunk;
         bytecode = sub;
     }
-    return .{ .arity = arity, .has_rest = has_rest, .bytecode = bytecode };
+    return .{ .arity = arity, .has_rest = has_rest, .frame_slots = frame_slots, .bytecode = bytecode };
 }
 
 // --- Chunk serialize / deserialize ---
@@ -819,6 +866,7 @@ fn writeChunkBody(ctx: *WriteCtx, w: *std.Io.Writer, chunk: BytecodeChunk) Seria
     try writeU32(w, @intCast(chunk.ctor_sites.len));
     for (chunk.ctor_sites) |ct| {
         try writeLenPrefixed(w, ct.type_name);
+        try writeLenPrefixed(w, ct.definer_ns);
         try writeU16(w, ct.arg_count);
     }
     try writeU32(w, @intCast(chunk.import_sites.len));
@@ -1006,8 +1054,10 @@ fn readChunkBody(ctx: *ReadCtx, r: *ByteReader) DeserializeError!BytecodeChunk {
     while (i < ctor_count) : (i += 1) {
         const tn_bytes = try r.readLenPrefixed();
         const tn_dup = try allocator.dupe(u8, tn_bytes);
+        const dn_bytes = try r.readLenPrefixed();
+        const dn_dup = try allocator.dupe(u8, dn_bytes);
         const arg_count = try r.readU16();
-        ctor_sites[i] = .{ .type_name = tn_dup, .arg_count = arg_count };
+        ctor_sites[i] = .{ .type_name = tn_dup, .definer_ns = dn_dup, .arg_count = arg_count };
     }
 
     const import_count = try r.readU32();
@@ -1039,7 +1089,7 @@ fn readChunkBody(ctx: *ReadCtx, r: *ByteReader) DeserializeError!BytecodeChunk {
 /// owns (ADR-0034 am2 A2-D3). Non-`fn_val` constants own nothing here.
 /// Recurses via `freeChunk` so nested `fn_val`s inside a method body are
 /// freed too. Does NOT free the Function struct / methods slice — those
-/// are gpa+trackHeap, freed by `freeFunction` at `rt.deinit`.
+/// are collectable GC cells (ADR-0184) pinned by the analysis-root bracket.
 fn freeValueOwnedChunks(allocator: std.mem.Allocator, v: Value) void {
     if (v.tag() != .fn_val) return;
     const f = v.decodePtr(*const Function);
@@ -1071,7 +1121,7 @@ pub fn freeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) void {
     // bytecode sub-chunks via this `allocator`; free them recursively
     // before the constants array. This reads the Function's gpa-owned
     // `methods` slice, so `freeChunk`/`freeEnvelope` MUST run before
-    // `rt.deinit` (which frees that slice via `freeFunction`); the run
+    // `rt.deinit` (the Function cell is GC-owned since ADR-0184); the run
     // sequence + defer-LIFO satisfy this. Compiled (non-deserialized)
     // fns hold arena-owned chunks and never reach this path because their
     // top chunk is arena-freed, not `freeChunk`-freed.
@@ -1099,7 +1149,10 @@ pub fn freeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) void {
         if (nf.doc) |d| allocator.free(d);
     }
     allocator.free(chunk.ns_filters);
-    for (chunk.ctor_sites) |ct| allocator.free(ct.type_name);
+    for (chunk.ctor_sites) |ct| {
+        allocator.free(ct.type_name);
+        allocator.free(ct.definer_ns);
+    }
     allocator.free(chunk.ctor_sites);
     for (chunk.import_sites) |ip| {
         allocator.free(ip.simple);
@@ -1765,6 +1818,39 @@ test "embedded component table round-trips; chunk + entry readers skip it (ADR-0
     try testing.expectEqual(@as(usize, 0), (try readComponentTable(arena, bytes_empty)).len);
 }
 
+test "restored Var constants declare an unbound local even when the name is referred" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+    const env_mod = @import("../../runtime/env.zig");
+    var env = try env_mod.Env.init(&rt);
+    defer env.deinit();
+    const user_ns = env.current_ns.?;
+    const foreign = try env.intern(user_ns, "target", Value.initInteger(99), null);
+    const owner = try env.findOrCreateNs("restored.owner");
+    _ = try env.referOne(user_ns, owner, "target");
+
+    var source_ns: env_mod.Namespace = .{ .name = "restored.owner" };
+    var source_var: env_mod.Var = .{ .ns = &source_ns, .name = "target" };
+    const constants = [_]Value{Value.encodeHeapPtr(.var_ref, &source_var)};
+    const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &constants };
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
+    defer testing.allocator.free(bytes);
+    var af: root_set.AnalysisFrame = undefined;
+    root_set.beginAnalysis(&af, testing.allocator);
+    defer root_set.endAnalysis(&af);
+    const restored = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
+    defer freeChunk(testing.allocator, restored);
+
+    const target = restored.constants[0].decodePtr(*env_mod.Var);
+    try testing.expect(target != foreign);
+    try testing.expectEqual(owner, target.ns);
+    try testing.expectEqual(target, owner.mappings.get("target").?);
+    try testing.expect(!target.bound);
+    try testing.expectEqual(@as(i64, 99), foreign.root.asInteger());
+}
+
 test "every wire ValueTag has BOTH a write and a read arm (symmetry gate)" {
     // Structural gate for the write↔read asymmetry class. writeValue (switch on
     // Value.Tag, with an `else`) and readValue (exhaustive switch on ValueTag)
@@ -1809,6 +1895,14 @@ test "every wire ValueTag has BOTH a write and a read arm (symmetry gate)" {
             .list => try list_mod.consHeap(&rt, one, try list_mod.emptyList(&rt)),
             .vector => try vector_mod.conj(&rt, vector_mod.empty(), one),
             .array_map => try map_mod.assoc(&rt, map_mod.empty(), one, one),
+            .hash_map => blk: {
+                var m = map_mod.empty();
+                for (0..map_mod.ARRAY_MAP_THRESHOLD + 1) |i| {
+                    const k = Value.initInteger(@intCast(i));
+                    m = try map_mod.assoc(&rt, m, k, k);
+                }
+                break :blk m;
+            },
             .hash_set => try set_mod.conj(&rt, set_mod.empty(), one),
             .var_ref => Value.encodeHeapPtr(.var_ref, try env.intern(user_ns, "v", .nil_val, null)),
             .regex => try regex_value.alloc(&rt, "ab.", regex_compile.Flags{}),
@@ -1835,6 +1929,52 @@ test "every wire ValueTag has BOTH a write and a read arm (symmetry gate)" {
             return error.ReadArmMissing;
         };
     }
+}
+
+test "D-346: folded literal constants past the array-map threshold round-trip" {
+    // A constant literal folds into ONE constant however large (D-346), so the
+    // wire must carry a hash-map, a set backed by one, and a trie vector.
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+    var env = try @import("../../runtime/env.zig").Env.init(&rt);
+    defer env.deinit();
+    const equal = @import("../../runtime/equal.zig");
+
+    var items: [200]Value = undefined;
+    for (&items, 0..) |*v, i| v.* = Value.initInteger(@intCast(i));
+    const originals = [_]Value{
+        try literal.build(&rt, .map, &items),
+        try literal.build(&rt, .set, &items),
+        try literal.build(&rt, .vector, &items),
+    };
+    try testing.expect(originals[0].tag() == .hash_map);
+    for (originals) |original| {
+        var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+        defer aw.deinit();
+        var wctx: WriteCtx = .{ .allocator = testing.allocator, .base = 0, .pool = null };
+        try writeValue(&wctx, &aw.writer, original);
+        var rr: ByteReader = .{ .bytes = aw.writer.buffered(), .pos = 0 };
+        var rctx: ReadCtx = .{ .allocator = testing.allocator, .rt = &rt, .env = &env, .pool = null, .source_file = "test" };
+        const decoded = try readValue(&rctx, &rr);
+        try testing.expectEqual(original.tag(), decoded.tag());
+        try testing.expect(try equal.eqConsult(original, decoded));
+        try testing.expectEqual(rr.bytes.len, rr.pos);
+    }
+}
+
+test "D-346: a collection count past the remaining bytes is truncation, not an allocation" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+    var env = try @import("../../runtime/env.zig").Env.init(&rt);
+    defer env.deinit();
+    const bytes = [_]u8{ @intFromEnum(ValueTag.hash_map), 0xFF, 0xFF, 0xFF, 0xFF };
+    var rr: ByteReader = .{ .bytes = &bytes, .pos = 0 };
+    var rctx: ReadCtx = .{ .allocator = testing.allocator, .rt = &rt, .env = &env, .pool = null, .source_file = "test" };
+    try testing.expectError(DeserializeError.BytecodeTruncated, readValue(&rctx, &rr));
 }
 
 test "type_descriptor constant round-trips by name (ADR-0034 am5; D-452)" {
@@ -1957,7 +2097,7 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     }
     inline for (std.meta.fields(CtorEntry)) |f| {
         const classified: bool = switch (@field(std.meta.FieldEnum(CtorEntry), f.name)) {
-            .type_name, .arg_count => true,
+            .type_name, .definer_ns, .arg_count => true,
         };
         try testing.expect(classified);
     }
@@ -1999,6 +2139,7 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     };
     const ctor_sites = [_]CtorEntry{
         .{ .type_name = "java.io.File", .arg_count = 1 },
+        .{ .type_name = "Point", .definer_ns = "app.core", .arg_count = 2 },
     };
     const import_sites = [_]ImportPair{
         .{ .simple = "File", .fqcn = "java.io.File" },
@@ -2059,9 +2200,13 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     try testing.expectEqual(@as(u32, 7), round.ns_filters[0].attr_const);
 
     // ctor_sites
-    try testing.expectEqual(@as(usize, 1), round.ctor_sites.len);
+    try testing.expectEqual(@as(usize, 2), round.ctor_sites.len);
     try testing.expectEqualStrings("java.io.File", round.ctor_sites[0].type_name);
+    try testing.expectEqualStrings("", round.ctor_sites[0].definer_ns);
     try testing.expectEqual(@as(u16, 1), round.ctor_sites[0].arg_count);
+    try testing.expectEqualStrings("Point", round.ctor_sites[1].type_name);
+    try testing.expectEqualStrings("app.core", round.ctor_sites[1].definer_ns);
+    try testing.expectEqual(@as(u16, 2), round.ctor_sites[1].arg_count);
 
     // import_sites
     try testing.expectEqual(@as(usize, 1), round.import_sites.len);

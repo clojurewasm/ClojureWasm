@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Error catalog — Single Source Of Truth for cw user-facing error
 //! messages. Per ADR-0018 (amendment 2 — `<target>_<state-adjective>`
 //! naming convention; phase no longer encoded in the Code name).
@@ -55,10 +56,31 @@ pub const Code = enum {
     reader_tag_unknown,
     uuid_string_invalid,
     inst_string_invalid,
-    integer_literal_invalid,
-    float_literal_invalid,
+    json_string_invalid,
+    edn_string_invalid,
+    /// A malformed regex PATTERN (unclosed group/class, dangling quantifier,
+    /// bad escape) — Java throws the catchable PatternSyntaxException
+    /// (⊂ IllegalArgumentException), so this is bad DATA, kind value_error.
+    /// Distinct from a VALID-in-Java pattern using a feature cljw does not
+    /// implement (backreferences), which stays the uncatchable
+    /// `feature_not_supported`.
+    regex_pattern_invalid,
+    /// A user-written FORM SHAPE the runtime rejects — a malformed libspec,
+    /// destructuring directive, import spec, `.` member form, reader
+    /// conditional. Bad DATA (the user's code is the data), so CATCHABLE:
+    /// clj rejects these with a catchable CompilerException / RuntimeException,
+    /// and an `(eval …)` / `read-string` caller must be able to handle the
+    /// rejection. Distinct from `feature_not_supported` (uncatchable), which is
+    /// for well-FORMED code using something cljw does not implement.
+    form_malformed,
+    /// A digit-led token that matches no number shape (`12x`, `1/2/3`), or a
+    /// numeric literal whose digits do not parse (`09`, `2r3`). One code for
+    /// every literal kind, as clj LispReader: NumberFormatException
+    /// "Invalid number: <text>".
+    number_literal_invalid,
     string_unterminated,
     map_literal_arity_odd,
+    literal_key_duplicate,
 
     // --- Analysis (def / if / let / symbol resolution / arity) ---
     def_arity_invalid,
@@ -72,6 +94,7 @@ pub const Code = enum {
     set_arity_invalid,
     var_set_not_bound,
     metadata_value_invalid,
+    metadata_target_not_imeta,
     symbol_unresolved,
     /// args: `.{ .sym = "ns/name", .ns = "ns" }` — raised when a
     /// `^:private` var is referenced as a symbol from outside its
@@ -96,6 +119,12 @@ pub const Code = enum {
     /// loop* / recur arity exceeds the internal slot-index width.
     /// args: `.{ .form = "loop*"|"recur", .got = N, .max = 65535 }`
     arity_too_large,
+    /// A form exceeds a limit of the compiled bytecode format: 65535 constants
+    /// or call arguments, a branch longer than 32767 instructions. Catchable,
+    /// as clj's CompilerException for "Method code too large!", a limit clj
+    /// reaches far sooner (D-346).
+    /// args: `.{ .what = "constants"|"call arguments"|..., .max = N }`
+    form_too_large,
     namespace_unknown,
     static_member_unknown,
     static_method_unknown,
@@ -137,6 +166,7 @@ pub const Code = enum {
     catch_form_incomplete,
     catch_head_invalid,
     macro_return_not_data,
+    macro_return_class_unnamed,
     defmacro_name_not_symbol,
     defmacro_params_not_vector,
     defmacro_arity_invalid,
@@ -144,7 +174,38 @@ pub const Code = enum {
     future_thunk_failed,
     future_cancelled,
     future_cancel_abort,
+    executor_rejected,
     stm_no_transaction,
+    // --- java.time (DateTimeException family, keyword date_time_format) ---
+    /// args: `.{ .detail = "..." }` — a java.time value or resolve step is
+    /// invalid (out-of-range offset, field value outside its range, a resolve
+    /// conflict). The engine composes the JVM-parity detail text.
+    date_time_value_invalid,
+    /// args: `.{ .text = "...", .detail = "..." }` — a DateTimeFormatter could not
+    /// parse `text`; `detail` is " at index N", ", unparsed text found at index
+    /// N" or ": <resolve failure>" (JVM DateTimeParseException wording).
+    date_time_text_unparseable,
+    /// args: `.{ .field = "YearOfEra" }` — a temporal value does not carry the
+    /// field a formatter or getter asked for.
+    temporal_field_unsupported,
+    /// args: `.{ .target = "LocalDate", .temporal = "...", .class = "..." }` —
+    /// `X/from` got a TemporalAccessor that lacks the parts X needs.
+    temporal_accessor_unconvertible,
+    /// args: `.{ .class = "java.util.Date" }` — a formatter was handed a value
+    /// that is not a TemporalAccessor at all.
+    temporal_accessor_expected,
+    /// args: `.{ .detail = "..." }` — a DateTimeFormatter pattern or builder call
+    /// is malformed (JVM IllegalArgumentException wording).
+    date_time_pattern_invalid,
+    /// args: `.{ .letter = "w" }` — a valid JVM pattern letter cljw does not
+    /// implement (week-based fields, localized zone names, padding).
+    date_time_pattern_letter_unsupported,
+    /// args: `.{ .detail = "..." }` — a DateTimeFormatterBuilder call out of
+    /// order (`optionalEnd` with no open `optionalStart`): IllegalStateException.
+    date_time_builder_state_invalid,
+    /// args: `.{ .id = "Europe/Paris" }` — a region zone id. cljw ships no
+    /// time-zone database; only fixed offsets and UTC / GMT / UT resolve.
+    zone_id_unknown,
     stm_retry_limit,
     locking_needs_object,
     locking_nest_overflow,
@@ -221,7 +282,6 @@ pub const Code = enum {
     defrecord_fields_not_vector,
     defrecord_field_invalid,
     defrecord_mutable_field,
-    reify_form_incomplete,
     reify_section_invalid,
     letfn_form_incomplete,
     locking_form_incomplete,
@@ -278,6 +338,12 @@ pub const Code = enum {
     /// `assoc`, a wrong-typed `format` conversion arg (Java
     /// IllegalFormatConversionException ⊂ IllegalArgumentException). D-459.
     arg_value_invalid,
+    /// args: `.{ .class = "java.lang.Long" }`
+    /// `(new C args…)` where no constructor of C accepts those arguments: a
+    /// class with no constructor given arguments, or a box ctor handed a value
+    /// of the wrong kind (`(Double. 5)`, `(Short. 7.0)`). clj throws
+    /// IllegalArgumentException with this text, so Kind `.value_error`.
+    ctor_unmatched,
     /// `(symbol x)` on a value that is not a symbol/string/keyword. clj throws
     /// `IllegalArgumentException` here (NOT the `ClassCastException` of a plain
     /// type slot) — so this is `.value_error`, distinct from `type_arg_invalid`.
@@ -418,6 +484,10 @@ pub const Code = enum {
     /// catchable IllegalArgumentException (JVM's `PatternSyntaxException` is also
     /// an IllegalArgumentException), not an OOM that ends the process (INV-1).
     regex_pattern_too_large,
+    /// args: `.{ .max }` — the pattern declares more capturing groups than
+    /// `compile.MAX_CAPTURE_GROUPS`. A resource bound like
+    /// `regex_pattern_too_large`, so the same catchable `.value_error`.
+    regex_too_many_groups,
     /// args: `.{}` — a Matcher `group`/`start`/`end` query before any
     /// successful match op (JVM IllegalStateException; template mirrors the
     /// JVM message — Kind divergence is AD-007).
@@ -427,8 +497,21 @@ pub const Code = enum {
     /// A WebAssembly module loaded via `wasm/load` trapped during a
     /// `wasm/call`. The single-Code mapping is the P1/P9 shape; the
     /// per-trap-kind 1:1 map (div0→arithmetic, OOB→index, …) is Phase-16
-    /// (the zwasm Trap trap_map, ADR-0099).
+    /// (the zwasm Trap trap_map, ADR-0099). The message names the export, its
+    /// signature, the engine and the remedy when the shape is a known engine
+    /// gap (ADR-0196, `runtime/cljw/wasm/gaps.zig`).
     wasm_trap,
+    /// A component-model invoke or resource drop failed inside the guest
+    /// (ADR-0135). The core-module path is `wasm_trap`.
+    wasm_component_trap,
+    /// args: `.{ .name = "..." }` — a `wasm/call` export consumed the whole
+    /// fuel budget its module was loaded with. Distinct from `wasm_trap`, so a
+    /// budget kill cannot be read as a guest bug.
+    wasm_fuel_exhausted,
+    /// args: `.{}` — a component call consumed the whole fuel budget its handle
+    /// was loaded with. The budget is per instance, so the handle stays
+    /// exhausted; a fresh `wasm/load-component` is the only refill.
+    wasm_component_fuel_exhausted,
     /// The `wasm_*` surface taxonomy (FIX-4): every `wasm/load` + `wasm/call`
     /// error is a CATCHABLE cljw exception (a request-derived bad arg or a
     /// faulty module on an edge request must not end the whole process). Each
@@ -449,11 +532,32 @@ pub const Code = enum {
     /// args: `.{}` — `wasm/load`'s bytes did not compile / instantiate as a
     /// valid WebAssembly module.
     wasm_load_failed,
-    /// args: `.{}` — `wasm/call`'s first argument was not a loaded handle.
+    /// args: `.{ .reason = @errorName(e) }` — a component failed to open
+    /// (decode, link its imports, or instantiate). The engine's error name is
+    /// the only signal that separates "an import this host does not provide"
+    /// from "a malformed file", so it rides along.
+    wasm_component_open_failed,
+    /// args: `.{ .fn_name = "..." }` — the first argument of `wasm/call` or a
+    /// `wasm/mem-*` fn was not a loaded module handle.
     wasm_handle_invalid,
     /// args: `.{}` — a Wasm component resource handle was used after it was dropped
     /// (`wasm/resource-drop` / a `with-resource` scope already released it).
     wasm_resource_dropped,
+    /// args: `.{}` — a resource argument was not a resource handle. A raw integer
+    /// used to be accepted here and indexed the guest's resource table directly:
+    /// unchecked (`asInteger` does not verify the tag), and negative values were
+    /// a ReleaseSafe `@intCast` panic on caller data (ADR-0159 amendment 1).
+    wasm_resource_expected,
+    /// args: `.{}` — a resource handle minted by one component was passed to a
+    /// different component. Its handle number means something in BOTH resource
+    /// tables, so without this check the call silently operates on whatever the
+    /// callee happens to have at that index (ADR-0159 amendment 1).
+    wasm_resource_foreign,
+    /// args: `.{}` — `wasm/resource-drop` on a resource whose component is a
+    /// single-module component (zwasm's `.single` variant), which carries no
+    /// resource table, so the host cannot run the drop. A structural property
+    /// of the component, not a guest trap (D-568, ADR-0159 amendment 1).
+    wasm_resource_no_table,
     /// args: `.{}` — `wasm/call`'s export-name argument was not a string.
     wasm_export_name_invalid,
     /// args: `.{ .name = "..." }` — `wasm/call` found no export of that name.
@@ -480,6 +584,35 @@ pub const Code = enum {
     /// args: `.{}` — a `wasm/run` module failed to compile / instantiate, or its
     /// preopen directory could not be opened.
     wasm_run_failed,
+    /// args: `.{ .fn_name = "..." }` — a `wasm/mem-*` fn was given a handle whose
+    /// module exports no linear memory (ADR-0192). Distinct from an empty
+    /// memory: "this module exports none" is a program error, "this one holds
+    /// nothing yet" is not, so this raises rather than answering nil / 0.
+    wasm_memory_absent,
+    /// args: `.{ .fn_name = "..." }` — a `wasm/mem-*` element-type argument was
+    /// not one of the nine width keywords. The element type is the guest's ABI,
+    /// so it is stated by the caller, never inferred from the data (ADR-0192).
+    wasm_memory_dtype_invalid,
+    /// args: `.{ .fn_name = "..." }` — a `wasm/mem-*` byte offset or element
+    /// count was not an integer. Separate from `wasm_memory_range_invalid`
+    /// because "that is not an index" and "that index is out of bounds" send
+    /// the user to different mistakes.
+    wasm_memory_index_invalid,
+    /// args: `.{ .fn_name = "...", .offset = N, .count = N, .size = N }` — a
+    /// `wasm/mem-*` byte offset / element count addressed outside the module's
+    /// memory, or was negative, or overflowed. Checked before any access: in
+    /// ReleaseSafe an unchecked cast on caller data is a process-killing safety
+    /// panic, and this surface takes three caller-controlled integers per call.
+    wasm_memory_range_invalid,
+    /// args: `.{ .fn_name = "..." }` — `wasm/mem-write!`'s data argument was not
+    /// a vector. Zone 0 has no seq protocol, so the write path takes the same
+    /// shape `wasm/run`'s `:args` takes; a caller holding a seq calls `vec`.
+    wasm_memory_data_invalid,
+    /// args: `.{ .fn_name = "...", .index = N, .detail = "..." }` — one element
+    /// of `wasm/mem-write!`'s data could not be encoded as the requested element
+    /// type. Names the INDEX, because "some element is not a number" sends the
+    /// user back to a vector they have to scan by hand.
+    wasm_memory_element_invalid,
     /// args: `.{}` — an `cljw.http.client` call's URL argument was not a string.
     http_url_invalid,
     /// args: `.{ .detail = "..." }` — an `cljw.http.client` opts argument was
@@ -488,6 +621,37 @@ pub const Code = enum {
     /// args: `.{ .url = "..." }` — an outbound HTTP(S) request failed (connect /
     /// TLS / DNS / protocol error).
     http_request_failed,
+    /// args: `.{ .detail = "..." }` — a `cljw.net` argument was malformed (bad
+    /// receiver, host, port, buffer, or count).
+    net_arg_invalid,
+    /// args: `.{ .host = "...", .port = <i64> }` — `cljw.net/connect` could not
+    /// resolve the host or open the stream.
+    net_connect_failed,
+    /// args: `.{ .host = "...", .port = <i64> }` — `cljw.net/listen` could not
+    /// bind the address (already in use, not permitted, or not a local one).
+    net_listen_failed,
+    /// args: `.{ .path = "..." }` — `cljw.net/connect-unix` could not reach the
+    /// socket (absent, not a socket, or not permitted).
+    net_unix_connect_failed,
+    /// args: `.{ .path = "..." }` — `cljw.net/listen-unix` could not bind the
+    /// path. A leftover file from a dead process is the usual cause, and cljw
+    /// does NOT unlink it: removing a path that a live server may still own is
+    /// the caller's decision, not the runtime's.
+    net_unix_listen_failed,
+    /// args: `.{ .op = "..." }` — a `cljw.net` read / write / flush failed.
+    net_io_failed,
+    /// args: `.{}` — a `cljw.net` operation was attempted on a closed socket.
+    net_socket_closed,
+    /// args: `.{ .detail = "..." }` — a `cljw.process/run` argument was
+    /// malformed (argv not a non-empty vector of strings, bad option type).
+    process_arg_invalid,
+    /// args: `.{ .program = "...", .detail = "..." }` — the host could not
+    /// start the program (not found on PATH, not executable, bad :dir).
+    process_spawn_failed,
+    /// args: `.{ .program = "...", .reason = "..." }` — `cljw.process/run` was
+    /// called under a containment mechanism a child process would escape (the
+    /// filesystem jail, an eval budget; `restriction.zig`), so it is refused.
+    process_spawn_restricted,
 
     // --- System ---
     out_of_memory,
@@ -547,15 +711,38 @@ pub fn entry(comptime code: Code) Entry {
             .phase = .parse,
             .template = "Invalid instant (#inst) string: {[s]s}",
         },
-        .integer_literal_invalid => .{
-            .kind = .number_error,
+        // Malformed JSON is bad DATA, so this is CATCHABLE — the whole point of
+        // parsing untrusted input is that the caller handles a rejection. It was
+        // `feature_not_supported` (kind `.not_implemented`, deliberately
+        // uncatchable so an unsupported feature cannot be swallowed), which made
+        // every JSON-consuming program unable to reject bad input. Same
+        // miscategorisation the STM ops carried; same fix.
+        .edn_string_invalid => .{
+            .kind = .syntax_error,
             .phase = .parse,
-            .template = "Invalid integer literal '{[text]s}'",
+            .template = "EDN error ({[reason]s})",
         },
-        .float_literal_invalid => .{
+        .regex_pattern_invalid => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "invalid regex pattern ({[reason]s})",
+        },
+        .form_malformed => .{
+            .kind = .syntax_error,
+            .phase = .analysis,
+            .template = "malformed form: {[name]s}",
+        },
+        .json_string_invalid => .{
+            .kind = .syntax_error,
+            .phase = .parse,
+            // The reason, not the input: the input is untrusted and unbounded,
+            // and echoing a megabyte of it into a message helps nobody.
+            .template = "JSON error ({[reason]s})",
+        },
+        .number_literal_invalid => .{
             .kind = .number_error,
             .phase = .parse,
-            .template = "Invalid float literal '{[text]s}'",
+            .template = "Invalid number: {[text]s}",
         },
         .string_unterminated => .{
             .kind = .string_error,
@@ -566,6 +753,14 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .syntax_error,
             .phase = .parse,
             .template = "Map literal must contain an even number of forms",
+        },
+        // ADR-0200: clj's reader builds a map or set literal with
+        // createWithCheck, so an equal key or element twice is an
+        // IllegalArgumentException, not last-wins.
+        .literal_key_duplicate => .{
+            .kind = .value_error,
+            .phase = .parse,
+            .template = "Duplicate key: {[key]s}",
         },
 
         // --- Analysis ---
@@ -619,10 +814,20 @@ pub fn entry(comptime code: Code) Entry {
             .phase = .analysis,
             .template = "Unable to resolve var: '{[sym]s}' in this context",
         },
+        // clj 1.12's MetaReader text; a bad meta form is an
+        // IllegalArgumentException there, reported before the target is read.
         .metadata_value_invalid => .{
-            .kind = .syntax_error,
+            .kind = .value_error,
             .phase = .parse,
-            .template = "Metadata must be Symbol, Keyword, String or Map",
+            .template = "Metadata must be Symbol,Keyword,String,Vector or Map",
+        },
+        // ADR-0200: clj's MetaReader attaches `^meta` only to an IMeta; a
+        // string, number, keyword, char, nil, boolean, regex or a tagged
+        // literal read to one of those is an IllegalArgumentException.
+        .metadata_target_not_imeta => .{
+            .kind = .value_error,
+            .phase = .parse,
+            .template = "Metadata can only be applied to IMetas",
         },
         .symbol_unresolved => .{
             .kind = .name_error,
@@ -727,6 +932,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .not_implemented,
             .phase = .analysis,
             .template = "{[form]s} arity {[got]d} exceeds the limit of 65535",
+        },
+        .form_too_large => .{
+            .kind = .syntax_error,
+            .phase = .analysis,
+            .template = "Form too large to compile: more than {[max]d} {[what]s}",
         },
         .namespace_unknown => .{
             .kind = .name_error,
@@ -858,6 +1068,11 @@ pub fn entry(comptime code: Code) Entry {
             .phase = .macroexpand,
             .template = "macro return value of tag '{[tag]s}' cannot be re-analysed as a form",
         },
+        .macro_return_class_unnamed => .{
+            .kind = .type_error,
+            .phase = .macroexpand,
+            .template = "macro returned class {[name]s}, which has no class-name symbol that resolves back to it, so it cannot be re-analysed as a form",
+        },
         .defmacro_name_not_symbol => .{
             .kind = .syntax_error,
             .phase = .analysis,
@@ -902,6 +1117,58 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .cancellation_abort,
             .phase = .eval,
             .template = "future cancelled at a blocking point",
+        },
+        .executor_rejected => .{
+            .kind = .rejected_execution_error,
+            .phase = .eval,
+            .template = "executor rejected task submission ({[reason]s})",
+        },
+        .date_time_value_invalid => .{
+            .kind = .date_time_error,
+            .phase = .eval,
+            .template = "{[detail]s}",
+        },
+        .date_time_text_unparseable => .{
+            .kind = .date_time_parse_error,
+            .phase = .eval,
+            .template = "Text '{[text]s}' could not be parsed{[detail]s}",
+        },
+        .temporal_field_unsupported => .{
+            .kind = .unsupported_temporal_error,
+            .phase = .eval,
+            .template = "Unsupported field: {[field]s}",
+        },
+        .temporal_accessor_unconvertible => .{
+            .kind = .date_time_error,
+            .phase = .eval,
+            .template = "Unable to obtain {[target]s} from TemporalAccessor: {[temporal]s} of type {[class]s}",
+        },
+        .temporal_accessor_expected => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "Cannot cast {[class]s} to java.time.temporal.TemporalAccessor",
+        },
+        .date_time_pattern_invalid => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "{[detail]s}",
+        },
+        // Loud, uncatchable: a pattern using one of these letters would format
+        // wrong text if it were skipped, so the gap must surface.
+        .date_time_pattern_letter_unsupported => .{
+            .kind = .not_implemented,
+            .phase = .eval,
+            .template = "DateTimeFormatter pattern letter '{[letter]s}' is not supported by cljw",
+        },
+        .date_time_builder_state_invalid => .{
+            .kind = .state_error,
+            .phase = .eval,
+            .template = "{[detail]s}",
+        },
+        .zone_id_unknown => .{
+            .kind = .date_time_error,
+            .phase = .eval,
+            .template = "Unknown time-zone ID: {[id]s} (cljw has no time-zone database: only fixed offsets and UTC, GMT, UT resolve)",
         },
         .stm_no_transaction => .{
             // clj: IllegalStateException "No transaction running" — a STATE error
@@ -1187,7 +1454,7 @@ pub fn entry(comptime code: Code) Entry {
         .when_first_form_incomplete => .{
             .kind = .syntax_error,
             .phase = .macroexpand,
-            .template = "when-first requires [name coll] and at least one body form",
+            .template = "when-first requires a [name coll] binding vector",
         },
         .when_first_bindings_invalid => .{
             .kind = .syntax_error,
@@ -1314,11 +1581,6 @@ pub fn entry(comptime code: Code) Entry {
             .phase = .macroexpand,
             .template = "letfn fn-spec must be a list `(name [params...] body)`",
         },
-        .reify_form_incomplete => .{
-            .kind = .syntax_error,
-            .phase = .macroexpand,
-            .template = "reify requires at least one protocol symbol and one method implementation",
-        },
         .reify_section_invalid => .{
             .kind = .syntax_error,
             .phase = .macroexpand,
@@ -1352,7 +1614,7 @@ pub fn entry(comptime code: Code) Entry {
         .when_let_form_incomplete => .{
             .kind = .syntax_error,
             .phase = .macroexpand,
-            .template = "when-let requires [name expr] and at least one body form",
+            .template = "when-let requires a [name expr] binding vector",
         },
 
         // --- Eval (type) ---
@@ -1390,6 +1652,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .value_error,
             .phase = .eval,
             .template = "{[fn_name]s}: expected {[expected]s}, got {[actual]s}",
+        },
+        .ctor_unmatched => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "No matching ctor found for class {[class]s}",
         },
         .symbol_conversion_invalid => .{
             .kind = .value_error,
@@ -1567,6 +1834,11 @@ pub fn entry(comptime code: Code) Entry {
             .phase = .eval,
             .template = "re-pattern: the regular expression is too large to compile",
         },
+        .regex_too_many_groups => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "re-pattern: too many capturing groups (more than {[max]d})",
+        },
         .matcher_not_matched => .{
             // clj: IllegalStateException "No match found" — a STATE error (the
             // matcher has no current match), catchable as IllegalStateException.
@@ -1577,7 +1849,22 @@ pub fn entry(comptime code: Code) Entry {
         .wasm_trap => .{
             .kind = .value_error,
             .phase = .eval,
-            .template = "WebAssembly module trapped (e.g. divide-by-zero, out-of-bounds, or an unreachable instruction)",
+            .template = "wasm/call: '{[name]s}' {[sig]s} trapped on the {[engine]s} engine (divide-by-zero, out-of-bounds, unreachable, or a call shape the engine cannot dispatch){[sep]s}{[hint]s}",
+        },
+        .wasm_component_trap => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "WebAssembly component trapped (e.g. divide-by-zero, out-of-bounds, or an unreachable instruction)",
+        },
+        .wasm_fuel_exhausted => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm/call: '{[name]s}' exhausted the module's fuel budget; load it with a larger :fuel, or {{:fuel 0}} for a trusted module",
+        },
+        .wasm_component_fuel_exhausted => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "WebAssembly component exhausted its fuel budget; the handle stays exhausted, so load it again with a larger :fuel, or {{:fuel 0}} for a trusted component",
         },
         .wasm_path_invalid => .{
             .kind = .type_error,
@@ -1599,15 +1886,35 @@ pub fn entry(comptime code: Code) Entry {
             .phase = .eval,
             .template = "wasm/load: the module failed to compile or instantiate",
         },
+        .wasm_component_open_failed => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm/load-component: the component failed to compile, link or instantiate ({[reason]s})",
+        },
         .wasm_handle_invalid => .{
             .kind = .type_error,
             .phase = .eval,
-            .template = "wasm/call: the first argument must be a loaded wasm module",
+            .template = "{[fn_name]s}: the first argument must be a loaded wasm module",
         },
         .wasm_resource_dropped => .{
             .kind = .value_error,
             .phase = .eval,
             .template = "wasm component resource handle used after it was dropped",
+        },
+        .wasm_resource_expected => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "wasm component: this argument must be a resource handle returned by a component call, not a raw handle number",
+        },
+        .wasm_resource_foreign => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm component: this resource handle belongs to a different component",
+        },
+        .wasm_resource_no_table => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm/resource-drop: this component is a single core module with no resource table, so the host cannot drop its resources",
         },
         .wasm_export_name_invalid => .{
             .kind = .type_error,
@@ -1659,6 +1966,36 @@ pub fn entry(comptime code: Code) Entry {
             .phase = .eval,
             .template = "wasm/run: the module failed to compile, instantiate, or open its directory",
         },
+        .wasm_memory_absent => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "{[fn_name]s}: this module exports no linear memory",
+        },
+        .wasm_memory_dtype_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "{[fn_name]s}: the element type must be one of :i8, :u8, :i16, :u16, :i32, :u32, :i64, :f32, :f64",
+        },
+        .wasm_memory_index_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "{[fn_name]s}: the byte offset and the element count must both be integers",
+        },
+        .wasm_memory_range_invalid => .{
+            .kind = .index_error,
+            .phase = .eval,
+            .template = "{[fn_name]s}: {[count]d} element(s) at byte offset {[offset]d} do not fit in this module's {[size]d}-byte memory",
+        },
+        .wasm_memory_data_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "{[fn_name]s}: the data argument must be a vector of numbers",
+        },
+        .wasm_memory_element_invalid => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "{[fn_name]s}: element {[index]d} {[detail]s}",
+        },
         .http_url_invalid => .{
             .kind = .type_error,
             .phase = .eval,
@@ -1673,6 +2010,56 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .io_error,
             .phase = .eval,
             .template = "cljw.http.client: request to '{[url]s}' failed (connect / TLS / DNS / protocol)",
+        },
+        .net_arg_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "cljw.net: {[detail]s}",
+        },
+        .net_connect_failed => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "cljw.net: could not connect to '{[host]s}:{[port]d}'",
+        },
+        .net_listen_failed => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "cljw.net: could not listen on '{[host]s}:{[port]d}'",
+        },
+        .net_unix_connect_failed => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "cljw.net: could not connect to unix socket '{[path]s}'",
+        },
+        .net_unix_listen_failed => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "cljw.net: could not listen on unix socket '{[path]s}' (a leftover file from a dead process is not removed for you)",
+        },
+        .net_io_failed => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "cljw.net: socket {[op]s} failed",
+        },
+        .net_socket_closed => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "cljw.net: the socket is closed",
+        },
+        .process_arg_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "cljw.process/run: {[detail]s}",
+        },
+        .process_spawn_failed => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "cljw.process/run: cannot run program '{[program]s}' ({[detail]s})",
+        },
+        .process_spawn_restricted => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "cljw.process/run: cannot run program '{[program]s}' because {[reason]s}; a child process would escape it",
         },
         .internal_error => .{
             .kind = .internal_error,

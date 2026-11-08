@@ -28,6 +28,7 @@ const std = @import("std");
 const Writer = std.Io.Writer;
 
 const bootstrap = @import("../lang/bootstrap.zig");
+const require_resolver = @import("../lang/require_resolver.zig");
 const macro_dispatch = @import("../eval/macro_dispatch.zig");
 const driver = @import("../eval/driver.zig");
 const Runtime = @import("../runtime/runtime.zig").Runtime;
@@ -46,6 +47,13 @@ pub fn run(
     stdout: *Writer,
     stderr: *Writer,
     port: u16,
+    /// Filesystem classpath the sessions' `(require …)` searches, so an editor
+    /// resolves project libs off disk exactly as a file/`-e` run does (D-322).
+    /// Mirrors `repl.run`.
+    load_paths: []const []const u8,
+    /// Deploy-mode FS jail root (`CLJW_FS_ROOT`), or null for an unconfined
+    /// local server (ADR-0123 / SE-6/7).
+    fs_jail_root: ?[]const u8,
 ) !void {
     // Address + bind. IpAddress.parseIp4 + listen are the Zig 0.16
     // canonical sync server pattern (cf. lib/std/Io/net.zig:246).
@@ -91,6 +99,13 @@ pub fn run(
         return err;
     };
 
+    // ADR-0084 / D-322: enable filesystem `require` for user libs, exactly as
+    // repl.zig does — setupCore* installs the embedded-only resolver, so swap
+    // to the embedded-FIRST chain + the classpath.
+    rt.load_paths = load_paths;
+    rt.fs_jail_root = fs_jail_root;
+    require_resolver.installChained(&rt);
+
     var registry = session_mod.Registry.init(gpa, &rt.gc, io);
     defer registry.deinit();
 
@@ -101,6 +116,14 @@ pub fn run(
         const stream = server.accept(io) catch |err| {
             try stderr.print("nrepl: accept failed: {s}; exiting\n", .{@errorName(err)});
             try stderr.flush();
+            // Exit barrier (ADR-0176): a session may have left live workers
+            // (fire-and-forget futures/agents); hard-exit rather than let the
+            // defers free the heap under them (the D-548(a) teardown race).
+            // The port file is cleaned BEFORE the barrier — a hard exit skips
+            // the defer, and a stale `.nrepl-port` misleads CIDER discovery
+            // (the delete is idempotent, so the defer double-clean is fine).
+            cleanupNreplPortFile(io);
+            @import("../runtime/thread.zig").exitBarrier(&rt);
             return;
         };
         defer stream.close(io);

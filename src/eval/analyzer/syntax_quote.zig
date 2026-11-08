@@ -71,11 +71,9 @@ fn qualifySym(env: *Env, s: SymbolRef, loc: SourceLocation) Form {
         }
         return .{ .data = .{ .symbol = s }, .location = loc };
     }
-    // `%`-prefixed names are anon-fn params (`#(…)` lowers to `(fn* [%1 %2] …)`
-    // at read time); like `&`, they must stay BARE so a syntax-quoted `#()` in a
-    // macro template (hiccup's `#(.append sb# %)`) does not qualify them into an
-    // invalid `user/%1` fn* parameter.
-    if (BARE_SYMS.has(s.name) or hasDot(s.name) or (s.name.len > 0 and (s.name[0] == '.' or s.name[0] == '%')))
+    // A `#()` param (`p1__N#`) is an auto-gensym, handled before this; a
+    // bare `%` outside `#()` is an ordinary symbol and qualifies, as in clj.
+    if (BARE_SYMS.has(s.name) or hasDot(s.name) or (s.name.len > 0 and s.name[0] == '.'))
         return .{ .data = .{ .symbol = s }, .location = loc };
     const cur = env.current_ns orelse return .{ .data = .{ .symbol = s }, .location = loc };
     const home = if (cur.resolve(s.name)) |v|

@@ -218,12 +218,23 @@ pub fn nsRefersFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 /// `(ns-resolve ns sym)` — the Var `sym` resolves to within `ns` (mappings then
 /// refers), or nil. Spec: clojure.core/ns-resolve (2-arity; the 3-arity env
 /// form is not modelled).
+///
+/// A QUALIFIED `sym` names its own namespace, and that prefix is read in the
+/// context of `ns` — its aliases first, then real namespace names — so
+/// `(ns-resolve 'my.app 'str/blank?)` follows my.app's `:as str`. Ignoring
+/// the prefix and looking the bare name up in `ns` would answer confidently
+/// about the wrong namespace.
 pub fn nsResolveFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     try error_catalog.checkArity("ns-resolve", args, 2, loc);
     const ns = try resolveNsOrRaise(env, args[0], "ns-resolve", loc);
     if (args[1].tag() != .symbol) return Value.nil_val;
-    if (ns.resolve(symbol_mod.asSymbol(args[1]).name)) |v| return Value.encodeHeapPtr(.var_ref, v);
+    const sym = symbol_mod.asSymbol(args[1]);
+    const target: *Namespace = if (sym.ns) |prefix|
+        (ns.aliases.get(prefix) orelse env.findNs(prefix) orelse return Value.nil_val)
+    else
+        ns;
+    if (target.resolve(sym.name)) |v| return Value.encodeHeapPtr(.var_ref, v);
     return Value.nil_val;
 }
 
@@ -251,6 +262,23 @@ pub fn nsUnaliasFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     if (args[1].tag() != .symbol)
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "ns-unalias", .expected = "a symbol", .actual = @tagName(args[1].tag()) });
     env.removeAlias(ns, symbol_mod.asSymbol(args[1]).name);
+    return Value.nil_val;
+}
+/// `(ns-unmap ns sym)`: remove `sym` from `ns`'s mappings and refers, so the
+/// name no longer resolves there. A no-op when the name is absent (clj).
+///
+/// The Var itself survives the unmapping: compiled code and any captured
+/// `#'ns/sym` still hold it, exactly as on the JVM, where an unmapped Var stays
+/// usable for whoever kept a reference. It moves to the namespace's `retired`
+/// list, which the GC root walk visits and namespace teardown frees, so an
+/// unmap can neither dangle a pointer nor leak. Spec: clojure.core/ns-unmap.
+pub fn nsUnmapFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    try error_catalog.checkArity("ns-unmap", args, 2, loc);
+    const ns = try resolveNsOrRaise(env, args[0], "ns-unmap", loc);
+    if (args[1].tag() != .symbol)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "ns-unmap", .expected = "a symbol", .actual = @tagName(args[1].tag()) });
+    try env.unmap(ns, symbol_mod.asSymbol(args[1]).name);
     return Value.nil_val;
 }
 
@@ -358,7 +386,7 @@ fn parseReferOpts(rt: *Runtime, kvs: []const Value, loc: SourceLocation) anyerro
 /// share the env primitive with).
 pub fn referFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (args.len < 1 or args[0].tag() != .symbol)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "refer requires a namespace symbol" });
+        return error_catalog.raise(.form_malformed, loc, .{ .name = "refer requires a namespace symbol" });
     const target = env.findNs(symbol_mod.asSymbol(args[0]).name) orelse
         return error_catalog.raise(.lib_not_found, loc, .{ .ns = symbol_mod.asSymbol(args[0]).name });
     const here = env.current_ns orelse
@@ -385,7 +413,7 @@ pub fn useFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             .vector => {
                 const cnt = vector_collection.count(libspec);
                 if (cnt < 1 or vector_collection.nth(libspec, 0).tag() != .symbol)
-                    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "use libspec vector must start with a namespace symbol" });
+                    return error_catalog.raise(.form_malformed, loc, .{ .name = "use libspec vector must start with a namespace symbol" });
                 const target = try loader.loadOrFindNs(rt, env, symbol_mod.asSymbol(vector_collection.nth(libspec, 0)).name, loc);
                 // Gather the opts (elements after the ns symbol) into a slice.
                 var kv_buf: [16]Value = undefined;
@@ -396,7 +424,7 @@ pub fn useFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
                 defer opts.deinit(rt);
                 try env.referAllWithFilter(target, here, opts.exclude, opts.only);
             },
-            else => return error_catalog.raise(.feature_not_supported, loc, .{ .name = "use libspec must be a symbol or vector" }),
+            else => return error_catalog.raise(.form_malformed, loc, .{ .name = "use libspec must be a symbol or vector" }),
         }
     }
     return Value.nil_val;
@@ -421,7 +449,7 @@ pub fn requireFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
             .vector => {
                 const cnt = vector_collection.count(libspec);
                 if (cnt < 1 or vector_collection.nth(libspec, 0).tag() != .symbol)
-                    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "require libspec vector must start with a namespace symbol" });
+                    return error_catalog.raise(.form_malformed, loc, .{ .name = "require libspec vector must start with a namespace symbol" });
                 const target = try loader.loadOrFindNs(rt, env, symbol_mod.asSymbol(vector_collection.nth(libspec, 0)).name, loc);
                 var i: u32 = 1;
                 while (i + 1 <= cnt - 1) : (i += 2) {
@@ -431,7 +459,7 @@ pub fn requireFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
                     const on = keyword_mod.asKeyword(opt).name;
                     if (std.mem.eql(u8, on, "as")) {
                         if (val.tag() != .symbol)
-                            return error_catalog.raise(.feature_not_supported, loc, .{ .name = "require :as needs a symbol alias" });
+                            return error_catalog.raise(.form_malformed, loc, .{ .name = "require :as needs a symbol alias" });
                         try env.setAlias(here, symbol_mod.asSymbol(val).name, target);
                     } else if (std.mem.eql(u8, on, "refer")) {
                         if (val.tag() == .keyword and std.mem.eql(u8, keyword_mod.asKeyword(val).name, "all")) {
@@ -446,7 +474,7 @@ pub fn requireFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
                     }
                 }
             },
-            else => return error_catalog.raise(.feature_not_supported, loc, .{ .name = "require libspec must be a symbol or vector" }),
+            else => return error_catalog.raise(.form_malformed, loc, .{ .name = "require libspec must be a symbol or vector" }),
         }
     }
     return Value.nil_val;
@@ -460,7 +488,7 @@ pub fn importStarFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     _ = rt;
     try error_catalog.checkArity("import*", args, 1, loc);
     if (args[0].tag() != .string)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "import* requires a class-name string" });
+        return error_catalog.raise(.form_malformed, loc, .{ .name = "import* requires a class-name string" });
     const fqcn = string_collection.asString(args[0]);
     const here = env.current_ns orelse
         return error_catalog.raise(.current_namespace_missing, loc, .{ .sym = "import*" });
@@ -492,6 +520,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "alias", .f = &aliasFn },
     .{ .name = "ns-aliases", .f = &nsAliasesFn },
     .{ .name = "ns-unalias", .f = &nsUnaliasFn },
+    .{ .name = "ns-unmap", .f = &nsUnmapFn },
     .{ .name = "in-ns", .f = &inNsFn },
     .{ .name = "refer", .f = &referFn },
     .{ .name = "use", .f = &useFn },

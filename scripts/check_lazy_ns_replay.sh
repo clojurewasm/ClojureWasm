@@ -15,8 +15,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 BIN="zig-out/bin/cljw"
-[ -x "$BIN" ] || { echo "building cljw…" >&2; zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null; }
-
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 # Portable bounded run: GNU `timeout`, else macOS coreutils `gtimeout`, else
 # unbounded. `(require 'ns)` is finite, so the fallback is safe — the bound only
 # guards against a pathological load hang. (macOS ships no `timeout`; a bare
@@ -39,7 +38,7 @@ while IFS= read -r f; do
     out="$(run_bounded "$BIN" -e "(require '$ns)" 2>&1)"
     rc=$?
     if [ "$rc" -ne 0 ]; then
-        echo "FAIL lazy-replay [$ns]: exit $rc — $(printf '%s' "$out" | grep -iE 'error|exception' | head -1)"
+        echo "FAIL lazy-replay [$ns]: exit $rc — $(printf '%s' "$out" | grep -iE 'error|exception' | sed -n 1p)"
         fails=$((fails + 1))
     fi
 done < <(find src/lang/clj -name '*.clj' | sort)

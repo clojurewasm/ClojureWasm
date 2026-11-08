@@ -242,7 +242,7 @@ moot-coord. Add a candidate the moment a workaround-instead-of-finished-form is 
 handover.md → THIS file → `.dev/debt.yaml` (Track D: D-432/D-408 [D1 ✅], D-438 [D2 ✅],
 AD-018/D-288 [D3]; + D-431..D-436 cluster) → `private/notes/p14-seq-key-hash-survey.md`
 (D1 survey) + `.dev/accepted_divergences.yaml` (AD-008/018/024/029 — the kept/gated
-divergences the audit classified) + `.dev/decisions/0137_scope_goal_line.md`
+divergences the audit classified) + ADR-0137
 (F-014/ADR-0137) + memories `local-accumulation-sweep-phase` +
 `finished-form-no-workaround-accumulate`. Verified at wiring: every Track D debt ID
 resolves (`check_debt_id_refs` ok); D1 is the only READY item (DO FIRST).

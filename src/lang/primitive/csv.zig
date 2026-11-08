@@ -3,14 +3,13 @@
 //!
 //! ## Surface
 //!
-//! - `(read-csv s)` → vector of vectors of strings (one outer row
+//! - `(read-csv s)` → seq of vectors of strings (one outer row
 //!   per CSV record; one inner cell per comma-separated field).
-//!   cw v1 returns an eager vector; JVM `clojure.data.csv/read-csv`
+//!   cljw returns an eager list; JVM `clojure.data.csv/read-csv`
 //!   returns a lazy seq over a Reader. Eager-vs-lazy tracked as a
 //!   follow-up debt row.
-//! - `(write-csv data)` → string. cw v1 returns the CSV text
-//!   directly; JVM takes a Writer + writes there. The string-return
-//!   shape is cw-specific (parallel to `clojure.data.json/write-str`).
+//! - `(write-csv writer data)` writes CSV text to the Writer. The Clojure
+//!   wrapper delegates serialization to the private `-write-csv-str` here.
 //!
 //! ## RFC 4180 dialect rules implemented
 //!
@@ -36,9 +35,9 @@ const string_collection = @import("../../runtime/collection/string.zig");
 const vector_collection = @import("../../runtime/collection/vector.zig");
 const list_collection = @import("../../runtime/collection/list.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
-const lazy_seq = @import("../../runtime/lazy_seq.zig");
+const seqable = @import("../../runtime/seqable.zig");
+const root_set = @import("../../runtime/gc/root_set.zig");
 const print_mod = @import("../../runtime/print.zig");
-const sequence = @import("sequence.zig");
 
 /// Shared option surface (JVM data.csv): `:separator` / `:quote` are char
 /// options on both read and write; `:newline` (`:lf` default | `:cr+lf`) is
@@ -181,30 +180,37 @@ pub fn writeCsvFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     errdefer aw.deinit();
     const nl: []const u8 = if (opts.crlf) "\r\n" else "\n";
 
-    // `sequence.seqFn` (the core `seq`) coerces ANY seqable — vector / list /
-    // lazy — into the walkable seq; `lazy_seq.seq/first/rest` alone pass a
-    // vector through with nil first/rest (Layer-0 accessors don't convert).
-    var rows = try sequence.seqFn(rt, env, &.{args[0]}, loc);
-    while (rows.tag() != .nil) {
-        const row = try lazy_seq.first(rt, env, rows);
-        var cells = try sequence.seqFn(rt, env, &.{row}, loc);
+    // The Seqable boundary coerces ANY seqable (vector / list / lazy / string)
+    // into the walkable seq, so rows and cells share one walk.
+    // GC-ROOT: A11 — rows/cells may be fresh views, and a custom first may
+    // produce an unretained cell. Callbacks can collect all three while the
+    // byte writer remains outside the GC heap [ref: .dev/gc_rooting.md §A].
+    var roots = [_]Value{ try seqable.seq(rt, env, args[0], loc), .nil_val, .nil_val };
+    var sp: u16 = roots.len;
+    var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
+    while (roots[0].tag() != .nil) {
+        roots[1] = try seqable.first(rt, env, roots[0], loc);
+        roots[1] = try seqable.seq(rt, env, roots[1], loc);
         var first = true;
-        while (cells.tag() != .nil) {
+        while (roots[1].tag() != .nil) {
             if (!first) try aw.writer.writeByte(opts.separator);
             first = false;
-            const cell = try lazy_seq.first(rt, env, cells);
-            if (cell.tag() == .string) {
-                try writeCsvField(&aw.writer, string_collection.asString(cell), opts);
+            roots[2] = try seqable.first(rt, env, roots[1], loc);
+            if (roots[2].tag() == .string) {
+                try writeCsvField(&aw.writer, string_collection.asString(roots[2]), opts);
             } else {
                 var cw: std.Io.Writer.Allocating = .init(rt.gpa);
                 defer cw.deinit();
-                try print_mod.writeStrValue(rt, env, &cw.writer, cell);
+                try print_mod.writeStrValue(rt, env, &cw.writer, roots[2]);
                 try writeCsvField(&aw.writer, cw.writer.buffered(), opts);
             }
-            cells = try lazy_seq.seq(rt, env, try lazy_seq.rest(rt, env, cells));
+            roots[1] = try seqable.next(rt, env, roots[1], loc);
+            roots[2] = .nil_val;
         }
         try aw.writer.writeAll(nl);
-        rows = try lazy_seq.seq(rt, env, try lazy_seq.rest(rt, env, rows));
+        roots[0] = try seqable.next(rt, env, roots[0], loc);
     }
 
     const owned = try aw.toOwnedSlice();
@@ -240,18 +246,24 @@ fn writeCsvField(w: *std.Io.Writer, s: []const u8, opts: CsvOpts) !void {
 const Entry = struct {
     name: []const u8,
     f: dispatch.BuiltinFn,
+    meta: Meta = .{},
 };
 
+/// `read-csv` is the public API; `-write-csv-str` is the string-returning impl
+/// that `write-csv` wraps, and has no upstream counterpart.
+const Meta = @import("../../runtime/env.zig").MetadataMap;
+
 const ENTRIES = [_]Entry{
+    // :doc / :arglists are attached in clojure/data/csv.clj (alter-meta!).
     .{ .name = "read-csv", .f = &readCsvFn },
     // The public JVM-shape `write-csv` (writer-first, returns nil) wraps this
     // in csv.clj; the impl serialises to a string.
-    .{ .name = "-write-csv-str", .f = &writeCsvFn },
+    .{ .name = "-write-csv-str", .f = &writeCsvFn, .meta = .{ .private = true } },
 };
 
 pub fn register(env: *Env) !void {
     const ns = try env.findOrCreateNs("clojure.data.csv");
     for (ENTRIES) |it| {
-        _ = try env.intern(ns, it.name, Value.initBuiltinFn(it.f), null);
+        _ = try env.intern(ns, it.name, Value.initBuiltinFn(it.f), it.meta);
     }
 }

@@ -37,10 +37,14 @@ still ahead.)
 
 ## 3. A real app — the Bookshelf (the polyglot story inside a real web app)
 
+> The hosted instance ran on Fly until August 2026. It belongs to the upstream
+> project, which wound it down; the URL is not maintained here. The description
+> below is a record of what it did, and the source still builds.
+
 [`clojurewasm/cw-serverless-demo`](https://github.com/clojurewasm/cw-serverless-demo)
-(<https://cw-serverless-demo.fly.dev>) — a multi-user bookshelf served end-to-end
-by cljw's own HTTP server, no JVM. Sign in with Google, build your shelf, browse
-others — sessions, CRUD, persistence, server-rendered SPA.
+— a multi-user bookshelf served end-to-end by cljw's own HTTP server, no JVM.
+Sign in with Google, build your shelf, browse others — sessions, CRUD,
+persistence, server-rendered SPA.
 
 The polyglot story runs *inside* the app, both over the Wasm FFI:
 
@@ -49,14 +53,16 @@ The polyglot story runs *inside* the app, both over the Wasm FFI:
   persistence, no file-VFS.
 - **Book-cover colours** come from a hand-written Rust module via `(wasm/call …)`.
 
-It deploys self-contained: the `Dockerfile` builds `cljw` from source (`-Dwasm`
-ReleaseSafe; zwasm via a pinned tag), and the SQLite store persists on a Fly
+It deployed self-contained: the `Dockerfile` builds `cljw` from source (`-Dwasm`
+ReleaseSafe; zwasm via a pinned tag), and the SQLite store persisted on a Fly
 volume. Config is environment-driven (`GOOGLE_CLIENT_ID` via `fly secrets`).
 
 ## 4. A Playground — eval Clojure on cljw in the browser
 
+> Hosted instance shut down with the project (August 2026); repository archived.
+
 [`clojurewasm/cw-playground`](https://github.com/clojurewasm/cw-playground)
-(<https://cw-playground.fly.dev>) — type Clojure, run it on cljw (not JVM Clojure),
+— type Clojure, run it on cljw (not JVM Clojure),
 see the printed output and result. Submissions are evaluated **in-process** on the
 server's cljw under a per-submission budget (`cljw.eval/with-budget` — steps /
 deadline / heap; a runaway is recovered as a value so the server survives), and can
@@ -66,11 +72,11 @@ the numeric tower, ratios, lazy seqs, STM, and the Wasm modules.
 ## The honest edges
 
 - Verified on macOS arm64 + Ubuntu x86_64 only.
-- Throughput/GC have headroom; the strengths are startup (~4–5 ms), size (<4 MB),
-  and a small footprint.
-- The deployed demos run a Debian-slim (glibc) image with the full `-Dwasm` build,
-  so the polyglot Wasm FFI is live in production. (A static-musl build still omits
-  `-Dwasm` — zwasm's GC uses a glibc-only `pthread_getattr_np` — but the Fly demos
-  do not use musl.)
+- Throughput/GC have headroom; the strengths are startup (~6 ms), size
+  (one 8.1 MB static binary, Wasm engine included), and a small footprint.
+- The demos ran a Debian-slim (glibc) image with the full `-Dwasm` build, so the
+  polyglot Wasm FFI was live in production, not just in tests. (A static-musl
+  build still omits `-Dwasm` — zwasm's GC uses a glibc-only
+  `pthread_getattr_np` — but the Fly demos did not use musl.)
 - Deep Java interop (gen-class / deep proxy / deep reflection) is out of scope by
   design — this targets the "call Wasm from Clojure" corner, not a JVM replacement.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Stage-1 bootstrap — read+analyse+evaluate the embedded Clojure
 //! source files (currently `clj/clojure/core.clj` and
 //! `clj/clojure/string.clj`) after `primitive.registerAll` populates
@@ -6,8 +7,9 @@
 //!
 //! ### Multi-file loader (ADR-0032)
 //!
-//! `loadCore` iterates `FILES`, a flat table of `{label, source}`
-//! pairs. The loader carries **no** namespace knowledge — each `.clj`
+//! `loadCore` iterates `ACTIVE_FILES` — `FILES` (a flat table of
+//! `{label, source, wasm_only}`) minus the entries this build's options
+//! gate out. The loader carries **no** namespace knowledge — each `.clj`
 //! file declares its own namespace via a leading `(in-ns 'foo.bar)`
 //! form (analyzer special form per ADR-0032). After the last file,
 //! `current_ns` resets to `user/` so the REPL prompt lands there.
@@ -38,6 +40,7 @@ const Env = env_mod.Env;
 const Value = @import("../runtime/value/value.zig").Value;
 const error_context = @import("../runtime/error/context.zig");
 const map_collection = @import("../runtime/collection/map.zig");
+const string_collection = @import("../runtime/collection/string.zig");
 const symbol_mod = @import("../runtime/symbol.zig");
 const print_mod = @import("../runtime/print.zig");
 const writer_value = @import("../runtime/writer_value.zig");
@@ -51,13 +54,45 @@ const serialize = @import("../eval/bytecode/serialize.zig");
 /// evaluating this file (e.g. `<bootstrap>` for `core.clj`,
 /// `<clojure.string>` for `string.clj`).
 pub const FileEntry = struct {
+    /// The namespace this file defines. The load-bearing identity: it is what
+    /// `require` looks up, what `loaded_libs` is keyed by, and what the region
+    /// blob is keyed by. `label` is presentation.
+    ns: []const u8,
+    /// How the file names itself in an error frame / the sources blob —
+    /// `<clojure.set>`. Derived from `ns` by `defaultLabel` except for
+    /// `clojure.core`, which renders as `<bootstrap>`.
     label: []const u8,
     /// Raw source text — non-null only in `embed_raw_clj_sources` mode
     /// (cache_gen, the host tool). The shipped cljw carries the sources
     /// flate-compressed in the `bootstrap_sources` blob; read via
     /// `sourceText` (C5'-b, ADR-0173).
     source: ?[]const u8,
+    /// The file rides the `wasm/` primitive namespace, which is registered
+    /// only under `-Dwasm`. Its `wasm/…` call sites resolve at ANALYZE time,
+    /// so a build without the flag cannot compile it at all.
+    wasm_only: bool = false,
+    /// The file rides the `cljw.ffi` leaves (`-open`, `-invoke`, ...), which
+    /// are registered only where `build_options.ffi` is set (ADR-0202).
+    ffi_only: bool = false,
 };
+
+/// Is `entry` part of THIS build's bundled set? The ONE predicate behind both
+/// the walks (`ACTIVE_FILES`) and the resolver (`lookupEmbeddedFile`), so a
+/// gated file can never be active in one and inactive in the other.
+/// `<ns>` — the label a file gets unless it names itself otherwise.
+fn defaultLabel(comptime ns: []const u8) []const u8 {
+    return "<" ++ ns ++ ">";
+}
+
+/// One row of the bundled-source table. `ns` is the fact; the label follows
+/// from it.
+fn f(comptime ns: []const u8, comptime path: []const u8) FileEntry {
+    return .{ .ns = ns, .label = defaultLabel(ns), .source = embedSrc(path) };
+}
+
+pub fn isActiveFile(entry: FileEntry) bool {
+    return (build_options.wasm or !entry.wasm_only) and (build_options.ffi or !entry.ffi_only);
+}
 
 /// Bootstrap source table — load order matters. `core.clj` must be
 /// first because it lands `(def not ...)` and the future
@@ -79,8 +114,10 @@ pub const EAGER_NS = std.StaticStringMap(void).initComptime(.{
     // cljw-SPECIFIC (not in clj's auto-set): the Wasm-component `:require` desugar
     // (ADR-0135 am1) emits `(cljw.wasm/require-component-libspec …)` which is resolved
     // at ANALYZE time — before its own `(require 'cljw.wasm)` prelude EVALs — so the
-    // ns must already be loaded. Eager (91 lines, def-only top level — its `wasm/`
-    // primitive refs are resolved at call time, so loading is safe in any build).
+    // ns must already be loaded. Eager only where it EXISTS: its own `wasm/…` refs
+    // are likewise analyze-time, so the file is `wasm_only` and leaves ACTIVE_FILES
+    // (hence this eager set, which is only ever consulted per ACTIVE_FILES entry)
+    // in a build without `-Dwasm`.
     .{"cljw.wasm"},
 });
 
@@ -98,78 +135,116 @@ fn embedSrc(comptime path: []const u8) ?[]const u8 {
 }
 
 pub const FILES: []const FileEntry = &.{
-    .{ .label = "<bootstrap>", .source = embedSrc("clj/clojure/core.clj") },
-    .{ .label = "<clojure.string>", .source = embedSrc("clj/clojure/string.clj") },
-    .{ .label = "<clojure.set>", .source = embedSrc("clj/clojure/set.clj") },
-    .{ .label = "<clojure.walk>", .source = embedSrc("clj/clojure/walk.clj") },
-    .{ .label = "<clojure.zip>", .source = embedSrc("clj/clojure/zip.clj") },
-    .{ .label = "<clojure.edn>", .source = embedSrc("clj/clojure/edn.clj") },
-    .{ .label = "<clojure.data.json>", .source = embedSrc("clj/clojure/data/json.clj") },
-    .{ .label = "<clojure.data.csv>", .source = embedSrc("clj/clojure/data/csv.clj") },
-    .{ .label = "<clojure.tools.cli>", .source = embedSrc("clj/clojure/tools/cli.clj") },
-    .{ .label = "<clojure.pprint>", .source = embedSrc("clj/clojure/pprint.clj") },
-    .{ .label = "<clojure.test>", .source = embedSrc("clj/clojure/test.clj") },
-    .{ .label = "<cljw.error>", .source = embedSrc("clj/cljw/error.clj") },
+    .{ .ns = "clojure.core", .label = "<bootstrap>", .source = embedSrc("clj/clojure/core.clj") },
+    f("clojure.string", "clj/clojure/string.clj"),
+    f("clojure.set", "clj/clojure/set.clj"),
+    f("clojure.walk", "clj/clojure/walk.clj"),
+    f("clojure.zip", "clj/clojure/zip.clj"),
+    f("clojure.edn", "clj/clojure/edn.clj"),
+    f("clojure.data.json", "clj/clojure/data/json.clj"),
+    f("clojure.data.csv", "clj/clojure/data/csv.clj"),
+    f("clojure.tools.cli", "clj/clojure/tools/cli.clj"),
+    f("clojure.pprint", "clj/clojure/pprint.clj"),
+    f("clojure.test", "clj/clojure/test.clj"),
+    f("cljw.error", "clj/cljw/error.clj"),
     // clojure.data calls clojure.set/* fully-qualified, so it loads last
     // (after FILES[2] clojure.set has interned those vars).
-    .{ .label = "<clojure.data>", .source = embedSrc("clj/clojure/data.clj") },
+    f("clojure.data", "clj/clojure/data.clj"),
     // clojure.math — thin Math wrappers; appended last so earlier FILES[N]
     // indices in `lookupEmbeddedFile` stay stable (D-232).
-    .{ .label = "<clojure.math>", .source = embedSrc("clj/clojure/math.clj") },
+    f("clojure.math", "clj/clojure/math.clj"),
     // clojure.core.protocols (D-282) — reduce/datafy protocol surface; require-on-
     // demand (lookupEmbeddedFile), needed by deftypes implementing IKVReduce etc.
-    .{ .label = "<clojure.core.protocols>", .source = embedSrc("clj/clojure/core/protocols.clj") },
+    f("clojure.core.protocols", "clj/clojure/core/protocols.clj"),
     // clojure.template — do-template / apply-template over clojure.walk; loads
     // after walk (FILES[3]). Surfaced by honeysql's honey.sql require.
-    .{ .label = "<clojure.template>", .source = embedSrc("clj/clojure/template.clj") },
+    f("clojure.template", "clj/clojure/template.clj"),
     // clojure.java.io — file/stream I/O over the java.io.File host type (ADR-0126);
     // appended last so earlier FILES[N] indices in `lookupEmbeddedFile` stay stable.
-    .{ .label = "<clojure.java.io>", .source = embedSrc("clj/clojure/java/io.clj") },
+    f("clojure.java.io", "clj/clojure/java/io.clj"),
     // cljw.json / cljw.fs — handy cljw.* wrappers over data.json + clojure.java.io
     // (ADR-0126 Cycle 7); load after their targets (data.json/walk/clojure.java.io).
-    .{ .label = "<cljw.json>", .source = embedSrc("clj/cljw/json.clj") },
-    .{ .label = "<cljw.fs>", .source = embedSrc("clj/cljw/fs.clj") },
+    f("cljw.json", "clj/cljw/json.clj"),
+    f("cljw.fs", "clj/cljw/fs.clj"),
     // clojure.stacktrace (D-273) — pure-Clojure cause-chain printer over the
     // ex-info model; appended last so earlier FILES[N] indices stay stable.
-    .{ .label = "<clojure.stacktrace>", .source = embedSrc("clj/clojure/stacktrace.clj") },
+    f("clojure.stacktrace", "clj/clojure/stacktrace.clj"),
     // clojure.uuid (D-273) — require-compat shim; the #uuid reader + UUID print
     // are cljw built-ins. Appended last so earlier FILES[N] indices stay stable.
-    .{ .label = "<clojure.uuid>", .source = embedSrc("clj/clojure/uuid.clj") },
+    f("clojure.uuid", "clj/clojure/uuid.clj"),
     // clojure.instant (D-273) — read-instant-* over the built-in #inst parser;
     // single Date type (no Timestamp/Calendar = AD-030). Appended last.
-    .{ .label = "<clojure.instant>", .source = embedSrc("clj/clojure/instant.clj") },
+    f("clojure.instant", "clj/clojure/instant.clj"),
     // clojure.test.tap (D-273) — TAP reporter for clojure.test; loads after
     // clojure.test (FILES[10]) + clojure.stacktrace (FILES[19]). Appended last.
-    .{ .label = "<clojure.test.tap>", .source = embedSrc("clj/clojure/test/tap.clj") },
+    f("clojure.test.tap", "clj/clojure/test/tap.clj"),
     // cljw.wasm (W1, D-404) — require-a-component over the wasm/ primitives.
-    // Require-on-demand AND wasm-gated (the lookup below only serves it under
-    // `-Dwasm`, since the wasm/ ns it rides is absent otherwise). Appended last.
-    .{ .label = "<cljw.wasm>", .source = embedSrc("clj/cljw/wasm.clj") },
+    // Require-on-demand AND wasm-gated: `wasm_only` drops it from ACTIVE_FILES
+    // and from the lookup below in a build without `-Dwasm`. Its `wasm/…` call
+    // sites resolve at ANALYZE time, so a non-`-Dwasm` build cannot compile it
+    // at all — the file must leave every walk, not merely the resolver.
+    .{ .ns = "cljw.wasm", .label = defaultLabel("cljw.wasm"), .source = embedSrc("clj/cljw/wasm.clj"), .wasm_only = true },
     // clojure.spec.gen.alpha + clojure.spec.alpha — official stdlib (ships in
     // clojure.jar), so eager-bundled (the stdlib-eager / contrib-completeness
     // policy). gen loads FIRST (alpha `(:require clojure.spec.gen.alpha)`).
     // Reproduced from spec.alpha with 4 no-JVM adaptations (see each file's header).
     // Appended last so earlier FILES[N] indices stay stable. The list stays
     // data-driven so a future eager→lazy switch (lazy-AOT, deferred) is local.
-    .{ .label = "<clojure.spec.gen.alpha>", .source = embedSrc("clj/clojure/spec/gen/alpha.clj") },
-    .{ .label = "<clojure.spec.alpha>", .source = embedSrc("clj/clojure/spec/alpha.clj") },
+    f("clojure.spec.gen.alpha", "clj/clojure/spec/gen/alpha.clj"),
+    f("clojure.spec.alpha", "clj/clojure/spec/alpha.clj"),
     // clojure.core.specs.alpha — official stdlib (ships in clojure.jar); specs
     // for clojure.core macros. Loads after spec.alpha (it `(:require …spec.alpha)`).
     // Verbatim upstream (no adaptations). Appended last.
-    .{ .label = "<clojure.core.specs.alpha>", .source = embedSrc("clj/clojure/core/specs/alpha.clj") },
+    f("clojure.core.specs.alpha", "clj/clojure/core/specs/alpha.clj"),
     // clojure.datafy — official stdlib (datafy/nav over core.protocols). Loads
     // after clojure.core.protocols (FILES[14]). One no-JVM adaptation (the
     // warn-on-reflection set! dropped); its Datafiable extend over IRef/Namespace/
     // Throwable/Class rides D-478. Re-landed once D-481 (gc.deinit ordering) fixed.
-    .{ .label = "<clojure.datafy>", .source = embedSrc("clj/clojure/datafy.clj") },
+    f("clojure.datafy", "clj/clojure/datafy.clj"),
     // clojure.test.junit — official stdlib (JUnit-XML reporter extending
     // clojure.test's `report` multimethod, like clojure.test.tap). Loads after
     // clojure.test (FILES[10]). Verbatim upstream. Appended last.
-    .{ .label = "<clojure.test.junit>", .source = embedSrc("clj/clojure/test/junit.clj") },
-    .{ .label = "<clojure.core-meta>", .source = embedSrc("clj/clojure/core_meta.clj") },
+    f("clojure.test.junit", "clj/clojure/test/junit.clj"),
+    f("clojure.core-meta", "clj/clojure/core_meta.clj"),
     // clojure.repl (D-513) — doc/dir/apropos/find-doc/demunge over the D-305
     // :doc/:arglists metadata; require-on-demand (NOT eager). Appended last.
-    .{ .label = "<clojure.repl>", .source = embedSrc("clj/clojure/repl.clj") },
+    f("clojure.repl", "clj/clojure/repl.clj"),
+    // clojure.core.reducers (D-513 (1)) — the reducer/folder ops over IReduce,
+    // plus a SEQUENTIAL fold (AD-058: no ForkJoinPool). require-on-demand; clj
+    // does not auto-load it either, so eager here would break F-011 parity.
+    f("clojure.core.reducers", "clj/clojure/core/reducers.clj"),
+    // cljw.test — source-path test discovery + runner over clojure.test
+    // (`cljw -m cljw.test`). Loads after clojure.test (FILES[10]) and cljw.fs;
+    // require-on-demand. Appended last so earlier FILES[N] indices stay stable.
+    f("cljw.test", "clj/cljw/test.clj"),
+    // cljw.proxy (D-298) — runtime support for `clojure.core/proxy` over the
+    // registered proxyable base classes (ThreadLocal is entry 1). deftype +
+    // protocol, no JVM class extension; require-on-demand (the proxy macro
+    // requiring-resolves it). Appended last so earlier FILES[N] indices stay stable.
+    f("cljw.proxy", "clj/cljw/proxy.clj"),
+    // clojure.java.shell (ADR-0199, D-273) — `sh` over the native
+    // `cljw.process/run`, resolved at call time so a WASI build (no
+    // cljw.process) still loads it. require-on-demand, as in clj. Appended last.
+    f("clojure.java.shell", "clj/clojure/java/shell.clj"),
+    // cljw.ffi (ADR-0202): the C FFI API over the native `cljw.ffi/-*` leaves.
+    // require-on-demand AND ffi-gated: the leaves exist only where
+    // `build_options.ffi` is set. Appended last.
+    .{ .ns = "cljw.ffi", .label = defaultLabel("cljw.ffi"), .source = embedSrc("clj/cljw/ffi.clj"), .ffi_only = true },
+};
+
+/// The build-active subset of `FILES`. **Every walk that compiles, emits, or
+/// replays bundled files iterates this, never `FILES`** — `FILES` keeps its
+/// full shape (and its stable indices) so `lookupEmbeddedFile` stays index-keyed.
+pub const ACTIVE_FILES: []const FileEntry = blk: {
+    var active: [FILES.len]FileEntry = undefined;
+    var n: usize = 0;
+    for (FILES) |file| {
+        if (!isActiveFile(file)) continue;
+        active[n] = file;
+        n += 1;
+    }
+    const frozen = active;
+    break :blk frozen[0..n];
 };
 
 /// The bundled `.clj` text for `label` (C5'-b). Raw mode (cache_gen)
@@ -178,7 +253,7 @@ pub const FILES: []const FileEntry = &.{
 /// text backs SourceContext renders and source replays). Returns null for
 /// labels outside the bundled set.
 pub fn sourceText(rt: *Runtime, label: []const u8) ?[]const u8 {
-    for (FILES) |file| {
+    for (ACTIVE_FILES) |file| {
         if (!std.mem.eql(u8, file.label, label)) continue;
         if (file.source) |raw| return raw;
         break;
@@ -227,43 +302,25 @@ pub const SOURCE_LABEL: []const u8 = FILES[0].label;
 /// the corresponding `FileEntry`. Returns `null` for names the
 /// embedded table does not cover. Pure lookup; no allocator use.
 fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
-    // Internal name table: bootstrap source file labels are
-    // `<ns_name>`-shaped except for `<bootstrap>` aliasing
-    // `clojure.core`. Keep the table here (not as a separate map)
-    // so it stays paired with `FILES` for grep-discovery.
-    if (std.mem.eql(u8, ns_name, "clojure.core")) return FILES[0];
-    if (std.mem.eql(u8, ns_name, "clojure.string")) return FILES[1];
-    if (std.mem.eql(u8, ns_name, "clojure.set")) return FILES[2];
-    if (std.mem.eql(u8, ns_name, "clojure.walk")) return FILES[3];
-    if (std.mem.eql(u8, ns_name, "clojure.zip")) return FILES[4];
-    if (std.mem.eql(u8, ns_name, "clojure.edn")) return FILES[5];
-    if (std.mem.eql(u8, ns_name, "clojure.data.json")) return FILES[6];
-    if (std.mem.eql(u8, ns_name, "clojure.data.csv")) return FILES[7];
-    if (std.mem.eql(u8, ns_name, "clojure.tools.cli")) return FILES[8];
-    if (std.mem.eql(u8, ns_name, "clojure.pprint")) return FILES[9];
-    if (std.mem.eql(u8, ns_name, "clojure.test")) return FILES[10];
-    if (std.mem.eql(u8, ns_name, "cljw.error")) return FILES[11];
-    if (std.mem.eql(u8, ns_name, "clojure.data")) return FILES[12];
-    if (std.mem.eql(u8, ns_name, "clojure.math")) return FILES[13];
-    if (std.mem.eql(u8, ns_name, "clojure.core.protocols")) return FILES[14];
-    if (std.mem.eql(u8, ns_name, "clojure.template")) return FILES[15];
-    if (std.mem.eql(u8, ns_name, "clojure.java.io")) return FILES[16];
-    if (std.mem.eql(u8, ns_name, "cljw.json")) return FILES[17];
-    if (std.mem.eql(u8, ns_name, "cljw.fs")) return FILES[18];
-    if (std.mem.eql(u8, ns_name, "clojure.stacktrace")) return FILES[19];
-    if (std.mem.eql(u8, ns_name, "clojure.uuid")) return FILES[20];
-    if (std.mem.eql(u8, ns_name, "clojure.instant")) return FILES[21];
-    if (std.mem.eql(u8, ns_name, "clojure.test.tap")) return FILES[22];
-    // cljw.wasm rides the `wasm/` primitive ns, which only exists in a `-Dwasm`
-    // build — so it is resolvable only there (a non-wasm build reports the ns as
-    // not found, honest, rather than failing on an unresolvable `wasm/…` later).
-    if (build_options.wasm and std.mem.eql(u8, ns_name, "cljw.wasm")) return FILES[23];
-    if (std.mem.eql(u8, ns_name, "clojure.spec.gen.alpha")) return FILES[24];
-    if (std.mem.eql(u8, ns_name, "clojure.spec.alpha")) return FILES[25];
-    if (std.mem.eql(u8, ns_name, "clojure.core.specs.alpha")) return FILES[26];
-    if (std.mem.eql(u8, ns_name, "clojure.datafy")) return FILES[27];
-    if (std.mem.eql(u8, ns_name, "clojure.test.junit")) return FILES[28];
+    for (ACTIVE_FILES) |file| {
+        if (std.mem.eql(u8, file.ns, ns_name)) return file;
+    }
     return null;
+}
+
+// First match wins in every namespace lookup here — `lookupEmbeddedFile`, the
+// region-blob key, `markFilesLoaded`. A duplicate `ns` would therefore shadow
+// silently rather than fail. Neither this nor the hand-written table it
+// replaced could detect that, so assert it where a violation is a compile
+// error rather than a mystery at runtime.
+comptime {
+    @setEvalBranchQuota(FILES.len * FILES.len * 32);
+    for (FILES, 0..) |a, i| {
+        for (FILES[i + 1 ..]) |b| {
+            if (std.mem.eql(u8, a.ns, b.ns))
+                @compileError("two bundled files claim the namespace " ++ a.ns);
+        }
+    }
 }
 
 /// ADR-0035 D8 embedded resolver: serves the bootstrap-embedded namespaces
@@ -305,8 +362,8 @@ pub fn loadCore(
     // ADR-0163: pre-register before the source files eval so each file's
     // intra-bootstrap `(:require other-bootstrap-lib)` is a loaded_libs no-op
     // (mirrors the AOT path; without it the new loadOrFindNs guard re-parses).
-    try markFilesLoaded(rt, FILES);
-    try loadCoreFiles(arena, rt, env, macro_table, FILES);
+    try markFilesLoaded(rt, ACTIVE_FILES);
+    try loadCoreFiles(arena, rt, env, macro_table, ACTIVE_FILES);
     try finalizeUserNs(rt, env);
 }
 
@@ -456,6 +513,21 @@ fn registerMathContextVar(rt: *Runtime, env: *Env) !void {
     rt.math_context_var = mc;
 }
 
+/// Intern `clojure.core/*file*` as a `^:dynamic` Var whose root is clj's exact
+/// `"NO_SOURCE_PATH"` sentinel, and cache it on `rt.file_var`. JVM Clojure
+/// reports that string when there is no source file (`clj -M -e '…'`), the
+/// script path when one is run, and the classpath-relative resource name while
+/// a namespace loads — all three verified against clj 2026-08-04. cljw had no
+/// `*file*` at all, which is why the error renderer and any macro that wants
+/// its own source location had nothing to read.
+fn registerFileVar(rt: *Runtime, env: *Env) !void {
+    const core = try env.findOrCreateNs("clojure.core");
+    const sentinel = try string_collection.alloc(rt, "NO_SOURCE_PATH");
+    const fv = try env.intern(core, "*file*", sentinel, null);
+    fv.flags.dynamic = true;
+    rt.file_var = fv;
+}
+
 /// The bootstrap prefix WITHOUT `loadCore`: install the embedded require
 /// resolver + register the kernel primitives + bootstrap macros. Splitting
 /// this out lets the AOT-bootstrap path (ADR-0056) build a fresh env to
@@ -483,6 +555,7 @@ pub fn setupCorePrefix(rt: *Runtime, env: *Env, macro_table: *macro_dispatch.Tab
     // D-467: intern *math-context* + cache on rt.math_context_var so BigDecimal
     // division can honour a `with-precision` binding.
     try registerMathContextVar(rt, env);
+    try registerFileVar(rt, env);
     // ADR-0088: intern *print-length* / *print-level* (root nil = unlimited)
     // + cache pointers so the renderer honours a user `binding`.
     try registerPrintLimitVars(rt, env);
@@ -504,6 +577,12 @@ pub fn cacheArithIntrinsics(rt: *Runtime, env: *Env) void {
         const v: ?*env_mod.Var = if (core) |c| c.resolve(name) else null;
         if (v) |p| rt.arith_vars[@intFromEnum(op)] = p;
     }
+    // Unary inc/dec intrinsics share the arith pristine flag.
+    inline for (std.meta.tags(intrinsic.UnaryOp)) |op| {
+        const name = intrinsic.unaryCoreName(op);
+        const v: ?*env_mod.Var = if (core) |c| c.resolve(name) else null;
+        if (v) |p| rt.unary_vars[@intFromEnum(op)] = p;
+    }
     rt.core_arith_pristine = true;
 
     // Collection-accessor intrinsics (op_get / op_nth; ADR-0130 extended, O-043).
@@ -513,6 +592,12 @@ pub fn cacheArithIntrinsics(rt: *Runtime, env: *Env) void {
         if (v) |p| rt.coll_vars[@intFromEnum(op)] = p;
     }
     rt.core_coll_pristine = true;
+
+    // *unchecked-math* (CLJW-UNCHECKED-MATH): cache the Var so the analyzer can
+    // read its current value and rewrite pristine core arith to wrapping
+    // unchecked-* ops while it is truthy. Resolved from clojure.core (interned
+    // in core.clj); null if absent (the rewrite then never fires).
+    if (core) |c| rt.unchecked_math_var = c.resolve("*unchecked-math*");
 }
 
 /// Intern `clojure.core/*print-length*` and `*print-level*` as `^:dynamic`
@@ -643,16 +728,16 @@ pub fn loadCoreAot(
     // (e.g. spec.alpha requires walk — both eager). Without this the loaded_libs
     // guard would re-parse. Run only the eager regions; every other ns replays from
     // its region on first `require` (loadOrFindNs → loadRegionNamespace).
-    for (FILES) |file| {
-        const ns_name = nsNameFromLabel(file.label);
+    for (ACTIVE_FILES) |file| {
+        const ns_name = file.ns;
         if (isEagerNs(ns_name)) try markOneLoaded(rt, ns_name);
     }
     // v7 (ADR-0173): the blob-level shared constant pool — parsed once for
     // the whole eager set; lazy requires re-parse per replay (cheap slice walk).
     var blob_pool = try serialize.readBlobPool(rt.gpa, bootstrap_blob);
     defer if (blob_pool) |*cp| cp.deinit(rt.gpa);
-    for (FILES) |file| {
-        const ns_name = nsNameFromLabel(file.label);
+    for (ACTIVE_FILES) |file| {
+        const ns_name = file.ns;
         if (!isEagerNs(ns_name)) continue;
         // A missing region means the embedded blob is malformed (build bug).
         const ref = serialize.findRegion(bootstrap_blob, ns_name) orelse return error.MissingBootstrapRegion;
@@ -676,7 +761,7 @@ pub fn runEagerRegions(rt: *Runtime, env: *Env, arena: std.mem.Allocator, blob: 
     var blob_pool = try serialize.readBlobPool(rt.gpa, blob);
     defer if (blob_pool) |*cp| cp.deinit(rt.gpa);
     for (files) |file| {
-        const ns_name = nsNameFromLabel(file.label);
+        const ns_name = file.ns;
         // A missing region means the embedded blob is malformed (a build-time
         // bug, never user input) — fail loudly rather than silently skipping a ns.
         const ref = serialize.findRegion(blob, ns_name) orelse return error.MissingBootstrapRegion;
@@ -693,7 +778,7 @@ pub fn runEagerRegions(rt: *Runtime, env: *Env, arena: std.mem.Allocator, blob: 
 /// gpa-owned (freed at `rt.deinit`), mirroring `loader.loadNamespace`. Takes a
 /// slice so the lazy split (ADR-0163 commit 3) can pass only the trimmed eager set.
 pub fn markFilesLoaded(rt: *Runtime, files: []const FileEntry) !void {
-    for (files) |file| try markOneLoaded(rt, nsNameFromLabel(file.label));
+    for (files) |file| try markOneLoaded(rt, file.ns);
 }
 
 /// Record a single namespace as loaded in `rt.loaded_libs` (idempotent). Key is
@@ -703,15 +788,6 @@ pub fn markOneLoaded(rt: *Runtime, ns_name: []const u8) !void {
     const key = try rt.gpa.dupe(u8, ns_name);
     errdefer rt.gpa.free(key);
     try rt.loaded_libs.put(rt.gpa, key, {});
-}
-
-/// FileEntry labels are `<ns-name>` except core's, which is `<bootstrap>`. Map a
-/// label to the namespace name used as the `require` / `loaded_libs` / region key.
-pub fn nsNameFromLabel(label: []const u8) []const u8 {
-    if (std.mem.eql(u8, label, "<bootstrap>")) return "clojure.core";
-    if (label.len >= 2 and label[0] == '<' and label[label.len - 1] == '>')
-        return label[1 .. label.len - 1];
-    return label;
 }
 
 // --- tests ---
@@ -815,6 +891,39 @@ test "embeddedResolver returns null for unknown namespaces" {
     try testing.expect((try embeddedResolver(&rt, "no.such.ns")) == null);
     try testing.expect((try embeddedResolver(&rt, "")) == null);
     try testing.expect((try embeddedResolver(&rt, "clojure")) == null);
+}
+
+test "ACTIVE_FILES and lookupEmbeddedFile gate on the same predicate" {
+    // The non-wasm bootstrap break: cache_gen AOT-compiled every FILES entry
+    // while lookupEmbeddedFile refused to serve `cljw.wasm` without `-Dwasm`,
+    // so a build with the flag off died analysing a file it could never load
+    // ("No namespace: 'wasm'"). Both sides now read `isActiveFile`, and this
+    // test pins the coupling in EITHER build config — so the next gated file
+    // cannot be added to one walk and forgotten in the other.
+    //
+    // BOTH directions (ADR-0180). The inactive one is what the break violated.
+    // The active one is close to a tautology now that the lookup iterates
+    // `ACTIVE_FILES` — that is the point: it is a TRIPWIRE against
+    // reintroducing a hand-written second table, not a correctness check.
+    // Do not delete it as vacuous. It was the assertion's ABSENCE that let a
+    // 30-`if` chain sit beside `FILES` and disagree with it.
+    for (ACTIVE_FILES) |file| {
+        const found = lookupEmbeddedFile(file.ns) orelse return error.TestUnexpectedResult;
+        try testing.expectEqualStrings(file.label, found.label);
+    }
+    for (FILES) |file| {
+        if (isActiveFile(file)) continue;
+        // Inactive ⇒ unresolvable, and absent from the walked set.
+        try testing.expect(lookupEmbeddedFile(file.ns) == null);
+        for (ACTIVE_FILES) |active| {
+            try testing.expect(!std.mem.eql(u8, active.label, file.label));
+        }
+    }
+    // Exactly one gated file today; ACTIVE_FILES is FILES under `-Dwasm`.
+    try testing.expectEqual(
+        @as(usize, if (build_options.wasm) FILES.len else FILES.len - 1),
+        ACTIVE_FILES.len,
+    );
 }
 
 test "installEmbeddedResolver sets rt.require_resolver" {

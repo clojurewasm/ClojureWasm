@@ -1,0 +1,118 @@
+(read-string "^:m \"s\"")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m 1")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m :k")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m \\c")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m nil")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m true")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m 1.5")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m 1N")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m 1/2")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m 1.5M")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m #\"re\"")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m ##NaN")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m ^:n \"s\"")
+;;=> <clj-error> IllegalArgumentException
+(read-string "[1 ^:m \"s\"]")
+;;=> <clj-error> IllegalArgumentException
+(clojure.edn/read-string "^:m \"s\"")
+;;=> <clj-error> IllegalArgumentException
+(clojure.edn/read-string "^:m 1")
+;;=> <clj-error> IllegalArgumentException
+(clojure.edn/read-string "^:m #inst \"2020-01-01T00:00:00Z\"")
+;;=> <clj-error> IllegalArgumentException
+(meta (read-string "^:m [1]"))
+;;=> {:m true}
+(meta (read-string "^:m (a)"))
+;;=> {:m true}
+(meta (read-string "^:m ()"))
+;;=> {:m true}
+(meta (read-string "^:m {}"))
+;;=> {:m true}
+(meta (read-string "^:m #{}"))
+;;=> {:m true}
+(meta (read-string "^:m a"))
+;;=> {:m true}
+(meta (read-string "^:m 'a"))
+;;=> {:m true}
+(meta (read-string "^:m ^:n [1]"))
+;;=> {:n true, :m true}
+(read-string "^:m #inst \"2020-01-01T00:00:00Z\"")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m #uuid \"00000000-0000-0000-0000-000000000000\"")
+;;=> <clj-error> IllegalArgumentException
+(meta (binding [*data-readers* {'my/t vector}] (read-string "^:m #my/t 5")))
+;;=> {:m true}
+(binding [*data-readers* {'my/t identity}] (read-string "^:m #my/t 5"))
+;;=> <clj-error> IllegalArgumentException
+(meta (clojure.edn/read-string {:readers {'my/t vector}} "^:m #my/t 5"))
+;;=> {:m true}
+(clojure.edn/read-string {:readers {'my/t identity}} "^:m #my/t 5")
+;;=> <clj-error> IllegalArgumentException
+(binding [*data-readers* {'my/t vector}] (load-string "(meta ^:m #my/t 5)"))
+;;=> {:m true}
+(load-string "(defrecord R3 [a]) (meta (read-string \"^:m #user.R3{:a 1}\"))")
+;;=> {:m true}
+(load-string "(meta ^:m [1 2])")
+;;=> {:m true}
+(load-string "(defn f3 ^String [x] x) (f3 1)")
+;;=> 1
+(binding [*data-readers* {'my/a atom}] (meta (read-string "^:m #my/a 1")))
+;;=> {:m true}
+(binding [*data-readers* {'my/a atom}] (meta @(atom (read-string "^:m #my/a 1"))))
+;;=> {:m true}
+(binding [*data-readers* {'my/t (fn [x] (with-meta [x] {:a 1}))}] (meta (read-string "^:m #my/t 5")))
+;;=> {:a 1, :m true}
+(binding [*data-readers* {'my/t (fn [x] (with-meta [x] {:a 1}))}] (meta (read-string "^{:a 2} #my/t 5")))
+;;=> {:a 2}
+(meta (read-string "^[String] x"))
+;;=> {:param-tags [String]}
+(meta (read-string "^[String long] x"))
+;;=> {:param-tags [String long]}
+(read-string "^1 \"s\"")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^1 {:a 1 :a 2}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m `1")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^:m `:k")
+;;=> <clj-error> IllegalArgumentException
+(meta (read-string "^:m `x"))
+;;=> {:m true}
+(meta (read-string "^:m #'x"))
+;;=> {:m true}
+(meta (read-string "^:m @x"))
+;;=> {:m true}
+(meta (read-string "^:m 'x"))
+;;=> {:m true}
+(meta (read-string "^:m #(inc %)"))
+;;=> {:m true}
+(meta (read-string "^:m ~x"))
+;;=> {:m true}
+(meta (read-string "^^:x :k [1]"))
+;;=> <clj-error> IllegalArgumentException
+(read-string "#my/t ^:m \"s\"")
+;;=> <clj-error> IllegalArgumentException
+(binding [*data-readers* {'my/t (fn [_] (lazy-seq [1]))}] (meta (read-string "^:m #my/t 1")))
+;;=> {:m true}
+(binding [*default-data-reader-fn* tagged-literal] (read-string "^:m #foo 1"))
+;;=> <clj-error> IllegalArgumentException
+(meta (with-meta clojure.lang.PersistentQueue/EMPTY {:q 1}))
+;;=> {:q 1}
+(meta (read-string {:read-cond :allow} "^:m #?(:cljs 1) [2]"))
+;;=> {:m true}
+(binding [*data-readers* {'my/t vector}] (meta (load-string "^:m #my/t 5")))
+;;=> {:m true}
+(binding [*data-readers* {'my/t (fn [x] (with-meta [x] {:a 1}))}] (meta (load-string "^:m #my/t 5")))
+;;=> {:a 1, :m true}

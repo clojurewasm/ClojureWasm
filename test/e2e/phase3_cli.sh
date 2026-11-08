@@ -297,7 +297,9 @@ got=$("$BIN" --version 2>&1) || fail "--version: non-zero exit"
 echo "    ✓ --version → $got"
 
 # --- Case 32: --help leads with the version banner line (ADR-0117) ---
-got=$("$BIN" --help 2>&1 | head -1) || fail "--help: non-zero exit"
+# sed -n 1p, not head -1: --help is multi-line, and head's early pipe close
+# can EPIPE the still-writing binary on a loaded host (2026-07-29 CI flake class).
+got=$("$BIN" --help 2>&1 | sed -n '1p') || fail "--help: non-zero exit"
 [[ "$got" == ClojureWasm\ v* ]] || fail "--help banner: want 'ClojureWasm v<ver>', got '$got'"
 echo "    ✓ --help banner → $got"
 

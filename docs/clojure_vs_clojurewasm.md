@@ -84,7 +84,7 @@ the JVM's `hashCode`/`hasheq` split.
 | `hash` / `.hashCode` values                                      | JVM/Murmur3 values                               | cljw-native values (intra-cljw consistent)                        | AD-009 |
 | `APersistentMap/mapHash` vs `/mapHasheq`                         | distinct (additive `hashCode` vs murmur)         | both = the single `(hash m)` content hash                         | AD-028 |
 | `ns-interns`/`ns-publics` of `clojure.core`                      | includes `reduce`, `+`, …                       | omits the `rt`-referred primitives (`ns-map` includes them)       | AD-011 |
-| `(class (object-array 0))` + typed arrays                        | `[Ljava.lang.Object;`, `aset` type-checks        | `array`; type-erased `[]Value`, `^"[B"` hints advisory            | AD-019 |
+| `(class (object-array 0))`, `make-array` / `into-array` type     | `[Ljava.lang.Object;`; the class picks the kind  | `array`; the class arg is ignored (object array), hints advisory  | AD-019 |
 | Unresolved `clojure.lang.*` / `.asm.*` ref                       | resolves to the JVM class                        | namespace LOADS; the ref errors only if evaluated (call-time)     | AD-022 |
 | `(extend-protocol P java.util.Map …)`                           | covers all clj maps (a map IS a `java.util.Map`) | LOAD-ONLY no-op; a map receiver falls to `Object`                 | AD-023 |
 | `java.util.Map` methods under a `clojure.lang.*` deftype section | dispatch (the interfaces extend the java ones)   | accepted-and-dropped; a later `(.iterator x)` is method-not-found | AD-027 |
@@ -117,6 +117,49 @@ STM's committed state is identical (4 threads × 100 `(dosync (alter c inc))`
 => 400 in both); only contention scheduling — unobservable in the result —
 differs. Locking and `with-local-vars` are clj-faithful *inside* their normal
 use; only the literal-as-lock and escaped-var anti-patterns diverge.
+
+### Strings are indexed by code point, not UTF-16 unit
+
+cljw stores a string as UTF-8 and every index into it counts Unicode code
+points. The JVM stores UTF-16 and clj indexes by code unit, so a character
+outside the Basic Multilingual Plane (emoji, rare CJK, most historic scripts)
+is one position in cljw and two (a surrogate pair) in clj. BMP text, including
+multibyte characters such as `é` or `世`, indexes the same in both.
+
+| Expression                 | Clojure 1.12 (JVM)            | ClojureWasm   | AD     |
+|----------------------------|-------------------------------|---------------|--------|
+| `(count "🌍")`             | `2`                           | `1`           | AD-076 |
+| `(count "ab🌍")`           | `4`                           | `3`           | AD-076 |
+| `(.length "🌍")`           | `2`                           | `1`           | AD-076 |
+| `(subs "a🌍b" 1 2)`        | a lone high surrogate         | `"🌍"`        | AD-076 |
+| `(vec (map int "🌍"))`     | `[55356 57101]`               | `[127757]`    | AD-076 |
+| `(str (first "🌍"))`       | a lone high surrogate         | `"🌍"`        | AD-076 |
+| `(.indexOf "a🌍b" "b")`    | `3`                           | `2`           | AD-076 |
+
+cljw column measured on v1.14.11; clj column from
+[issue #1](https://github.com/BuddhiLW/ClojureWasm/issues/1).
+
+**Both surfaces use code points, on purpose.** The language surface (`count`,
+`subs`, `nth`, `get`, `seq`) and the Java interop names (`.length`, `.charAt`,
+`.indexOf`, `.substring`) share one index space, so `(= (count s) (.length s))`
+always holds and an index from `.indexOf` is safe to pass to `subs`. The
+interop methods are therefore *not* a faithful `java.lang.String#length`: they
+keep the Java names for source compatibility and answer in code points.
+
+**Porting JVM code.** Code that only takes indices from one string operation
+and feeds them to another (`.indexOf` then `subs`, `count` then a loop over
+`nth`) keeps working unchanged, and stops producing half surrogate pairs.
+Look again at code that:
+
+- compares a length or offset with one computed **outside** cljw: a UTF-16
+  offset from a JavaScript or Java peer, an LSP `character` position, a
+  protocol field counting UTF-16 units. Convert at the boundary rather than
+  inside the program.
+- tests `(Character/isHighSurrogate c)` / `isLowSurrogate`, or reassembles
+  pairs with `Character/toCodePoint`: in cljw a char from a string is already a
+  whole code point, so those branches never fire.
+- sizes a buffer from `.length` expecting bytes. Neither runtime gives bytes
+  there; use `(count (.getBytes s "UTF-8"))`, which agrees in both.
 
 ### Reader & security
 
@@ -162,17 +205,24 @@ bridge to the JVM are not part of the runtime (Tier C/D):
 
 cljw provides its own host-class surface (a curated set, see
 [`data/compat_tiers.yaml`](../data/compat_tiers.yaml)) rather than open JVM interop.
-Note that Java *arrays* are implemented (type-erased — see AD-019), as is
+Note that Java *arrays* are implemented (typed native storage for the typed
+constructors, ADR-0204; see AD-019 for the class argument), as is
 `with-local-vars` (AD-015); they are no longer in this list.
 
 ## How to read this page
 
 A divergence listed in **Part 1** is *designed*: it derives from a project
 invariant and is pinned by a regression test, so it reads as a deliberate
-choice rather than a defect. A gap listed in **Part 2** is *scheduled*: it
-is on the roadmap (or, for the JVM-only corners, intentionally excluded).
-Anything not on this page that still differs from Clojure is a bug —
-please report it.
+choice rather than a defect. A gap listed in **Part 2** was *planned but never
+built* — it sat on the roadmap when the project stopped, or, for the JVM-only
+corners, was intentionally excluded. Anything not on this page that differs
+from Clojure is a bug that was never found.
+
+Both parts are a map of the territory as upstream left it, not a list of things
+about to change: this fork inherited the divergences rather than choosing them.
+Part 1 marks behaviour not to
+"correct" without first understanding the invariant behind it; Part 2 marks
+what is genuinely missing, with what was intended.
 
 For the authoritative, machine-readable form of Part 1, see
 [`.dev/accepted_divergences.yaml`](../.dev/accepted_divergences.yaml); each

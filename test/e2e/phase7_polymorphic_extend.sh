@@ -194,3 +194,18 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
 EOF
 ) || fail "case14: non-zero exit ($got)"
 assert_eq 'extend_protocol_repeated_multi_arity' "$(last_line "$got")" '[:r :s]'
+
+# --- Case 15 (ADR-0184 Precondition B): a re-extend REPLACES — later wins ---
+# clj-verified 2026-08-06: `(extend-type Long P (pf …:first))` then `:second`
+# → clj returns :second. cljw appended at the END while lookupMethod scans
+# front-first, so a re-extend never won; extendTypeWithImpls now replaces the
+# (protocol, method) row in place. Also load-bearing for walking method
+# tables as GC roots (a shadowed appended impl would be rooted forever).
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol ReExtP (re-ext-pf [x]))
+(extend-type Long ReExtP (re-ext-pf [x] :first))
+(extend-type Long ReExtP (re-ext-pf [x] :second))
+(prn [(re-ext-pf 1) (satisfies? ReExtP 1)])
+EOF
+) || fail "case15: non-zero exit ($got)"
+assert_eq 'reextend_later_wins' "$(last_line "$got")" '[:second true]'

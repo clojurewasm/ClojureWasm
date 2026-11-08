@@ -92,6 +92,24 @@ const JAVA_UTIL_COLLECTION: HostInterface = .{ .kind = .host_inert, .canonical =
 // `.close`/`.read` on the wrapped InputStream resolve at EVAL, so the deftype loads.
 const JAVA_IO_CLOSEABLE: HostInterface = .{ .kind = .host_inert, .canonical = "java.io.Closeable" };
 
+// The java.util.concurrent functional interfaces a concurrency library REIFIES
+// (rather than declares as a collection supertype): a thread pool takes a
+// `ThreadFactory` to mint its workers and a `Callable` as the unit of work.
+// method_family, not host_inert — the method IS dispatched: `(.newThread tf r)`
+// resolves through the reify's own method table, which is how the executor tier
+// consults a caller-supplied factory. Registering them here rather than as
+// native TypeDescriptors is forced by reify itself, which rejects a class value
+// ("__reify!: expected protocol, got type_descriptor") and accepts only a
+// protocol Var or a quote-wrapped marker name.
+const THREAD_FACTORY: HostInterface = .{ .kind = .method_family, .canonical = "java.util.concurrent.ThreadFactory", .wired_methods = &.{"newThread"} };
+const CALLABLE: HostInterface = .{ .kind = .method_family, .canonical = "java.util.concurrent.Callable", .wired_methods = &.{"call"} };
+const RUNNABLE: HostInterface = .{ .kind = .method_family, .canonical = "java.lang.Runnable", .wired_methods = &.{"run"} };
+// Future is BOTH a native value and a reify target. `(future …)` answers these
+// four already (java/util/concurrent/Future.zig installs them on the `.future`
+// descriptor); this row covers the other direction — a library synthesising a
+// Future for an already-computed value, which cannot be a real worker thread.
+const FUTURE: HostInterface = .{ .kind = .method_family, .canonical = "java.util.concurrent.Future", .wired_methods = &.{ "get", "cancel", "isDone", "isCancelled" } };
+
 // protocol_remap interfaces (D-280b+): the macro rewrites each declared method to
 // its cljw (protocol, method) target. ILookup's valAt → ILookup/-lookup (a 3-arity
 // valAt collapses onto the same -lookup via D-279 multi-arity; the not-found arm is
@@ -187,6 +205,29 @@ const CHAR_SEQUENCE: HostInterface = .{ .kind = .protocol_remap, .canonical = "C
 // for a typed_instance before the native valueCompare.
 const JAVA_COMPARABLE: HostInterface = .{ .kind = .protocol_remap, .canonical = "Comparable", .remap = &.{
     .{ .clj = "compareTo", .protocol = "Comparable", .method = "-compare-to" },
+} };
+
+// java.util.Map$Entry: getKey/getValue. A user type implementing it IS a map
+// entry for clj's `key`/`val` (clojure.core/key is `(.getKey ^Map$Entry e)`), so
+// the methods route to the cljw IMapEntry protocol (-key/-val), which `key`/`val`
+// consult for a non-native entry; the dual-registered clj names keep
+// `(.getKey x)` / `(.getValue x)` reaching the type's own impls. core.logic's
+// Pair declares it. Canonical is the simple nested name (the yaml row's
+// `name` suffix); class_name normalises it to MapEntry for `instance?`.
+const MAP_ENTRY: HostInterface = .{ .kind = .protocol_remap, .canonical = "Map$Entry", .remap = &.{
+    .{ .clj = "getKey", .protocol = "IMapEntry", .method = "-key" },
+    .{ .clj = "getValue", .protocol = "IMapEntry", .method = "-val" },
+    .{ .clj = "hashCode", .protocol = "Object", .method = "hashCode" },
+    .{ .clj = "equals", .protocol = "Object", .method = "equals" },
+} };
+
+// clojure.lang.IMapEntry: key/val (it extends java.util.Map$Entry, so a type
+// may group getKey/getValue under it too). Same IMapEntry targets.
+const IMAP_ENTRY: HostInterface = .{ .kind = .protocol_remap, .canonical = "IMapEntry", .remap = &.{
+    .{ .clj = "key", .protocol = "IMapEntry", .method = "-key" },
+    .{ .clj = "val", .protocol = "IMapEntry", .method = "-val" },
+    .{ .clj = "getKey", .protocol = "IMapEntry", .method = "-key" },
+    .{ .clj = "getValue", .protocol = "IMapEntry", .method = "-val" },
 } };
 
 // clojure.lang.IKVReduce — kvreduce (D-400). `reduce-kv` consults
@@ -328,6 +369,20 @@ const IPERSISTENT_MAP: HostInterface = .{
         .{ .clj = "-without", .protocol = "IPersistentMap", .method = "-without" },
         .{ .clj = "-keys", .protocol = "IPersistentMap", .method = "-keys" },
         .{ .clj = "-vals", .protocol = "IPersistentMap", .method = "-vals" },
+        // assocEx = assoc that THROWS when the key is already present. clj's
+        // IPersistentMap declares it, so a type implementing the interface
+        // faithfully declares it too (replikativ/boring's UnknownRecord does,
+        // and that single unwired name was the whole reason boring.data would
+        // not load). The declaring type's own body supplies the behaviour, so
+        // registering the method is all cljw owes it.
+        //
+        // Deliberately NOT added to clojure_lang_method.METHOD_MAP: there is no
+        // clojure.core fn with assocEx's semantics, and mapping it to `assoc`
+        // would answer a DIFFERENT question silently — the failure class F-002
+        // rejects. `(.assocEx native-map k v)` therefore still raises, which is
+        // the honest answer until a caller justifies a real primitive.
+        .{ .clj = "assocEx", .protocol = "IPersistentMap", .method = "-assoc-ex" },
+        .{ .clj = "-assoc-ex", .protocol = "IPersistentMap", .method = "-assoc-ex" },
     },
 };
 
@@ -462,6 +517,16 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "MapEquivalence", MAP_EQUIVALENCE },
     .{ "IPersistentMap", IPERSISTENT_MAP },
     .{ "java.io.Serializable", SERIALIZABLE },
+    // Both spellings: a library `:import`s the class then reifies it bare
+    // (hive-weave.pool), or names it qualified inline (hive-weave.guarded).
+    .{ "java.util.concurrent.ThreadFactory", THREAD_FACTORY },
+    .{ "ThreadFactory", THREAD_FACTORY },
+    .{ "java.util.concurrent.Callable", CALLABLE },
+    .{ "Callable", CALLABLE },
+    .{ "java.lang.Runnable", RUNNABLE },
+    .{ "Runnable", RUNNABLE },
+    .{ "java.util.concurrent.Future", FUTURE },
+    .{ "Future", FUTURE },
     // D-416 bare aliases (data.finger-tree declares these bare) — see the D-306
     // collection-base note below.
     .{ "ILookup", ILOOKUP },
@@ -518,6 +583,12 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "clojure.lang.IPending", IPENDING },
     // D-400 marker-family remainder.
     .{ "clojure.lang.IKVReduce", IKVREDUCE },
+    // java.util.Map$Entry: qualified + the bare nested name a lib uses after
+    // `(:import (java.util Map$Entry))`. clojure.lang.IMapEntry qualified only
+    // (the bare `IMapEntry` is the cljw protocol Var its methods route to).
+    .{ "java.util.Map$Entry", MAP_ENTRY },
+    .{ "Map$Entry", MAP_ENTRY },
+    .{ "clojure.lang.IMapEntry", IMAP_ENTRY },
     .{ "clojure.lang.IBlockingDeref", IBLOCKING_DEREF },
     // Qualified spelling ONLY: a bare "Comparable" key would make the
     // rewrite's own second-pass section (headed by the bare canonical)
@@ -572,7 +643,7 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
 /// IPersistentMap / IPersistentVector) DERIVE from the `interface_membership`
 /// SSOT (the same source class_name.matchInterface uses), so the extend-target
 /// lists live in ONE place and cannot drift from instance? membership (ADR-0116
-/// Decision C; D-317). IPersistentVector's set = INDEXED_TAGS
+/// Decision C; D-317). IPersistentVector's set = IPV_TAGS
 /// {vector, map_entry}: clj distributes an IPV-extended protocol to MapEntry (a
 /// MapEntry IS-A IPersistentVector — clj-verified), so the prior {vector}-only
 /// set mis-dispatched a MapEntry. Distinct from MARKERS (deftype-supertype /
@@ -583,13 +654,14 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
 /// `name` is not an extend-target interface.
 pub fn nativeExtendTags(name: []const u8) ?[]const []const u8 {
     const simple = interface_membership.simpleOf(name);
-    if (std.mem.eql(u8, simple, "IPersistentVector")) return interface_membership.INDEXED_NAMES;
+    if (std.mem.eql(u8, simple, "IPersistentVector")) return interface_membership.IPV_NAMES;
     if (std.mem.eql(u8, simple, "ISeq")) return interface_membership.ISEQ_NAMES;
     // D-534: the abstract collection bases as extend-protocol targets (algo.monads
     // writer-monad extends a user protocol onto them) → native set / list tags.
     if (std.mem.eql(u8, simple, "APersistentSet")) return interface_membership.SET_NAMES;
     if (std.mem.eql(u8, simple, "IPersistentList")) return interface_membership.IPLIST_NAMES;
     if (std.mem.eql(u8, simple, "Named")) return interface_membership.NAMED_NAMES;
+    if (std.mem.eql(u8, simple, "Fn")) return interface_membership.FN_NAMES;
     if (std.mem.eql(u8, simple, "IPersistentMap")) return interface_membership.MAP_NAMES;
     // D-478: concrete host types clojure.datafy extends Datafiable to — each has a
     // native cljw value tag, so the impl distributes over it (a namespace/ref/
@@ -707,4 +779,23 @@ test "ILookup is a protocol_remap (not a quote-wrap marker); valAt → ILookup/-
     try std.testing.expectEqualStrings("ILookup", r.protocol);
     try std.testing.expectEqualStrings("-lookup", r.method);
     try std.testing.expect(hi.remapMethod("nonexistent") == null);
+}
+
+test "java.util.Map$Entry is a protocol_remap onto IMapEntry (getKey/getValue)" {
+    inline for (.{ "java.util.Map$Entry", "Map$Entry" }) |n| {
+        try std.testing.expect(isProtocolRemap(n));
+        try std.testing.expect(!isMarker(n));
+        const hi = lookup(n).?;
+        const k = hi.remapMethod("getKey").?;
+        try std.testing.expectEqualStrings("IMapEntry", k.protocol);
+        try std.testing.expectEqualStrings("-key", k.method);
+        const v = hi.remapMethod("getValue").?;
+        try std.testing.expectEqualStrings("IMapEntry", v.protocol);
+        try std.testing.expectEqualStrings("-val", v.method);
+    }
+    const ime = lookup("clojure.lang.IMapEntry").?;
+    try std.testing.expectEqualStrings("-key", ime.remapMethod("key").?.method);
+    try std.testing.expectEqualStrings("-val", ime.remapMethod("val").?.method);
+    // The bare protocol Var name stays unrecognised (no second-pass re-route).
+    try std.testing.expect(lookup("IMapEntry") == null);
 }

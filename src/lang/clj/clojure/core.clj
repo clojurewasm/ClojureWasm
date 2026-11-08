@@ -97,12 +97,20 @@
            (if inc (str "." inc) "")
            (if q (str "-" q) "")))))
 
-;; `(list & items)` — construct a list of the args. The variadic
-;; rest-binding yields a `.list` for ≥1 arg, but nil for zero args
-;; (`& xs` binds nil when empty, matching JVM `((fn [& xs] xs))` → nil).
-;; `(list)` must be `()` (JVM `PersistentList/EMPTY`), so map the empty
-;; case to the quoted empty list `'()` (the interned empty value, D-164).
-(def list (fn* [& xs] (if xs xs '())))
+;; `(list & items)` constructs a PersistentList in argument order. `apply`
+;; may bind any ISeq as the rest argument, so copy through an empty list
+;; instead of returning that sequence or inheriting its metadata. Two passes
+;; use only Stage-0 primitives; reverse/reduce are defined later in bootstrap.
+(def list
+  (fn* [& xs]
+    (let* [reversed (loop* [s (seq xs) acc '()]
+                      (if s
+                        (recur (next s) (conj acc (first s)))
+                        acc))]
+      (loop* [s (seq reversed) acc '()]
+        (if s
+          (recur (next s) (conj acc (first s)))
+          acc)))))
 
 ;; `(-seq-or-empty coll)` — a seq view that is `()` (not nil) when empty.
 ;; The eager seq fns (sort / distinct / dedupe / map-indexed / …) build a
@@ -127,8 +135,8 @@
 ;; map / filter / keep / remove / drop are LAZY (ADR-0054 cycle 2/3):
 ;; each wraps its step in `lazy-seq` so it composes with infinite
 ;; producers (`(first (map inc (iterate inc 0)))` → 1, no hang;
-;; `(first (drop 100 (range)))` → 100). `take` stays bounded-eager (it
-;; realizes only N, so it already terminates on an infinite source).
+;; `(first (drop 100 (range)))` → 100). `take` is lazy too: constructing
+;; `(take n source)` does not pull source before the result is demanded.
 ;; The `-*-eager` map/filter/keep/remove/drop leaves are deleted.
 ;; `map` — 1/2/3-coll + n-coll variadic. Multi-coll walks colls in parallel,
 ;; stopping at the shortest (D-134). The n-ary arm delegates to `-map-n-step`,
@@ -150,16 +158,17 @@
 ;; `map` stamps the descriptor on the outer node reduce sees. [refs: O-023]
 (def -map-lazy
   (fn* [f coll]
-    ;; PERF: chunked source → transform a whole 32-chunk per thunk (O-004).
-    (lazy-seq
-      (let [s (seq coll)]
-        (if s
-          (if (chunked-seq? s)
-            ;; PERF: O-032 in-Zig chunk drain — the per-element `.clj` loop moved
-            ;; into `cljw.internal/__chunk-map-step` (producer analogue of reduceFn's O-004 drain).
-            (chunk-cons (cljw.internal/__chunk-map-step f s) (-map-lazy f (chunk-rest s)))
-            (cons (f (first s)) (-map-lazy f (rest s))))
-          nil)))))
+    ;; PERF: O-110 the node body runs in Zig (`__map-lazy`, lazy_step.zig):
+    ;; (lazy-seq (when-let [s (seq coll)] (if (chunked-seq? s) (chunk-cons
+    ;; <f over the chunk, O-032> (-map-lazy f (chunk-rest s))) (cons (f (first
+    ;; s)) (-map-lazy f (rest s)))))) with no closure or eval re-entry per node.
+    (cljw.internal/__map-lazy f coll)))
+;; PERF: O-062 internal lazy body for 2/3-coll `map`: one lazy node per element
+;; (clj's multi-coll map is unchunked), whose body is the Zig `__map-step`
+;; (seq all, f on the firsts, recur on the rests). Passes itself as `self`.
+(def ^:private -map-n-lazy
+  (fn* ([f c1 c2] (lazy-seq (cljw.internal/__map-step f -map-n-lazy c1 c2)))
+       ([f c1 c2 c3] (lazy-seq (cljw.internal/__map-step f -map-n-lazy c1 c2 c3)))))
 ;; Forward-declared so map's n-ary arm resolves it at def time (D-446).
 (declare -map-n-step)
 (def map
@@ -178,19 +187,10 @@
         ;; PERF: O-023 stamp the fusion descriptor on the outer node so `reduce`
         ;; fuses; the lazy body (`-map-lazy`) is unchanged → seq ops identical.
         (-lazy-set-fuse (-map-lazy f coll) (-fuse-descriptor (map f) coll)))
-       ([f c1 c2]
-        (lazy-seq
-          (let [s1 (seq c1) s2 (seq c2)]
-            (if (and s1 s2)
-              (cons (f (first s1) (first s2)) (map f (rest s1) (rest s2)))
-              nil))))
-       ([f c1 c2 c3]
-        (lazy-seq
-          (let [s1 (seq c1) s2 (seq c2) s3 (seq c3)]
-            (if (and s1 s2 s3)
-              (cons (f (first s1) (first s2) (first s3))
-                    (map f (rest s1) (rest s2) (rest s3)))
-              nil))))
+       ;; PERF: O-062 the 2/3-coll step body runs in Zig (`__map-step`): same
+       ;; unchunked one-f-per-node shape as clj, the lazy node stays here.
+       ([f c1 c2] (-map-n-lazy f c1 c2))
+       ([f c1 c2 c3] (-map-n-lazy f c1 c2 c3))
        ;; n-ary: zip 4+ colls, stopping at the shortest (clj parity).
        ([f c1 c2 c3 & colls]
         (map (fn* [args] (apply f args)) (-map-n-step (conj colls c3 c2 c1))))))
@@ -207,18 +207,11 @@
 ;; PERF: O-023 internal lazy body for `filter` — recurses on itself, no stamp.
 (def -filter-lazy
   (fn* [pred coll]
-    (lazy-seq
-      (let [s (seq coll)]
-        (if s
-          (if (chunked-seq? s)
-            ;; PERF: O-032 in-Zig chunk drain — the per-element `.clj` loop moved
-            ;; into `cljw.internal/__chunk-filter-step` (survivors-only partial chunk).
-            (chunk-cons (cljw.internal/__chunk-filter-step pred s) (-filter-lazy pred (chunk-rest s)))
-            (let [v (first s)]
-              (if (pred v)
-                (cons v (-filter-lazy pred (rest s)))
-                (-filter-lazy pred (rest s)))))
-          nil)))))
+    ;; PERF: O-110 the node body runs in Zig (`__filter-lazy`, lazy_step.zig):
+    ;; a chunked source keeps chunk-of-32 survivors (O-032), an unchunked one
+    ;; conses each survivor onto (-filter-lazy pred (rest s)); a non-match
+    ;; continues in the same realization, as clj's recursive body does.
+    (cljw.internal/__filter-lazy pred coll)))
 (def filter
   (fn* ([pred]
         ;; transducer arity
@@ -241,7 +234,19 @@
                         nm (vswap! nv dec)
                         result (if (> m 0) (rf result input) result)]
                     (if (not (> nm 0)) (ensure-reduced result) result)))))))
-       ([n coll] (-take-eager n coll))))
+       ([n coll]
+        ;; PERF: O-110 a fixed-precision n takes native lazy nodes
+        ;; (`__take-lazy`, lazy_step.zig) with this exact body; any other n
+        ;; (a double, a ratio) keeps the interpreted one.
+        (if (int? n)
+          (cljw.internal/__take-lazy n coll)
+          (lazy-seq
+            (if (pos? n)
+              (let [s (seq coll)]
+                (if s
+                  (cons (first s) (take (dec n) (rest s)))
+                  nil))
+              nil))))))
 (def drop
   (fn* ([n]
         ;; transducer arity: stateful (skips the first n inputs)
@@ -262,7 +267,12 @@
 ;; nthnext/nthrest: [coll n] arg order (JVM clojure.core). The sequential
 ;; destructure `& rest` lowering (D-076) emits (nthnext g idx). nthnext
 ;; seqs (nil when empty); nthrest returns the rest coll as-is.
-(def nthnext (fn* [coll n] (seq (drop n coll))))
+(def nthnext
+  (fn* [coll n]
+    (loop [s (seq coll) n n]
+      (if (and s (> n 0))
+        (recur (next s) (dec n))
+        s))))
 ;; n <= 0 returns coll UNCHANGED (clj preserves the input, not a seq view):
 ;; `(nthrest [1 2 3] 0)` => [1 2 3], not (1 2 3).
 (def nthrest (fn* [coll n] (if (pos? n) (drop n coll) coll)))
@@ -496,8 +506,9 @@
 ;; bootstrap-order-safe. The lazy-seq realization utilities (clojure.core).
 (def dorun
   (fn* ([coll]
-        (loop* [s (seq coll)]
-          (if s (recur (next s)) nil)))
+        ;; PERF: the seq/next walk runs natively, a chunk at a time over a
+        ;; chunked seq. [refs: O-077]
+        (cljw.internal/__dorun coll))
        ([n coll]
         (loop* [i n s (seq coll)]
           (if (if (pos? i) s nil) (recur (dec i) (next s)) nil)))))
@@ -571,26 +582,40 @@
 ;; → true iff every `(pi & args)` is logical-true, else false (D-134).
 ;; clj some-fn is min-1-arity (D-446): `(some-fn)` throws. `[p & preds]`
 ;; enforces ≥1; rebind preds to the full list so the body is unchanged.
+;; clj applies EACH predicate to EACH arg (arg-outer, pred-inner), not all
+;; args to each predicate: `((some-fn p1 p2) x y)` is `(or (p1 x) (p2 x)
+;; (p1 y) (p2 y))`. It returns the first truthy value (some-fn's actual
+;; value, not a boolean), else the last one evaluated (nil when no args).
 (def some-fn
   (fn* [p & preds]
     (let* [preds (cons p preds)]
       (fn* [& args]
-        (if (seq preds)
-          (loop [ps preds]
-            (let* [r (apply (first ps) args)]
-              (if r
-                r
-                (if (seq (rest ps)) (recur (rest ps)) r))))
-          nil)))))
+        (loop [as args last-v nil]
+          (if (seq as)
+            (let* [x (first as)
+                   v (loop [ps preds seen nil]
+                       (if (seq ps)
+                         (let* [r ((first ps) x)]
+                           (if r r (recur (rest ps) r)))
+                         seen))]
+              (if v v (recur (rest as) v)))
+            last-v))))))
 
+;; The `every-pred` mirror: `(and (p1 x) (p2 x) (p1 y) (p2 y))`, short-circuit
+;; to a boolean false on the first falsey, true when all pass (or no args).
 ;; clj every-pred is min-1-arity (D-446): `(every-pred)` throws.
 (def every-pred
   (fn* [p & preds]
     (let* [preds (cons p preds)]
       (fn* [& args]
-        (loop [ps preds]
-          (if (seq ps)
-            (if (apply (first ps) args) (recur (rest ps)) false)
+        (loop [as args]
+          (if (seq as)
+            (let* [x (first as)
+                   ok (loop [ps preds]
+                        (if (seq ps)
+                          (if ((first ps) x) (recur (rest ps)) false)
+                          true))]
+              (if ok (recur (rest as)) false))
             true))))))
 
 ;; `(trampoline f & args)` — call f; while the result is a fn, call it
@@ -671,7 +696,7 @@
         (cljw.internal/__queue-pop coll)
         (if (vector? coll)
           (if (pos? (count coll))
-            (into [] (take (dec (count coll)) coll))
+            (cljw.internal/__vector-pop coll)
             (throw (IllegalStateException. "Can't pop empty vector")))
           (if (list? coll)
             (if (seq coll)
@@ -682,28 +707,60 @@
               (-pop coll)
               (throw (ClassCastException. "Can't pop: not a stack (list, vector)")))))))))
 
-;; `(find m k)` — the map entry `[k v]` for key k if present, else nil
-;; (distinguishes "absent" from "present with nil value" via contains?).
-;; cw v1 represents the entry as a 2-vector (no distinct MapEntry type).
+;; `(find m k)` — the map entry for key k if present, else nil (distinguishes
+;; "absent" from "present with nil value" via contains?). The result is a real
+;; map ENTRY, as in clj: `(map-entry? (find {:a 1} :a))` is true and `key`/`val`
+;; work on it. It built a plain 2-vector until entries became a distinct type,
+;; which made `(key (find m k))` throw — and `find` also backs `.entryAt`, so
+;; every Associative host-method path inherited the bug. The entry's key is
+;; the one STORED in m (clj Associative.entryAt), not the probe:
+;; `(find {1N :a} 1)` is [1N :a], `(find {0.0 :z} -0.0)` is [0.0 :z].
 (def find
-  (fn* [m k] (if (contains? m k) [k (get m k)] nil)))
+  (fn* [m k] (cljw.internal/__entry-at m k)))
 
 ;; `(subvec v start [end])` — the elements of v in [start, end) (end
-;; defaults to (count v)) as a vector. cw v1 builds a fresh vector (O(n))
-;; via take/drop rather than JVM's O(1) shared-structure view (D-134).
-(def subvec
-  (fn* ([v start] (subvec v start (count v)))
-       ([v start end]
+;; defaults to (count v)) as a vector. For a vector this is JVM's O(1)
+;; shared-structure VIEW (the `.sub_vector` tag; D-583); a non-vector
+;; seqable falls back to the eager take/drop build.
+(def ^:private -subvec-slow
+  (fn* ([v start end]
+        (when (nil? v)
+          (throw (NullPointerException. "subvec: nil vector")))
+        (when-not (vector? v)
+          (throw (ClassCastException. "subvec: expected a vector")))
         ;; clj bounds-checks (0 <= start <= end <= count) and throws
         ;; IndexOutOfBounds — it does NOT clamp like take/drop would
         ;; (`(subvec [1 2 3] 1 10)` throws, not `[2 3]`).
-        (let [c (count v)]
+        ;;
+        ;; clj's `RT.subvec` takes primitive `int` params, so a float / ratio
+        ;; index is coerced via `Number.intValue` (truncate toward zero; NaN → 0)
+        ;; BEFORE the bounds check: (subvec [0 1 2] 2.72 3.14) → [2],
+        ;; (subvec [0 1 2] 1/2 4/3) → [0], (subvec [0 1 2] ##NaN 3) → [0 1 2],
+        ;; (subvec [0 1 2] 1 ##NaN) → start 1 > end 0 → out-of-bounds. Coercing
+        ;; here is also what keeps a non-integer index off `__subvec`'s raw i64
+        ;; cast, which would `@panic` on a NaN / ratio (ADR-0019 — no panic on
+        ;; user input). A non-number index (`:a`, `nil`, a symbol) has no
+        ;; `intValue`, so `int` throws — matching clj's cast-failure throw.
+        (let [->idx (fn* [x] (if (and (float? x) (not (== x x))) 0 (int x)))
+              start (->idx start)
+              end (->idx end)
+              c (count v)]
           ;; clj throws IndexOutOfBoundsException here (NOT an ex-info) — so a
           ;; `(catch IndexOutOfBoundsException …)` around a subvec works.
           (when (or (< start 0) (< end start) (< c end))
             (throw (IndexOutOfBoundsException.
                      (str "subvec index out of bounds: start=" start ", end=" end ", count=" c))))
-          (into [] (take (- end start) (drop start v)))))))
+          ;; O(1) shared-structure view, preserving numeric coercion and bounds.
+          (cljw.internal/__subvec v start end)))))
+
+(def subvec
+  (fn* ([v start] (subvec v start (count v)))
+       ([v start end]
+        ;; PERF: in-bounds integer indices over a vector are answered by one
+        ;; native step; nil means "not that shape", so everything below is the
+        ;; coercing / throwing path. [refs: O-073]
+        (or (cljw.internal/__subvec-fast v start end)
+            (-subvec-slow v start end)))))
 
 ;; `(bounded-count n coll)` — for a `counted?` coll return its FULL count (clj:
 ;; `(bounded-count 3 (range 100))` → 100, range is O(1) counted); otherwise walk
@@ -733,21 +790,32 @@
 ;; ----------------------------------------------------------------
 
 ;; `(select-keys m ks)` — return a map containing only the keys in
-;; `ks` that are present in `m`. JVM uses `find` to distinguish
-;; "absent" from "nil-valued"; cw v1 uses `contains?` (same
-;; semantic when nil-values are absent — Phase 7+ value-meta layer
-;; adds `find`).
+;; `ks` that are present in `m`. As in clj it conjoins the `find` ENTRY,
+;; so a present nil value survives and the result carries m's STORED key
+;; (`(select-keys {1N :a} [1])` is {1N :a}). `m` must be associative or nil: JVM `RT/find` casts a
+;; non-Associative, non-nil arg to `Map` → ClassCastException, so a
+;; string / list / number throws rather than silently returning `{}`.
 (def select-keys
   (fn* [m ks]
-    (reduce (fn* [acc k]
-              (if (contains? m k)
-                (assoc acc k (get m k))
-                acc))
-            {}
-            ks)))
+    ;; No lookup is attempted when no keys were requested.
+    (if-let [ks (seq ks)]
+      (if (or (nil? m) (associative? m))
+        (reduce (fn* [acc k]
+                  (if-let [e (find m k)]
+                    (assoc acc (nth e 0) (nth e 1))
+                    acc))
+                {}
+                ks)
+        (throw (ClassCastException. "select-keys: not associative")))
+      {})))
 
 ;; `(merge & maps)` — right-most key wins. nil args are skipped.
-;; Variadic via `[& maps]`; 0-arity returns nil (matches JVM).
+;; JVM `merge` reduces with `conj`, so a later arg that is a 2-vector
+;; or a map entry is added AS an entry (`(merge {:a 1} [:b 2])` →
+;; `{:a 1 :b 2}`), not iterated as a map — the old `keys`/`assoc` body
+;; rejected a plain vector. Variadic via `[& maps]`; 0-arity returns nil
+;; (matches JVM). `(if (nil? acc) {} acc)` seeds a map only when the
+;; first arg was nil, so a vector-first `merge` keeps vector-conj.
 (def merge
   (fn* [& maps]
     (if (= 0 (count maps))
@@ -755,9 +823,7 @@
       (reduce (fn* [acc m]
                 (if (nil? m)
                   acc
-                  (reduce (fn* [a k] (assoc a k (get m k)))
-                          acc
-                          (keys m))))
+                  (conj (if (nil? acc) {} acc) m)))
               (first maps)
               (rest maps)))))
 ;; `(merge-with f & maps)` — like merge, but a key present in more than
@@ -867,12 +933,7 @@
           (cons (first s) (-concat2 (rest s) y))
           (seq y))))))
 
-;; `(-concat-seqs ss)` — lazily catenate a seq OF seqs, one level deep,
-;; WITHOUT realizing the outer `ss` (the lazy counterpart of
-;; `(apply concat ss)`, which would hang on an infinite outer because cw
-;; v1's `apply` eagerly spreads its final argument). Walks `ss` under
-;; `lazy-seq` so it composes with an infinite outer. Defined BEFORE `concat`
-;; (which now delegates to it) so the bootstrap load order resolves it.
+;; Lazily flatten the outer sequence one level at a time.
 (def -concat-seqs
   (fn* [ss]
     (lazy-seq
@@ -881,36 +942,19 @@
           (-concat2 (first s) (-concat-seqs (rest s)))
           nil)))))
 
-;; `(concat & colls)` — lazy left-to-right catenation (JVM-idiom).
-;; Folds the (finite) arg list with `-concat2`; element realization
-;; stays lazy. `(concat)` → (); `(concat a)` → `(seq a)`.
-;; NOTE: this is a LEFT fold deliberately (O-013 RETIRED). A right-nested
-;; `-concat-seqs` form is O(n) for `(apply concat many-colls)` BUT places a
-;; recursive 2-arg `concat`'s tail arg behind an extra `-concat2`/lazy-seq
-;; layer, so a deeply self-recursive caller like `interleave`
-;; (`(concat (map first ss) (apply interleave (map rest ss)))`) accumulates one
-;; native force-frame per level → stack overflow at ~50k. The left fold keeps
-;; the tail arg in `-concat2`'s 2nd (seq-y) position, so deep 2-arg recursion
-;; stays flat. The `(apply concat N-colls)` O(n×N) cost is the accepted
-;; tradeoff (rare; `mapcat` already uses the lazy `-concat-seqs`).
+;; The two-argument path keeps its recursive tail directly in -concat2's
+;; second position; variadic calls flatten their remaining collections lazily.
 (def concat
-  (fn* [& colls]
-    ;; `(concat)` (no colls) → () not nil (D-164); the reduce init nil is
-    ;; lifted to the empty list when nothing is catenated.
-    (or (reduce -concat2 nil colls) '())))
+  (fn* ([] (lazy-seq nil))
+       ([x] (-concat2 nil x))
+       ([x y] (-concat2 x y))
+       ([x y & zs] (-concat-seqs (cons x (cons y zs))))))
 
-;; `(mapcat f & colls)` — the JVM shape `(apply concat (apply map f colls))`,
-;; but with `-concat-seqs` instead of `apply concat` to stay lazy over an
-;; infinite outer. Variadic over collections (`map` walks them in parallel;
-;; D-070 multi-arity makes this reachable). `(apply map f colls)` only
-;; spreads the finite `colls` list, so it never eager-realizes an infinite
-;; coll; lazy throughout — `(take 5 (mapcat (fn [x] [x x]) (range)))` works.
-;; `(mapcat f)` (no colls) returns the transducer `(comp (map f) cat)`
-;; (D-177 single-arity); with colls it is the lazy variadic above.
+;; apply inspects concat's bounded argument prefix and preserves its lazy rest.
 (def mapcat
   (fn* [f & colls]
     (if (seq colls)
-      (-concat-seqs (apply map f colls))
+      (apply concat (apply map f colls))
       (comp (map f) cat))))
 
 ;; `(tree-seq branch? children root)` — a lazy depth-first (pre-order) seq
@@ -923,6 +967,19 @@
       (cons root
         (when (branch? root)
           (mapcat (fn* [c] (tree-seq branch? children c)) (children root)))))))
+
+;; `(file-seq dir)` — lazy depth-first seq of `dir` and everything under it,
+;; as host File values. The JVM definition is exactly this `tree-seq` over
+;; `.isDirectory` / `.listFiles`, so it is expressed the same way here rather
+;; than as a separate walker. A non-directory yields just itself.
+(def ^{:doc "A tree seq on host files: dir and everything beneath it, depth-first.
+  A non-directory yields just itself."
+       :arglists '([dir])}
+  file-seq
+  (fn* [dir]
+    (tree-seq (fn* [f] (.isDirectory f))
+              (fn* [d] (seq (.listFiles d)))
+              dir)))
 
 ;; `(line-seq rdr)` — lazy seq of the lines of `rdr` (a host reader exposing
 ;; `.readLine`, e.g. from `clojure.java.io/reader`). The head line is read
@@ -962,7 +1019,8 @@
 
 ;; `(mapv f coll)` — eager `map` returning a vector. Single-coll form.
 (def mapv
-  (fn* ([f coll] (reduce (fn* [acc x] (conj acc (f x))) [] coll))
+  ;; PERF: single-coll form builds through a transient, clj's own shape (O(n) persistent! over a flat buffer vs N persistent conjs) [refs: O-003, D-180]
+  (fn* ([f coll] (persistent! (reduce (fn* [v o] (conj! v (f o))) (transient []) coll)))
        ([f c1 c2] (vec (map f c1 c2)))
        ([f c1 c2 c3] (vec (map f c1 c2 c3)))
        ([f c1 c2 c3 & colls] (vec (apply map f c1 c2 c3 colls)))))
@@ -1042,8 +1100,15 @@
 ;; `(shuffle coll)` — a random permutation of coll as a vector. Fisher-Yates
 ;; over an immutable vector: for i from n-1 down to 1, swap index i with a
 ;; random index in [0, i] via two assocs. Placed after `vec` (D-134).
+(def instance? (fn* [c x] (cljw.internal/__instance-of? c x)))
+
 (def shuffle
   (fn* [coll]
+    ;; JVM shuffle copies a java.util.Collection before shuffling.
+    (when (nil? coll)
+      (throw (NullPointerException. "shuffle: nil collection")))
+    (when-not (instance? java.util.Collection coll)
+      (throw (ClassCastException. "shuffle: expected a Collection")))
     (let [v0 (vec coll)]
       (loop [v v0 i (dec (count v0))]
         (if (< i 1)
@@ -1084,18 +1149,23 @@
       ;; is interned, so `identical?` detects "no impl" exactly.
       (let* [r (cljw.internal/__kv-reduce-or m f init :clojure.core/kv-reduce-none)]
         (if (identical? r :clojure.core/kv-reduce-none)
-          (reduce (fn* [acc k] (f acc k (get m k))) init (keys m))
+          ;; Walk ENTRIES, never keys-then-get: a key that is not `=` to
+          ;; itself (##NaN, or a list holding it) misses its own lookup, so
+          ;; `(get m k)` would hand f nil instead of the stored value.
+          (reduce (fn* [acc e] (f acc (nth e 0) (nth e 1))) init m)
           r)))))
 
 ;; `(update-keys m f)` — new map with `(f k)` for each key, same vals.
+;; Entry walk, not keys-then-get, for the same NaN-key reason as reduce-kv.
 (def update-keys
   (fn* [m f]
-    (reduce (fn* [acc k] (assoc acc (f k) (get m k))) {} (keys m))))
+    (reduce (fn* [acc e] (assoc acc (f (nth e 0)) (nth e 1))) {} m)))
 
 ;; `(update-vals m f)` — new map with `(f v)` for each val, same keys.
+;; Entry walk, not keys-then-get, for the same NaN-key reason as reduce-kv.
 (def update-vals
   (fn* [m f]
-    (reduce (fn* [acc k] (assoc acc k (f (get m k)))) {} (keys m))))
+    (reduce (fn* [acc e] (assoc acc (nth e 0) (f (nth e 1)))) {} m)))
 
 ;; `(seq-to-map-for-destructuring s)` — clojure 1.11. Builds a map from the rest
 ;; args of a `& {:keys […]}` call: kwargs pairs, a single trailing map, or a mix
@@ -1220,13 +1290,13 @@
             coll)))
 
 ;; ----------------------------------------------------------------
-;; D-134 cluster 4 — eager seq helpers (Pattern A; recursion for
-;; zipmap/interleave).
+;; D-134 cluster 4 — sequence helpers (Pattern A; recursion for
+;; interpose/zipmap/interleave).
 ;; ----------------------------------------------------------------
 
 ;; `(empty? coll)` — true when coll has no items (nil counts as empty).
 (def empty?
-  (fn* [coll] (= 0 (count coll))))
+  (fn* [coll] (not (seq coll))))
 
 ;; `(fnil f x)` / `(fnil f x y)` / `(fnil f x y z)` — wrap f so its first
 ;; 1/2/3 args are replaced by the defaults when nil; trailing args pass
@@ -1236,10 +1306,26 @@
        ([f x y] (fn* [a b & args] (apply f (if (nil? a) x a) (if (nil? b) y b) args)))
        ([f x y z] (fn* [a b c & args] (apply f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c) args)))))
 
+;; Lazy collection engine for `interpose`. The second lazy boundary is
+;; intentional: realizing an item does not pull its successor; requesting the
+;; separator pulls that successor before exposing the separator, matching JVM
+;; Clojure's `(drop 1 (interleave (repeat sep) coll))` timing.
+(def ^:private -interpose-lazy
+  (fn* [sep coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s
+          (cons (first s)
+                (lazy-seq
+                  (let [r (next s)]
+                    (if r
+                      (cons sep (-interpose-lazy sep r))
+                      nil))))
+          nil)))))
+
 ;; `(interpose sep)` / `(interpose sep coll)` — sep between consecutive items.
 ;; The 1-arg form is a stateful transducer (emit sep before every item except
-;; the first); the 2-arg form is eager (prepend sep before each, drop the
-;; leading sep with `rest`).
+;; the first); the 2-arg form is a lazy seq and composes with infinite inputs.
 (def interpose
   (fn* ([sep]
         (fn* [rf]
@@ -1252,7 +1338,7 @@
                       (if (reduced? sepr) sepr (rf sepr input)))
                     (do (vreset! started true) (rf result input))))))))
        ([sep coll]
-        (rest (reduce (fn* [acc x] (conj (conj acc sep) x)) [] coll)))))
+        (-interpose-lazy sep coll))))
 
 ;; `(zipmap ks vs)` — map pairing keys with values, stopping at the
 ;; shorter. Recursive parallel walk.
@@ -1285,16 +1371,40 @@
 ;; D-134 cluster 5 — reduce-shaped helpers (Pattern A).
 ;; ----------------------------------------------------------------
 
-;; `(max-key f & xs)` — the x with the greatest (f x); ties keep the
-;; earlier-seen. `(min-key …)` is the mirror. reduce uses (first xs)
-;; as the seed (≥1 arg required, matching JVM).
+;; `(max-key f & xs)` — the x with the greatest (f x); ties keep the LATER-seen.
+;; `(min-key …)` is the mirror. This reproduces clj's exact algorithm, which is
+;; NOT a uniform reduce: the seed of the first two uses a STRICT compare while
+;; the fold of the rest uses a NON-strict one. The two disagree only on IEEE
+;; NaN keys — the seed picks the second operand, the fold keeps the accumulator —
+;; and the suite pins those cases (e.g. `(min-key identity [##-Inf ##NaN 1])`
+;; => ##NaN but `[##-Inf 1 ##NaN]` => ##-Inf). ≥1 x required, matching JVM.
 (def max-key
-  (fn* [f & xs]
-    (reduce (fn* [a b] (if (>= (f a) (f b)) a b)) xs)))
+  (fn* [f x & xs]
+    (if (seq xs)
+      (let* [y (first xs)
+             kx (f x) ky (f y)
+             gt (> kx ky)
+             v0 (if gt x y) kv0 (if gt kx ky)]
+        (loop [v v0 kv kv0 more (rest xs)]
+          (if (seq more)
+            (let* [w (first more) kw (f w)]
+              (if (>= kw kv) (recur w kw (rest more)) (recur v kv (rest more))))
+            v)))
+      x)))
 
 (def min-key
-  (fn* [f & xs]
-    (reduce (fn* [a b] (if (<= (f a) (f b)) a b)) xs)))
+  (fn* [f x & xs]
+    (if (seq xs)
+      (let* [y (first xs)
+             kx (f x) ky (f y)
+             lt (< kx ky)
+             v0 (if lt x y) kv0 (if lt kx ky)]
+        (loop [v v0 kv kv0 more (rest xs)]
+          (if (seq more)
+            (let* [w (first more) kw (f w)]
+              (if (<= kw kv) (recur w kw (rest more)) (recur v kv (rest more))))
+            v)))
+      x)))
 
 ;; `(flatten coll)` — the contents of any nested sequential as a single
 ;; flat SEQUENCE (matches JVM: a lazy seq, not a vector). Non-sequential
@@ -1341,11 +1451,20 @@
 ;; `(ffirst coll)` — `(first (first coll))`.
 (def ffirst (fn* [coll] (first (first coll))))
 
-;; `(key e)` / `(val e)` — the key / value of a map entry. cw v1 represents
-;; map entries as 2-element vectors (`(first {:a 1})` → `[:a 1]`), so these
-;; index positionally rather than calling a JVM Map.Entry accessor.
-(def key (fn* [e] (nth e 0)))
-(def val (fn* [e] (nth e 1)))
+;; `(key e)` / `(val e)` — the key / value of a map entry. clj parity: both
+;; require an actual map entry (`map-entry?`), NOT a plain 2-vector. cljw's map
+;; entries are a distinct type — `(map-entry? (first {:a 1}))` → true while
+;; `(map-entry? [:a 1])` → false — so `(key [:k :v])` / `(val nil)` throw a
+;; catchable ClassCastException like clj, rather than indexing positionally.
+;; (Map destructuring feeds real entries via `(first (seq some-map))`, unaffected.)
+;; java.util.Map$Entry / clojure.lang.IMapEntry on a deftype / reify: its
+;; getKey/getValue (or key/val) route here (host_interface MAP_ENTRY), so `key`
+;; / `val` below reach a user entry type the way clj's `(.getKey ^Map$Entry e)`
+;; does. A native MapEntry keeps the positional fast path.
+(defprotocol IMapEntry (-key [e]) (-val [e]))
+
+(def key (fn* [e] (if (map-entry? e) (if (vector? e) (nth e 0) (-key e)) (throw (ClassCastException. "key: not a map entry")))))
+(def val (fn* [e] (if (map-entry? e) (if (vector? e) (nth e 1) (-val e)) (throw (ClassCastException. "val: not a map entry")))))
 
 ;; `(not-empty coll)` — coll if it has items, else nil.
 (def not-empty (fn* [coll] (if (empty? coll) nil coll)))
@@ -1448,7 +1567,10 @@
 ;; a fn body's free symbols at analysis time, so a forward ref to a Var
 ;; def'd later in the file fails to resolve.
 (def iterate
-  (fn* [f x] (lazy-seq (cons x (iterate f (f x))))))
+  ;; PERF: O-110 native lazy nodes (`__iterate-lazy`, lazy_step.zig). As clj's
+  ;; Iterate, `f` runs only when the element after x is realized, never for
+  ;; (first (iterate f x)).
+  (fn* [f x] (cljw.internal/__iterate-lazy f x)))
 
 ;; `(range)` → infinite lazy 0,1,2,…; `(range n)` → 0..n-1;
 ;; `(range start end)` → start..end-1; `(range start end step)` → stepped.
@@ -1478,10 +1600,29 @@
 ;; ----------------------------------------------------------------
 ;; D-134 index/accessor cluster. `iterate` is defined above `range` (its
 ;; 0-arg body resolves it at analysis time); map-indexed / keep-indexed
-;; are eager index walks; butlast drops the final element.
+;; are lazy index walks; butlast drops the final element.
 ;; ----------------------------------------------------------------
 
-;; `(map-indexed f coll)` — eager map passing (index, item) to f.
+;; Lazy collection engine for `map-indexed`. Preserve source chunks like JVM
+;; Clojure while carrying the absolute index across chunk boundaries.
+(def ^:private -map-indexed-lazy
+  (fn* [f idx coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s
+          (if (chunked-seq? s)
+            (let [size (cljw.internal/__chunk-count s)
+                  b (chunk-buffer size)]
+              (loop [i 0]
+                (when (< i size)
+                  (chunk-append b (f (+ idx i) (cljw.internal/__chunk-nth s i)))
+                  (recur (inc i))))
+              (chunk-cons b (-map-indexed-lazy f (+ idx size) (chunk-rest s))))
+            (cons (f idx (first s))
+                  (-map-indexed-lazy f (inc idx) (rest s))))
+          nil)))))
+
+;; `(map-indexed f coll)` — lazy map passing (index, item) to f.
 (def map-indexed
   (fn* ([f]
         ;; transducer arity: stateful index starting at 0
@@ -1491,16 +1632,37 @@
                  ([result] (rf result))
                  ([result input] (rf result (f (vswap! iv inc) input)))))))
        ([f coll]
-        ;; Returns a SEQ (JVM parity). PERF: route through the 1-arg transducer
-        ;; so the source is walked SEQUENTIALLY (O(n)); the old
-        ;; `(mapv #(f % (nth coll %)) (range (count coll)))` was O(n²) on a
-        ;; non-indexed coll (lazy seq / list), where `(nth coll i)` is O(i).
+        ;; Returns a lazy SEQ and walks non-indexed inputs sequentially (O(n)).
         ;; [refs: O-011]
-        (-seq-or-empty (into [] (map-indexed f) coll)))))
+        (-map-indexed-lazy f 0 coll))))
+
+;; Lazy collection engine for `keep-indexed`. The inner loop skips runs of nil
+;; results without building recursive function frames; emitted tails re-enter
+;; through the lazy-seq boundary.
+(def ^:private -keep-indexed-lazy
+  (fn* [f idx coll]
+    (lazy-seq
+      ((fn* [i xs]
+         (let [s (seq xs)]
+           (when s
+             (if (chunked-seq? s)
+               (let [size (cljw.internal/__chunk-count s)
+                     b (chunk-buffer size)]
+                 (loop [j 0]
+                   (when (< j size)
+                     (let [v (f (+ i j) (cljw.internal/__chunk-nth s j))]
+                       (when (not (nil? v)) (chunk-append b v)))
+                     (recur (inc j))))
+                 (chunk-cons b (-keep-indexed-lazy f (+ i size) (chunk-rest s))))
+               (let [v (f i (first s))]
+                 (if (nil? v)
+                   (recur (inc i) (rest s))
+                   (cons v (-keep-indexed-lazy f (inc i) (rest s)))))))))
+       idx coll))))
 
 ;; `(keep-indexed f)` / `(keep-indexed f coll)` — like map-indexed but drops
 ;; nil results. The 1-arg form is a stateful transducer (running index); the
-;; 2-arg form returns a SEQ (JVM parity).
+;; 2-arg form returns a lazy SEQ (JVM parity).
 (def keep-indexed
   (fn* ([f]
         (fn* [rf]
@@ -1511,10 +1673,8 @@
                   (let [i (vswap! iv inc) v (f i input)]
                     (if (nil? v) result (rf result v))))))))
        ([f coll]
-        ;; Returns a SEQ (JVM parity). PERF: route through the 1-arg transducer
-        ;; (sequential O(n) walk); the old `(nth coll i)` over `(range (count
-        ;; coll))` was O(n²) on a non-indexed coll. [refs: O-011]
-        (-seq-or-empty (into [] (keep-indexed f) coll)))))
+        ;; Sequential O(n) walk; no eager intermediate vector. [refs: O-011]
+        (-keep-indexed-lazy f 0 coll))))
 
 ;; `(butlast coll)` — all but the final element, or nil for a coll of
 ;; ≤1 element (JVM returns `(seq ret)` → nil when empty). The `(seq …)`
@@ -1533,7 +1693,10 @@
 ;; `(repeat x)` → infinite lazy x,x,x,…; `(repeat n x)` → n copies (lazy).
 (def repeat
   (fn* ([x] (lazy-seq (cons x (repeat x))))
-       ([n x] (lazy-seq (if (> n 0) (cons x (repeat (dec n) x)) nil)))))
+       ([n x]
+        ;; Repeat.create accepts a long count; conversion precedes realization.
+        (let [n (long n)]
+          (lazy-seq (if (> n 0) (cons x (repeat (dec n) x)) nil))))))
 
 ;; `(any? x)` → always true (clojure 1.9; the "matches anything" spec pred).
 (def any? (fn* [x] true))
@@ -1585,11 +1748,11 @@
 ;; trailing `(cycle coll)` is a thunk, so no eager infinite recursion.
 (def cycle
   (fn* [coll]
-    (lazy-seq
-      (let [s (seq coll)]
-        (if s
-          (-concat2 s (cycle coll))
-          nil)))))
+    ;; Validate and capture the initial seq at invocation, as Cycle.create does.
+    (let [s (seq coll)]
+      (lazy-seq
+        (when s
+          (-concat2 s (cycle s)))))))
 
 ;; `(take-while pred coll)` — leading run for which pred is truthy (lazy).
 ;; `(take-while pred)` / `(take-while pred coll)` — the leading pred-truthy run.
@@ -1641,19 +1804,13 @@
 (def split-at
   (fn* [n coll] [(take n coll) (drop n coll)]))
 
-;; `counted?` is the `counted?` primitive (the `coll?` set minus lazy_seq —
-;; range / cons / chunked / string-seq / map-entry / queue ARE O(1) counted,
-;; clj-verified; the prior `(or vector? map? set? list?)` def wrongly excluded
-;; range et al). `(reversible? x)` — true iff x supports rseq: vector + sorted
-;; map/set (LLRB, ADR-0057).
-(def reversible? (fn* [x] (or (vector? x) (sorted? x))))
-;; Numeric / collection / ident predicates (clj-source-faithful). `rational?`
-;; = exact non-float; `seqable?` = nil / coll / string / seq; `indexed?` =
-;; O(1) nth (vector in cw v1); the ident family keys on keyword/symbol +
-;; `namespace` for the qualified/simple split.
+;; `counted?`, `reversible?`, `seqable?` and `indexed?` are primitives: each is
+;; `(instance? <interface> x)` over the interface_membership SSOT, so a deftype
+;; or reify declaring the interface answers too.
+;; Numeric / ident predicates (clj-source-faithful). `rational?` = exact
+;; non-float; the ident family keys on keyword/symbol + `namespace` for the
+;; qualified/simple split.
 (def rational? (fn* [x] (or (integer? x) (ratio? x) (decimal? x))))
-(def seqable? (fn* [x] (or (nil? x) (seq? x) (coll? x) (string? x))))
-(def indexed? (fn* [x] (vector? x)))
 (def ident? (fn* [x] (or (keyword? x) (symbol? x))))
 (def simple-ident? (fn* [x] (and (ident? x) (not (namespace x)))))
 (def qualified-ident? (fn* [x] (boolean (and (ident? x) (namespace x) true))))
@@ -1666,6 +1823,24 @@
   "Convert a Clojure namespace name to a legal Java package name."
   [ns]
   (.replace (str ns) \- \_))
+
+;; `munge` escapes every character illegal in a Java identifier as a `_TOKEN_`
+;; (the inverse of clojure.repl/demunge). clj routes through Compiler.munge;
+;; cljw carries the same char-map here. The map is a cljw implementation
+;; detail (clj has no `clojure.core/char-map`), so it stays ^:private.
+(def ^:private munge-char-map
+  {\- "_", \: "_COLON_", \+ "_PLUS_", \> "_GT_", \< "_LT_", \= "_EQ_",
+   \~ "_TILDE_", \! "_BANG_", \@ "_CIRCA_", \# "_SHARP_", \' "_SINGLEQUOTE_",
+   \" "_DOUBLEQUOTE_", \% "_PERCENT_", \^ "_CARET_", \& "_AMPERSAND_",
+   \* "_STAR_", \| "_BAR_", \{ "_LBRACE_", \} "_RBRACE_", \[ "_LBRACK_",
+   \] "_RBRACK_", \/ "_SLASH_", \\ "_BSLASH_", \? "_QMARK_"})
+
+(defn munge
+  "Munges a name string or symbol into a legal Java identifier, escaping each
+  special character as a `_TOKEN_`. Returns the same type as its argument."
+  [s]
+  ((if (symbol? s) symbol str)
+   (apply str (map (fn [c] (get munge-char-map c c)) (str s)))))
 ;; `(take-nth n)` / `(take-nth n coll)` — every nth item. The 1-arg form is a
 ;; stateful transducer (emit when the running index is a multiple of n); the
 ;; 2-arg form is lazy.
@@ -1846,7 +2021,7 @@
 (defprotocol ILookup (-lookup [c k]))
 (defprotocol Indexed (-nth [c i]))
 (defprotocol Associative (-assoc [c k v]) (-contains-key? [c k]) (-entry-at [c k]))
-(defprotocol IPersistentMap (-without [m k]) (-keys [m]) (-vals [m]))
+(defprotocol IPersistentMap (-without [m k]) (-keys [m]) (-vals [m]) (-assoc-ex [m k v]))
 (defprotocol IPersistentSet (-disjoin [s k]))
 ;; Editable / transient collection family (D-286, F-013 definition-derived).
 ;; A deftype declaring these (flatland.ordered's OrderedSet/Transient* types)
@@ -2076,13 +2251,6 @@
 ;; `(map (partial prefer-method mf) …)` / passing it works, matching clj.
 (def prefer-method (fn* [multifn x y] (cljw.internal/__prefer-method! multifn x y)))
 
-;; `instance?` is a FN in clj taking a class VALUE (a class symbol evaluates to a
-;; Class), so it is passable higher-order: `(condp instance? obj Map$Entry …)`,
-;; `(map (partial instance? String) xs)`. cljw had it as a macro (auto-quoting the
-;; class symbol) which broke that. ADR-0128 / D-373: now a fn over the class-value
-;; surface; `cljw.internal/__instance-of?` consults the class_name membership oracle.
-(def instance? (fn* [c x] (cljw.internal/__instance-of? c x)))
-
 ;; `(memoize f)` returns a cached version of f: each distinct argument
 ;; tuple computes f once, then returns the stored result. Keys the
 ;; atom-backed cache by `(vec args)` — vectors compare by value (D-092),
@@ -2151,10 +2319,9 @@
 ;; ----------------------------------------------------------------
 ;; Ad-hoc hierarchies — make-hierarchy / derive / underive / isa? /
 ;; parents / ancestors / descendants over a global hierarchy.
-;; DIVERGENCE: cljw has no JVM Class, so clojure.core's class? branches
-;; are dropped (keyword / symbol / vector tags only). The global
-;; hierarchy is an atom (cljw has no alter-var-root). derive is lenient
-;; on namespacing (clojure.core asserts namespaced tags). Map entries are
+;; The global hierarchy is an atom (cljw has no alter-var-root).
+;; Class supertypes of String are exposed through __class-parents.
+;; Map entries are
 ;; [k v] vectors → nth for key/val.
 ;; ----------------------------------------------------------------
 
@@ -2171,8 +2338,44 @@
             m (cons source (get sources source)))))
 
 (def derive
-  (fn* ([tag parent] (swap! -global-hierarchy derive tag parent) nil)
+  (fn* ([tag parent]
+        ;; clj's 2-arity is STRICTER than its 3-arity, and the difference is
+        ;; real rather than an oversight. Verified against the oracle:
+        ;;   (derive ::a :b)                    -> throws (parent not namespaced)
+        ;;   (derive (make-hierarchy) ::a :b)   -> SUCCEEDS
+        ;; The global hierarchy is shared across every namespace, so an
+        ;; un-namespaced parent there would let one library's :shape collide
+        ;; with another's; a hierarchy VALUE you passed in is your own.
+        ;;
+        ;; The global overload calls namespace on parent before derive;
+        ;; Class parents therefore throw, unlike Class *children* of the
+        ;; three-argument overload. Both global tags must be namespaced.
+        (when-not (or (symbol? parent) (keyword? parent))
+          (throw (ClassCastException.
+                   (str "derive: parent must be a named symbol or keyword, got " (pr-str parent)))))
+        (when-not (namespace parent)
+          (throw (ex-info (str "derive: parent must be namespaced, got " (pr-str parent)) {})))
+        (when-not (or (class? tag)
+                      (and (or (symbol? tag) (keyword? tag)) (namespace tag)))
+          (throw (ex-info (str "derive: tag must be a class or a namespaced symbol/keyword, got "
+                               (pr-str tag))
+                          {})))
+        (swap! -global-hierarchy derive tag parent) nil)
        ([h tag parent]
+        ;; The 3-arity permits a Class tag but requires a Named parent.
+        ;; It does not require the parent to be namespaced.
+        (when-not (or (class? tag) (symbol? tag) (keyword? tag))
+          (throw (ex-info (str "derive: tag must be a class, symbol or keyword, got " (pr-str tag)) {})))
+        (when-not (or (symbol? parent) (keyword? parent))
+          (throw (ex-info (str "derive: parent must be a symbol or keyword, got " (pr-str parent)) {})))
+        ;; clj: self-derive → AssertionError; a non-map hierarchy field →
+        ;; NullPointerException (it invokes the field as a fn). Both throw here
+        ;; (exception-Kind divergence is AD-007). The 2-arity global path always
+        ;; passes a valid hierarchy, so those guards never fire on it.
+        (when (= tag parent)
+          (throw (ex-info (str "(not= tag parent) — cannot derive " tag " from itself") {})))
+        (when-not (and (map? (:parents h)) (map? (:descendants h)) (map? (:ancestors h)))
+          (throw (ex-info "derive: hierarchy must have map :parents / :descendants / :ancestors" {})))
         (let [tp (:parents h) td (:descendants h) ta (:ancestors h)]
           (if (contains? (get tp tag) parent)
             h
@@ -2201,19 +2404,32 @@
 
 (def parents
   (fn* ([tag] (parents (deref -global-hierarchy) tag))
-       ([h tag] (not-empty (get (:parents h) tag)))))
+       ([h tag] (let [explicit (get (:parents h) tag)
+                       native (cljw.internal/__class-parents tag)]
+                   (not-empty (reduce conj (or explicit #{}) native))))))
 
 (def ancestors
   (fn* ([tag] (ancestors (deref -global-hierarchy) tag))
-       ([h tag] (not-empty (get (:ancestors h) tag)))))
+       ([h tag] (let [explicit (get (:ancestors h) tag)
+                       native (cljw.internal/__class-parents tag)]
+                   (not-empty (reduce conj (or explicit #{}) native))))))
 
 (def descendants
   (fn* ([tag] (descendants (deref -global-hierarchy) tag))
-       ([h tag] (not-empty (get (:descendants h) tag)))))
+       ([h tag]
+        ;; clj: a class tag → UnsupportedOperationException (the class hierarchy
+        ;; is open, not enumerable). cljw class values are class? too.
+        (if (class? tag)
+          (throw (ex-info "Can't get descendants of classes" {}))
+          (not-empty (get (:descendants h) tag))))))
 
 (def underive
   (fn* ([tag parent] (swap! -global-hierarchy underive tag parent) nil)
        ([h tag parent]
+        ;; clj: a non-map (:parents h) → NullPointerException. Match as a throw
+        ;; (AD-007). The 2-arity global path always passes a valid hierarchy.
+        (when-not (map? (:parents h))
+          (throw (ex-info "underive: hierarchy must have a map :parents" {})))
         (let [pm (:parents h)
               cps (if (get pm tag) (disj (get pm tag) parent) #{})
               new-parents (if (not-empty cps) (assoc pm tag cps) (dissoc pm tag))
@@ -2247,6 +2463,30 @@
 ;; clj home) — the interactive REPL refers them into `user` (clojure.main
 ;; parity); scripts require clojure.repl explicitly. The early in-core copies
 ;; (pre-D-305, when vars carried no :doc) were removed with D-513.
+
+;; `(send a f & args)` / `(send-off a f & args)` — dispatch an action to an
+;; agent (clj 1.0). Both route the action fn through `bound-fn*` so the action
+;; re-establishes the DISPATCHING thread's dynamic bindings before it runs on the
+;; agent's action thread (clj's binding conveyance): `(binding [*v* x] (send a
+;; (fn [_] *v*)))` sees `x`, not the var's root. `bound-fn*` captures at dispatch
+;; time (the calling thread) and the worker replays it. `send`/`send-off` differ
+;; only by executor pool in clj; cljw's first slice shares one, so both wrap the
+;; SAME conveyance point (Single-Source-Lever) over the `__send`/`__send-off`
+;; enqueue primitives. `bound-fn*` is defined later in this file → forward-declared
+;; here (covers `future-call` below too).
+(declare bound-fn*)
+(defn send
+  "Dispatch an action to an agent. Returns the agent immediately. Subsequently,
+  in a thread from a thread pool, the state of the agent will be set to the value
+  of: (apply action-fn state-of-agent args)."
+  [a f & args]
+  (apply cljw.internal/__send a (bound-fn* f) args))
+(defn send-off
+  "Dispatch a potentially blocking action to an agent. Returns the agent
+  immediately. Subsequently, in a separate thread, the state of the agent will be
+  set to the value of: (apply action-fn state-of-agent args)."
+  [a f & args]
+  (apply cljw.internal/__send-off a (bound-fn* f) args))
 
 ;; `tap>` / `add-tap` / `remove-tap` — clj 1.10 debugging fan-out (D-502).
 ;; clj uses a daemon thread + a bounded ArrayBlockingQueue; cljw has no
@@ -2290,25 +2530,38 @@
   (.flush *out*)
   nil)
 
-;; `(future-call f)` — the fn behind the `future` macro (clj 1.1). cljw's
-;; `future` macro expands to `(cljw.internal/__future-call (fn* [] body))`; future-call is the
-;; same primitive exposed for a pre-built no-arg thunk. (clj adds binding
-;; conveyance here; cljw's `future` macro does not, so future-call matches it.)
+;; `(future-call f)` — the fn behind the `future` macro (clj 1.1). The `future`
+;; macro expands to `(future-call (fn* [] body))`, so `future-call` is the single
+;; BINDING-CONVEYANCE point (clj parity): it wraps the thunk with `bound-fn*`,
+;; which captures the CREATING thread's dynamic bindings and re-establishes them
+;; in the worker before the body runs — `(binding [*v* x] @(future *v*))` sees
+;; `x`, not the var's root. `pmap`/`pcalls`/`pvalues` route through `future`, so
+;; they convey too. (`bound-fn*` is forward-declared above, at `send`.)
 (defn future-call
   "Takes a function of no args and yields a future object that will invoke the
   function in another thread, caching the result for deref/@."
   [f]
-  (cljw.internal/__future-call f))
+  (cljw.internal/__future-call (bound-fn* f)))
 
 ;; `(load-string s)` — sequentially read+eval every form in s, return the last
-;; value (clj 1.0). clj routes through a StringReader + load-reader; cljw has no
-;; reader streams, so it wraps the forms in a single `(do …)` and evals that —
-;; identical observable result (forms run in order; defs visible to later forms;
-;; value of the last form returned; empty string → nil).
+;; value (clj 1.0). Each form is read only after the previous one ran, as
+;; `require` loads a file, so a `(ns …)` in s governs how its later forms read
+;; (`::kw`, syntax-quote) and the caller's ns is restored afterwards. Empty
+;; string → nil.
 (defn load-string
   "Sequentially read and evaluate the set of forms contained in the string."
   [s]
-  (eval (read-string (str "(do " s "\n)"))))
+  (cljw.internal/__load-source "NO_SOURCE_PATH" s))
+
+;; `(load-file name)`: read+eval every form in the file at path `name`,
+;; returning the last form's value (clj 1.0). Same form-at-a-time loader as
+;; `load-string`, labelled with `name` so errors and `:file` meta name the
+;; file, with `*file*` bound to `name`.
+(defn load-file
+  "Sequentially read and evaluate the set of forms contained in the file."
+  [name]
+  (binding [*file* name]
+    (cljw.internal/__load-source name (slurp name))))
 
 
 ;; `(definline name & decl)` — mainline defines an `:inline`-carrying fn (a
@@ -2417,14 +2670,18 @@
 (defmacro bound-fn [& fntail]
   `(bound-fn* (fn* ~@fntail)))
 
-;; `(with-precision precision & body)` — bind `*math-context*` so BigDecimal
-;; division in body rounds the quotient to `precision` significant figures
-;; (HALF_UP) instead of raising on a non-terminating expansion (D-467). clj also
-;; accepts a leading `:rounding mode`; cljw implements HALF_UP only for now, so the
-;; `:rounding mode` pair is accepted-and-ignored (other modes are a follow-up).
+;; Bind a MathContext so every BigDecimal operation observes significant-digit
+;; precision and the requested rounding mode (not just division).
 (defmacro with-precision [precision & body]
-  (let [body (if (= :rounding (first body)) (nnext body) body)]
-    `(binding [*math-context* ~precision] ~@body)))
+  (let [rounding? (= :rounding (first body))
+        mode (second body)
+        body (if rounding? (nnext body) body)
+        mode-expr (when rounding?
+                    (symbol "java.math.RoundingMode" (name mode)))]
+    `(binding [*math-context* ~(if rounding?
+                                  `(java.math.MathContext. ~precision ~mode-expr)
+                                  `(java.math.MathContext. ~precision))]
+       ~@body)))
 
 (defmacro with-open
   "bindings => [name init ...]. Evaluates body in a try expression with
@@ -2490,97 +2747,100 @@
       (throw (IllegalArgumentException. (str "Not a qualified symbol: " sym))))))
 
 
-;; --- Java arrays (ADR-0105 / D-287) ---
-;; Type-erased uniform []Value over the cljw.internal/__array-make + aget/aset/alength/
-;; aclone host primitives. Per-constructor init defaults + byte/short/char wrap
-;; give clj-faithful VALUES (F-011); the element type itself is erased (AD-019),
-;; so int/long/double/float arrays do not coerce non-byte elements. Arrays use
-;; identity equality.
+;; --- Java arrays (ADR-0105 / D-287, ADR-0204) ---
+;; An array has an element kind: `object-array` / `to-array` / `into-array` /
+;; `make-array` hold any value, the typed constructors hold native elements
+;; (byte i8 ... double f64). The cljw.internal/__array-make / __array-from /
+;; __array-fill constructors are native, so an n-element array is one call.
+;; Constructors convert like clj's RT.longArray and friends (wrap, truncate);
+;; `aset` is strict (clj's "argument type mismatch"). Arrays use identity
+;; equality.
+
+(defn- -array-elems
+  "A vector or array holding `x`'s elements, the input of `__array-from`."
+  [x] (if (or (vector? x) (array? x)) x (vec x)))
 
 (defn- -array-from
-  "size-or-seq → array. A number makes n slots of `default`; otherwise the
-  seqable is materialised and each element passed through `coerce`."
-  [size-or-seq default coerce]
+  "size-or-seq → array of `kind`. A number makes n default slots; otherwise
+  each element of the seqable is converted to the kind."
+  [kind size-or-seq]
   (if (number? size-or-seq)
-    (cljw.internal/__array-make size-or-seq default)
-    (let [s (vec size-or-seq)
-          n (count s)
-          a (cljw.internal/__array-make n default)]
-      (dotimes [i n] (aset a i (coerce (nth s i))))
-      a)))
+    (cljw.internal/__array-make kind (long size-or-seq))
+    (cljw.internal/__array-from kind (-array-elems size-or-seq) nil)))
 
 (defn- -array-from2
-  "size + init-val-or-seq → array (the 2-arg ctor form). A `sequential?` init is
-  copied (`size` slots, the rest left at `default`); any other init fills every
-  slot with `(coerce init)`. Uniform across element types — cljw arrays are
-  type-erased (AD-019), so unlike clj there is no per-type Number/Character
-  overload accident: `(byte-array 3 65)` / `(char-array 3 65)` fill here but
-  throw on the JVM (AD-036)."
-  [size init default coerce]
-  (let [a (cljw.internal/__array-make size default)]
-    (if (sequential? init)
-      (let [s (vec init)
-            n (min size (count s))]
-        (dotimes [i n] (aset a i (coerce (nth s i)))))
-      (dotimes [i size] (aset a i (coerce init))))
-    a))
-
-(defn- -to-byte [v]
-  (let [b (bit-and v 255)] (if (>= b 128) (- b 256) b)))
-(defn- -to-short [v]
-  (let [s (bit-and v 65535)] (if (>= s 32768) (- s 65536) s)))
+  "size + init-val-or-seq → array of `kind` (the 2-arg ctor form). A
+  `sequential?` init is copied (`size` slots, the rest left at the default);
+  any other init fills every slot. Uniform across kinds, so unlike clj there
+  is no per-type Number/Character overload accident: `(byte-array 3 65)` /
+  `(char-array 3 65)` fill here but throw on the JVM (AD-036)."
+  [kind size init]
+  (if (sequential? init)
+    (cljw.internal/__array-from kind (-array-elems init) (long size))
+    (cljw.internal/__array-fill (cljw.internal/__array-make kind (long size)) init)))
 
 ;; object-array has NO clj 2-arg form (clj throws an arity error) — stays 1-arg.
-(defn object-array  [x] (-array-from x nil    identity))
+(defn object-array  [x] (-array-from :object x))
 ;; The typed ctors take `([size-or-seq] [size init-val-or-seq])` (clj parity).
-(defn int-array     ([x] (-array-from x 0 identity))     ([n init] (-array-from2 n init 0 identity)))
-(defn long-array    ([x] (-array-from x 0 identity))     ([n init] (-array-from2 n init 0 identity)))
-(defn double-array  ([x] (-array-from x 0.0 identity))   ([n init] (-array-from2 n init 0.0 identity)))
-(defn float-array   ([x] (-array-from x 0.0 identity))   ([n init] (-array-from2 n init 0.0 identity)))
-(defn short-array   ([x] (-array-from x 0 -to-short))    ([n init] (-array-from2 n init 0 -to-short)))
-(defn byte-array    ([x] (-array-from x 0 -to-byte))     ([n init] (-array-from2 n init 0 -to-byte)))
-(defn char-array    ([x] (-array-from x \space char))    ([n init] (-array-from2 n init \space char)))
-(defn boolean-array ([x] (-array-from x false boolean))  ([n init] (-array-from2 n init false boolean)))
+(defn int-array     ([x] (-array-from :int x))     ([n init] (-array-from2 :int n init)))
+(defn long-array    ([x] (-array-from :long x))    ([n init] (-array-from2 :long n init)))
+(defn double-array  ([x] (-array-from :double x))  ([n init] (-array-from2 :double n init)))
+(defn float-array   ([x] (-array-from :float x))   ([n init] (-array-from2 :float n init)))
+(defn short-array   ([x] (-array-from :short x))   ([n init] (-array-from2 :short n init)))
+(defn byte-array    ([x] (-array-from :byte x))    ([n init] (-array-from2 :byte n init)))
+(defn char-array    ([x] (-array-from :char x))    ([n init] (-array-from2 :char n init)))
+(defn boolean-array ([x] (-array-from :boolean x)) ([n init] (-array-from2 :boolean n init)))
 
 (defn make-array
-  "Allocate an array. The `type` arg is accepted but ignored (cljw arrays are
-  type-erased, AD-019). Multi-dim builds nested arrays."
-  ([type len] (cljw.internal/__array-make len nil))
+  "Allocate an object array. The `type` arg is accepted but ignored: cljw has
+  no Class objects, and `(make-array Long n)` is a `Long[]` on the JVM too.
+  Multi-dim builds nested arrays."
+  ([type len] (cljw.internal/__array-make :object len))
   ([type d & more]
-   (let [a (cljw.internal/__array-make d nil)]
+   (let [a (cljw.internal/__array-make :object d)]
      (dotimes [i d] (aset a i (apply make-array type more)))
      a)))
 
 (defn to-array
-  "coll → an array of its elements (clj returns Object[])."
-  [coll] (-array-from (vec coll) nil identity))
+  "coll → an object array of its elements (clj returns Object[])."
+  [coll] (-array-from :object (-array-elems coll)))
 
 (defn bytes?
-  "Returns true if x is a cljw array. JVM Clojure's `bytes?` is true only for a
-  `byte[]`, but cljw arrays are type-erased (AD-019): `byte-array`/`int-array`/
-  `object-array` share one runtime shape, so a byte-array is indistinguishable
-  from any other array. cljw therefore answers true for any array (AD-051) — the
-  common positive guard `(bytes? (byte-array n))` matches clj; non-byte arrays
-  diverge (clj false, cljw true). A byte-array IS usable as bytes in cljw
-  (`(String. (byte-array ...))` works), so the over-broad positive is consistent
-  with cljw's uniform-array model rather than a silent lie."
-  [x] (array? x))
+  "Returns true if x is a byte array."
+  [x] (and (array? x) (= :byte (cljw.internal/__array-kind x))))
 
 (defn into-array
-  "coll → array; the optional leading `type` is accepted and ignored."
+  "coll → an object array; the optional leading `type` is accepted and
+  ignored (a boxed `Long[]` on the JVM is an object array here too)."
   ([coll] (to-array coll))
   ([type coll] (to-array coll)))
 
-;; aset-* typed setters. clj coerces the value to the element type; cljw applies
-;; only the value-changing modular wraps (byte/short/char), the rest are aset.
-(defn aset-int     [a i v] (aset a i v))
-(defn aset-long    [a i v] (aset a i v))
-(defn aset-float   [a i v] (aset a i v))
-(defn aset-double  [a i v] (aset a i v))
-(defn aset-boolean [a i v] (aset a i (boolean v)))
-(defn aset-byte    [a i v] (aset a i (-to-byte v)))
-(defn aset-short   [a i v] (aset a i (-to-short v)))
-(defn aset-char    [a i v] (aset a i (char v)))
+;; aset-* typed setters: the value is coerced as clj's `(int v)` / `(byte v)`
+;; ... do (a range check, not a wrap), then stored.
+(defn aset-int
+  ([a i v] (aset a i (int v)))
+  ([a i j & more] (apply aset-int (aget a i) j more)))
+(defn aset-long
+  ([a i v] (aset a i (long v)))
+  ([a i j & more] (apply aset-long (aget a i) j more)))
+(defn aset-float
+  ([a i v] (aset a i (float v)))
+  ([a i j & more] (apply aset-float (aget a i) j more)))
+(defn aset-double
+  ([a i v] (aset a i (double v)))
+  ([a i j & more] (apply aset-double (aget a i) j more)))
+(defn aset-boolean
+  ([a i v] (aset a i (boolean v)))
+  ([a i j & more] (apply aset-boolean (aget a i) j more)))
+(defn aset-byte
+  ([a i v] (aset a i (byte v)))
+  ([a i j & more] (apply aset-byte (aget a i) j more)))
+(defn aset-short
+  ([a i v] (aset a i (short v)))
+  ([a i j & more] (apply aset-short (aget a i) j more)))
+(defn aset-char
+  ([a i v] (aset a i (char v)))
+  ([a i j & more] (apply aset-char (aget a i) j more)))
 
 (defmacro amap
   "Like clojure.core/amap: map `expr` over array `a`, binding each index to
@@ -2601,6 +2861,51 @@
        (if (< ~idx (alength a#))
          (recur (inc ~idx) ~expr)
          ~ret))))
+
+;; ---------------------------------------------------------------------------
+;; proxy — cljw has no JVM class hierarchy to extend, so `proxy` supports a
+;; REGISTERED, closed-per-build set of base classes (D-298). The runtime cells
+;; live in cljw.proxy; this is the OCP expansion layer. WHAT + contract only —
+;; rationale (single-thread ThreadLocal semantics, why a registry) is in memory.
+;; ---------------------------------------------------------------------------
+
+(defn- proxy-threadlocal-expansion
+  "Expander for (proxy [ThreadLocal] [] (initialValue [] body)). Emits a
+   construction of the cljw.proxy ThreadLocal cell whose initialValue is the
+   given 0-arg body. requiring-resolve keeps cljw.proxy off the analyze-time
+   path and loads it on first use (the bundled-load-safe pattern)."
+  [ctor-args methods]
+  (let [init (methods 'initialValue)]
+    (when-not (and (empty? ctor-args) init)
+      (throw (ex-info "proxy [ThreadLocal] takes no super-args and requires an (initialValue [] ...) method"
+                      {:proxy/base 'ThreadLocal :methods (vec (keys methods))})))
+    `((requiring-resolve 'cljw.proxy/threadlocal-cell) (fn ~@init))))
+
+(def ^:private proxy-base-registry
+  "OCP extension point (D-298): base-class symbol -> expander
+   (fn [ctor-args method-map] -> form). A base absent here is unsupported, and
+   `proxy` raises rather than silently mis-expanding. Add a base by adding an
+   entry (and a cell in cljw.proxy) — the `proxy` macro body never changes."
+  {'ThreadLocal           proxy-threadlocal-expansion
+   'java.lang.ThreadLocal proxy-threadlocal-expansion})
+
+(defmacro proxy
+  "Construct an instance of a REGISTERED proxyable base class with the given
+   method overrides. Unlike JVM `proxy`, cljw's base set is closed per build
+   (see proxy-base-registry): an unregistered base is a compile-time error, not
+   a deep JVM class extension. Shape:
+     (proxy [Base] [super-args] (method-name [params*] body)+)."
+  {:arglists '([class-and-interfaces args & fs])}
+  [bases ctor-args & fns]
+  (let [base     (first bases)
+        expander (get proxy-base-registry base)
+        methods  (into {} (map (fn [f] [(first f) (rest f)])) fns)]
+    (when-not expander
+      (throw (ex-info (str "proxy against " base " is not part of ClojureWasm. "
+                           "Supported base classes: " (pr-str (vec (keys proxy-base-registry)))
+                           ". Extending arbitrary JVM classes needs deep class extension cljw does not provide.")
+                      {:proxy/base base})))
+    (expander ctor-args methods)))
 
 (defn Throwable->map
   "Constructs a data representation for a caught exception with keys:
@@ -2644,3 +2949,15 @@
   {'inst (fn [form] ((requiring-resolve 'clojure.instant/read-instant-date) form))
    'uuid (fn [form] ((requiring-resolve 'clojure.uuid/default-uuid-reader) form))})
 
+;; `monitor-enter` / `monitor-exit` are Zig primitives (locking.zig). On the JVM
+;; they are special forms, so the generated core_meta.clj has no row for them;
+;; their docs are attached here, into the var meta `(:doc (meta v))` reads.
+(alter-meta! (var monitor-enter) merge
+             {:doc "Acquires the monitor of x, returning nil. The caller is responsible
+  for the matching monitor-exit; prefer `locking`, which releases on both
+  normal and error exit. Throws if x is nil."
+              :arglists (quote ([x]))})
+(alter-meta! (var monitor-exit) merge
+             {:doc "Releases the monitor of x, returning nil. Pairs with monitor-enter.
+  Throws if x is nil."
+              :arglists (quote ([x]))})

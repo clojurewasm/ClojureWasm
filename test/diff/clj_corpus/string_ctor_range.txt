@@ -1,0 +1,23 @@
+;; (String. bytes/chars offset length [charset]) — the 3/4-arg range ctors
+;; (CLJW-STRING-ARITY). clj: String(byte[]/char[], int, int[, Charset]) decodes
+;; the [offset, offset+length) window; out-of-range throws (not clamp). cljw is
+;; UTF-8-only (charset accepted, UTF-8 used).
+
+(String. (byte-array [104 105 106]) 1 2)
+;;=> "ij"
+(String. (byte-array [104 105 106]) 1 2 "UTF-8")
+;;=> "ij"
+(String. (byte-array [104 105 106]) 0 3)
+;;=> "hij"
+(String. (char-array [\a \b \c \d]) 1 2)
+;;=> "bc"
+(String. (byte-array [104 105]) 0 0)
+;;=> ""
+(try (String. (byte-array [104 105]) 1 5) (catch Throwable t :oob))
+;;=> :oob
+
+;; regression — the 1-arg and 2-arg (whole-array) forms still hold
+(String. (byte-array [104 105]))
+;;=> "hi"
+(String. (byte-array [104 105]) "UTF-8")
+;;=> "hi"

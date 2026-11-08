@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bench/wasm_jit_vs_interp.sh — reproducible JIT-vs-interp demonstration (ADR-0200
+# bench/wasm_jit_vs_interp.sh — reproducible JIT-vs-interp demonstration (zwasm ADR-0200
 # adoption; ROADMAP §9.0 gap area III VM-perf). Runs the SAME compute-heavy wasm
 # module (bench/fixtures/sumto.wasm — a 100M-iteration i32 tight loop) through
 # cljw's zwasm embedding under `:engine :jit` and `:engine :interp`, and prints the
@@ -12,11 +12,13 @@
 #   bash bench/wasm_jit_vs_interp.sh [N]      # N = iteration count (default 100000000)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source "$(dirname "$0")/../scripts/lib_build_lock.sh"
+source "$(dirname "$0")/../scripts/lib_cljw_bin.sh"
 BIN="zig-out/bin/cljw"
 N="${1:-100000000}"
 WASM="bench/fixtures/sumto.wasm"
 
-[ -x "$BIN" ] || { echo "build first: zig build -Dwasm -Doptimize=ReleaseSafe" >&2; exit 1; }
+cljw_bin_require "$BIN" wasm_jit_vs_interp
 "$BIN" --version | grep -q wasm || { echo "cljw is not wasm-enabled ($("$BIN" --version))" >&2; exit 1; }
 
 # :fuel 0 = unmetered (trusted module; a 1e8-iteration loop would exhaust the finite

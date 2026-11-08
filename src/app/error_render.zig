@@ -107,7 +107,7 @@ fn buildThrownInfo(thrown: Value) error_mod.Info {
         return info;
     }
     var w: Writer = .fixed(&thrown_msg_buf);
-    print_value(&w, thrown) catch {};
+    print_value(null, &w, thrown) catch {};
     info.message = w.buffered();
     return info;
 }
@@ -201,7 +201,7 @@ fn formatErrorEdn(info: error_mod.Info, ctx: error_print.SourceContext, w: *Writ
     // canonical Value printer, same as the context entries below.
     if (info.data) |d| {
         try w.writeAll(" :data ");
-        try print_value(w, d);
+        try print_value(null, w, d);
     }
     // Trace: in lockstep with the text renderer (ADR-0119 Stage 2 / ADR-0055):
     // `:trace [{:ns "..":fn "..":file "..":line N} …]`, innermost-first (the
@@ -226,20 +226,23 @@ fn formatErrorEdn(info: error_mod.Info, ctx: error_print.SourceContext, w: *Writ
         }
     }
     // Merge the snapshotted `cljw.error/*error-context*` entries as
-    // top-level event fields (ADR-0055 D3). array_map only — context
-    // maps are small (the >8-entry hash_map path mirrors printMap's
-    // limitation; a large context is rare and never silently truncated
-    // because count ≤ 8 stays array_map).
+    // top-level event fields (ADR-0055 D3). Iterate via the generic
+    // `forEachEntry` so a >8-entry context (promoted to hash_map) lands in
+    // the event whole — the old array_map-only decode skipped it entirely
+    // (Discussion #12 bug class).
     if (info.context) |ctx_map| {
-        if (ctx_map.tag() == .array_map) {
-            const am = ctx_map.decodePtr(*const map_collection.ArrayMap);
-            var i: u32 = 0;
-            while (i < am.count) : (i += 1) {
-                try w.writeByte(' ');
-                try print_value(w, am.entries[2 * i]);
-                try w.writeByte(' ');
-                try print_value(w, am.entries[2 * i + 1]);
-            }
+        if (ctx_map.tag() == .array_map or ctx_map.tag() == .hash_map) {
+            const CtxEmit = struct {
+                w: *Writer,
+                fn put(c: *@This(), k: Value, v: Value) anyerror!void {
+                    try c.w.writeByte(' ');
+                    try print_value(null, c.w, k);
+                    try c.w.writeByte(' ');
+                    try print_value(null, c.w, v);
+                }
+            };
+            var cctx: CtxEmit = .{ .w = w };
+            try map_collection.forEachEntry(ctx_map, &cctx, CtxEmit.put);
         }
     }
     try w.writeAll("}\n");
@@ -271,26 +274,27 @@ pub fn renderAndExit(stderr: *Writer, ctx: error_print.SourceContext, err: anyer
     std.process.exit(code);
 }
 
-/// Registry-aware variant of `renderAndExit`. ADR-0035 D7: looks up
-/// `info.location.file` in `rt.source_registry` for the per-file
-/// source-line preview; falls back to `default_ctx` when the location
-/// is unknown or not registered.
+/// Registry-aware variant of `renderAndExit`. ADR-0035 D7: the source-line
+/// preview comes from `rt.source_registry` for `info.location.file` (a file
+/// the script loaded or required), falling back to `default_ctx` when the
+/// location is unknown or not registered. Only the CONTEXT is registry-aware:
+/// the text/EDN format, the thrown-value synthesis and the log file stay
+/// `renderError`'s, so both variants render alike.
 pub fn renderAndExitRegistry(
     stderr: *Writer,
     rt: *Runtime,
     default_ctx: error_print.SourceContext,
     err: anyerror,
 ) noreturn {
-    const code: u8 = if (error_mod.peekLastError()) |info|
-        kindToExitCode(info.kind)
-    else
-        1;
-    if (error_mod.getLastError()) |info| {
-        error_print.formatErrorWithRegistry(info, rt, default_ctx, stderr, .{}) catch {};
-        stderr.flush() catch {};
-    } else {
-        stderr.print("{s}: error: {s}\n", .{ default_ctx.file, @errorName(err) }) catch {};
-        stderr.flush() catch {};
-    }
+    const peeked = error_mod.peekLastError();
+    const code: u8 = if (peeked) |info| kindToExitCode(info.kind) else 1;
+    const ctx = if (peeked) |info| blk: {
+        const file = info.location.file;
+        if (file.len == 0 or std.mem.eql(u8, file, "unknown")) break :blk default_ctx;
+        break :blk rt.lookupSource(file) orelse default_ctx;
+    } else default_ctx;
+    renderError(stderr, ctx, err) catch {
+        // stderr write failed (closed pipe?); proceed to exit anyway.
+    };
     std.process.exit(code);
 }

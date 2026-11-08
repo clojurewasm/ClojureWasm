@@ -1,0 +1,4 @@
+(let [ns0 *ns*] (eval '(ns b6.corpus)) (eval '(defn assign [] (def value 41))) (in-ns (ns-name ns0)) ((ns-resolve 'b6.corpus 'assign)) (var-get (ns-resolve 'b6.corpus 'value)))
+;;=> 41
+(let [ns0 *ns*] (eval '(ns b6.corpus.unbound)) (eval '(defn declare-later [] (def b6-unbound))) (in-ns (ns-name ns0)) (let [v ((ns-resolve 'b6.corpus.unbound 'declare-later))] [(bound? v) (identical? v (ns-resolve 'b6.corpus.unbound 'b6-unbound)) (nil? (ns-resolve ns0 'b6-unbound))]))
+;;=> [false true true]

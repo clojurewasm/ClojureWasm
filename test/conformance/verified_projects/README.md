@@ -69,14 +69,14 @@ demand and at **Phase boundaries**. The per-commit deps.edn *mechanism* test
 
 ## Relationship to the rest
 
-- **`.dev/library_incorporation_playbook.md`** — the PATTERNS behind this engine:
+- **memory `20260911004716-29dac88c` + `20260911004715-30c156bd`** — the PATTERNS behind this engine:
   the probe loop, the gap taxonomy (where each blocker class is fixed), and how to
   raise the coverage rate (read this before a re-expansion; this README is the
   *method*, the playbook is the *know-how*).
 - **`docs/works/ladder.md`** — the ranked candidate ladder + the first-blocking
   gap per lib. A lib that reaches "loads" graduates into a `test/conformance/verified_projects/`
   entry (the committed, re-runnable proof).
-- **`.dev/convergence_campaign.md` Stage 1.3** — the campaign driver; this
+- **memory `20260911004835-63674963`** (stage exits are mechanical predicates) — the campaign driver; this
   directory is its committed-artifact form.
-- **`.dev/decisions/0101_deps_git_fetch.md`** (+ amendment 1) — the deps.edn
+- **ADR-0101** (+ amendment 1) — the deps.edn
   git-fetch + `:mvn`-skip mechanism these projects exercise.

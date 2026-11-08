@@ -1,0 +1,4 @@
+name: "Seq Dot Product 1k"
+category: numeric
+expected_output: "332833500"
+description: "(reduce + (map * xs xs)) over a 1000-double vector x1000 — per-element cost of the 2-coll lazy map + reduce walk"

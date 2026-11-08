@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! TreeWalk — evaluate the Node tree by recursive descent.
 //!
 //! This is the simplest possible interpreter. It is also the
@@ -35,6 +36,8 @@ const root_set = @import("../../runtime/gc/root_set.zig");
 const Value = @import("../../runtime/value/value.zig").Value;
 const HeapHeader = @import("../../runtime/value/value.zig").HeapHeader;
 const Runtime = @import("../../runtime/runtime.zig").Runtime;
+const eval_budget_mod = @import("../../runtime/concurrency/eval_budget.zig");
+const runtime_thread = @import("../../runtime/concurrency/runtime_thread.zig");
 const env_mod = @import("../../runtime/env.zig");
 const Env = env_mod.Env;
 const Var = env_mod.Var;
@@ -71,6 +74,63 @@ const gc_heap_mod = @import("../../runtime/gc/gc_heap.zig");
 /// frame-size known at analyse time.
 pub const MAX_LOCALS: u16 = 256;
 
+/// A stack scratch array the caller writes before it reads. Plain `undefined`
+/// costs a 0xAA memset in ReleaseSafe, not only in Debug: for a
+/// `[MAX_LOCALS]Value` window that is 2 KB written on EVERY fn call, measured
+/// at 19% of all instructions in `(reduce + (map * xs xs))`. Each user reads
+/// only a prefix it has just written (a frame's `locals[0..fs]`, a published
+/// args prefix), so the poison catches nothing there. Debug keeps it: safety
+/// is switched off outside Debug and only inside this fn, so the caller's own
+/// checks are untouched.
+// PERF: skip the safe-mode 0xAA fill of the per-call frame/arg windows [refs: O-064]
+pub fn uninitScratch(comptime T: type) T {
+    @setRuntimeSafety(@import("builtin").mode == .Debug);
+    return undefined;
+}
+
+/// Per-thread scratch for the per-call windows that used to be native-stack
+/// arrays: a fn activation's locals window (`callMethodImpl`) and a call's
+/// evaluated args + their source locs (`evalCall` & co.). Each borrower takes
+/// a window at the watermark and restores it on return (normal or error), the
+/// same discipline as vm.zig's `VmArena`. Off the native stack because these
+/// frames are paid once per native `eval` re-entry, and a HOF recursing
+/// through Zig (chunked `map`, `reduce`) re-enters per level: the budget
+/// ADR-0195 meters is native bytes, so a 2 KB window per frame was a 2 KB
+/// slice of every level of user recursion. Threadlocal static (tbss): nothing
+/// to allocate or free.
+const TwScratch = struct {
+    vals: [TW_SCRATCH_VALS]Value = undefined,
+    val_top: u32 = 0,
+    locs: [TW_SCRATCH_LOCS]SourceLocation = undefined,
+    loc_top: u32 = 0,
+};
+const TW_SCRATCH_VALS: usize = 32 * 1024;
+const TW_SCRATCH_LOCS: usize = 8 * 1024;
+threadlocal var tw_scratch: TwScratch = .{};
+
+/// Static TLS this file adds; vm.zig asserts it together with `VmArena`
+/// against the ADR-0195 reserve.
+pub const TLS_BYTES: usize = @sizeOf(TwScratch);
+
+/// Borrow `n` Values at the scratch watermark; the caller restores
+/// `tw_scratch.val_top` to the returned base on exit. Exhaustion is deep
+/// recursion: a catchable StackOverflowError, like the native guard.
+fn borrowVals(n: usize, loc: SourceLocation) ![]Value {
+    const base = tw_scratch.val_top;
+    if (@as(usize, base) + n > TW_SCRATCH_VALS)
+        return error_catalog.raise(.stack_overflow, loc, .{ .max = TW_SCRATCH_VALS });
+    tw_scratch.val_top = base + @as(u32, @intCast(n));
+    return tw_scratch.vals[base..][0..n];
+}
+
+fn borrowLocs(n: usize, loc: SourceLocation) ![]SourceLocation {
+    const base = tw_scratch.loc_top;
+    if (@as(usize, base) + n > TW_SCRATCH_LOCS)
+        return error_catalog.raise(.stack_overflow, loc, .{ .max = TW_SCRATCH_LOCS });
+    tw_scratch.loc_top = base + @as(u32, @intCast(n));
+    return tw_scratch.locs[base..][0..n];
+}
+
 /// TreeWalk error surface. Aliases `error_mod.ClojureWasmError` so
 /// calls to `error_catalog.raise(.code, loc, args)` type-check; the
 /// backend still only **emits** `error.TypeError` (non-callable
@@ -105,9 +165,9 @@ threadlocal var pending_recur_len: u16 = 0;
 /// let a fn nested inside `let*` / `fn*` snapshot its enclosing locals
 /// at allocation time and replay them on every call. Top-level fns have `slot_base == 0` and `closure_bindings ==
 /// null`. The `body` and `params` slices borrow from the analyser's
-/// per-eval arena, so the Function lives only as long as that arena
-/// does. `closure_bindings` is owned by the Function (separate
-/// gpa allocation) and freed by `freeFunction`.
+/// per-eval arena. Since ADR-0184 the Function is a collectable GC cell:
+/// `methods` + `closure_bindings` live inline in the cell's tail and are
+/// freed with it by sweep.
 /// Row 7.8 cycle 1 (ADR-0041) runtime-side per-arity record. Mirrors
 /// `node_mod.FnMethod` plus an optional bytecode chunk (the VM
 /// compile arm stamps one chunk per method).
@@ -136,14 +196,12 @@ pub const FunctionMethod = struct {
 
 pub const Function = struct {
     // `align(8)` forces `header` into the struct's max-alignment group so
-    // Zig's auto field-ordering keeps it at offset 0. The GC reads every
-    // heap-tagged Value's `HeapHeader` at offset 0 (`value.heapHeader` ->
-    // `decodePtr(*HeapHeader)`), but `Function` is `gpa.create`'d — it
-    // bypasses `gc.alloc`'s `assertHeaderAtOffsetZero`, so without this a
-    // non-extern struct sorts the align-8 slice fields (`methods` /
-    // `closure_bindings`) ahead of an align-4 header and the GC reads
-    // `methods.ptr`'s low byte as a bogus tag (D-251). The `comptime`
-    // assert below makes any future reorder a build failure, not a UAF.
+    // Zig's auto field-ordering keeps it at offset 0 (asserted below AND by
+    // `gc.alloc`'s assertHeaderAtOffsetZero — ADR-0184 moved Functions onto
+    // the GC heap as ONE variable-length cell: struct + methods array +
+    // closure bindings in the trailing bytes, laid out by
+    // `allocFunctionCell`). The slice fields point into the cell's own
+    // tail; sweep frees the whole cell, no finaliser.
     header: HeapHeader align(8),
     /// Number of locals the analyser allocated above this fn — these
     /// are the slots the closure snapshot fills, and the active
@@ -151,14 +209,17 @@ pub const Function = struct {
     slot_base: u16,
     /// Fixed-arity methods, sorted by arity ascending (analyser-time).
     /// Single-arity ships as a 1-element slice. JVM rule 2 (no two
-    /// same-arity fixed) enforced at analyzer-time.
+    /// same-arity fixed) enforced at analyzer-time. Points into this
+    /// cell's own tail (ADR-0184); never resized post-alloc.
     methods: []const FunctionMethod,
     /// Variadic body, separate slot per ADR-0041 — JVM allows ≤ 1
     /// variadic per fn (rule 1).
     variadic: ?FunctionMethod,
     /// Captured outer locals; null when the fn closes over nothing
     /// (top-level fn) so the common case stays a single null check
-    /// rather than an empty-slice round-trip.
+    /// rather than an empty-slice round-trip. Non-null points into this
+    /// cell's own tail (ADR-0184); `patchLetfnClosures` mutates CONTENTS
+    /// only, never the length.
     closure_bindings: ?[]Value,
     /// Qualified name + defining namespace for traces / `pr` / metadata
     /// (ADR-0119). Both borrow the analyzer arena (same lifetime as
@@ -170,8 +231,35 @@ pub const Function = struct {
 
     comptime {
         std.debug.assert(@offsetOf(Function, "header") == 0);
+        // ADR-0184 tail layout: [Function][methods…][bindings…]. Both tail
+        // element types must keep 8-alignment so the arrays start aligned.
+        std.debug.assert(@sizeOf(Function) % 8 == 0);
+        std.debug.assert(@alignOf(FunctionMethod) <= 8);
+        std.debug.assert(@sizeOf(FunctionMethod) % 8 == 0);
+        std.debug.assert(@alignOf(Value) <= 8);
     }
 };
+
+/// ADR-0184: allocate the Function + its methods array + closure-bindings
+/// array as ONE variable-length GC cell. The returned slices alias the
+/// cell's trailing bytes; the caller fills them and stitches the slice
+/// fields. NEWBORN WINDOW: the cell is unrooted until the caller's returned
+/// Value reaches a rooted slot — no alloc path below performs another
+/// `gc.alloc` between this call and its return, so a same-thread collect
+/// cannot fire inside the window (a worker-thread tree_walk newborn joins
+/// the pre-existing D-556 residual class, priced in ADR-0184).
+fn allocFunctionCell(
+    rt: *Runtime,
+    method_count: usize,
+    binding_count: usize,
+) !struct { f: *Function, methods: []FunctionMethod, bindings: []Value } {
+    const tail = method_count * @sizeOf(FunctionMethod) + binding_count * @sizeOf(Value);
+    const f = try rt.gc.allocWithTail(Function, tail);
+    const base: [*]u8 = @ptrCast(f);
+    const methods_ptr: [*]FunctionMethod = @ptrCast(@alignCast(base + @sizeOf(Function)));
+    const bindings_ptr: [*]Value = @ptrCast(@alignCast(base + @sizeOf(Function) + method_count * @sizeOf(FunctionMethod)));
+    return .{ .f = f, .methods = methods_ptr[0..method_count], .bindings = bindings_ptr[0..binding_count] };
+}
 
 /// Per-tag GC trace for `.fn_val` (D-251 rooting-gap class). A `Function`
 /// owns GC Values reachable ONLY through it: the `closure_bindings`
@@ -179,10 +267,11 @@ pub const Function = struct {
 /// bytecode (literal collections / strings the body refers to). Without
 /// this the fn is treated as a leaf and those captures are swept under a
 /// collect (the cause of swept-intermediate failures D-250 torture
-/// surfaced). The Function struct itself is `gpa.create`'d + `trackHeap`'d
-/// (not GC-swept), so this is mark-only; no finaliser is registered.
-/// `header` aliases `*Function` because header is at offset 0 (asserted
-/// above). Nested `fn_val` constants recurse safely via mark's cycle bit.
+/// surfaced). Since ADR-0184 the Function is an ordinary swept GC cell
+/// (methods + bindings inline in its tail) — still no finaliser, because
+/// the cell owns nothing outside itself. `header` aliases `*Function`
+/// because header is at offset 0 (asserted above). Nested `fn_val`
+/// constants recurse safely via mark's cycle bit.
 pub fn traceFunction(gc_ptr: *anyopaque, header: *HeapHeader) void {
     const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
     const f: *Function = @ptrCast(@alignCast(header));
@@ -233,11 +322,9 @@ pub fn registerGcHooks() void {
 
 /// Heap-allocate a Function and wrap it in a NaN-boxed Value. The
 /// caller's `locals` array supplies the snapshot for closure capture:
-/// slots `[0, fn_node.slot_base)` are duplicated into a fresh
-/// gpa-owned slice the Function will later replay on every call. Top
-/// -level fns (`slot_base == 0`) skip the allocation entirely. Until
-/// the Phase-5 GC arrives, register the allocation with
-/// `rt.heap_objects` so `Runtime.deinit` frees it.
+/// slots `[0, fn_node.slot_base)` are copied into the cell's tail and
+/// replayed on every call. Top-level fns (`slot_base == 0`) carry no
+/// bindings. The cell is an ordinary collectable GC object (ADR-0184).
 pub fn allocFunction(rt: *Runtime, fn_node: node_mod.FnNode, locals: []const Value) !Value {
     return allocFunctionWithBytecodes(rt, fn_node, locals, null);
 }
@@ -279,24 +366,23 @@ pub fn allocFunctionTemplate(
     variadic_chunk: ?*const BytecodeChunk,
 ) !Value {
     std.debug.assert(method_chunks.len == fn_node.methods.len);
-    const methods = try buildFunctionMethods(rt, fn_node.methods, method_chunks);
-    errdefer rt.gpa.free(methods);
+    const cell = try allocFunctionCell(rt, fn_node.methods.len, 0);
+    for (fn_node.methods, 0..) |m, i| {
+        cell.methods[i] = methodFromNode(m, method_chunks[i]);
+    }
     var variadic: ?FunctionMethod = null;
     if (fn_node.variadic) |v| variadic = methodFromNode(v, variadic_chunk);
 
-    const f = try rt.gpa.create(Function);
-    errdefer rt.gpa.destroy(f);
-    f.* = .{
+    cell.f.* = .{
         .header = HeapHeader.init(.fn_val),
         .slot_base = fn_node.slot_base,
-        .methods = methods,
+        .methods = cell.methods,
         .variadic = variadic,
         .closure_bindings = null,
         .name = fn_node.name,
         .defining_ns = fn_node.defining_ns,
     };
-    try rt.trackHeap(.{ .ptr = @ptrCast(f), .free = freeFunction });
-    return Value.encodeHeapPtr(.fn_val, f);
+    return Value.encodeHeapPtr(.fn_val, cell.f);
 }
 
 fn allocFunctionWithBytecodes(
@@ -305,58 +391,26 @@ fn allocFunctionWithBytecodes(
     locals: []const Value,
     bytecodes: ?Bytecodes,
 ) !Value {
-    const closure: ?[]Value = if (fn_node.slot_base == 0)
-        null
-    else blk: {
-        const slice = try rt.gpa.alloc(Value, fn_node.slot_base);
-        @memcpy(slice, locals[0..fn_node.slot_base]);
-        break :blk slice;
-    };
-    errdefer if (closure) |s| rt.gpa.free(s);
-
     const method_chunks: []const ?*const BytecodeChunk = if (bytecodes) |bc| bc.method_chunks else &.{};
     const variadic_chunk: ?*const BytecodeChunk = if (bytecodes) |bc| bc.variadic_chunk else null;
-    const methods = if (bytecodes != null)
-        try buildFunctionMethods(rt, fn_node.methods, method_chunks)
-    else
-        try buildFunctionMethodsNoBytecode(rt, fn_node.methods);
-    errdefer rt.gpa.free(methods);
+    const cell = try allocFunctionCell(rt, fn_node.methods.len, fn_node.slot_base);
+    for (fn_node.methods, 0..) |m, i| {
+        cell.methods[i] = methodFromNode(m, if (bytecodes != null) method_chunks[i] else null);
+    }
     var variadic: ?FunctionMethod = null;
     if (fn_node.variadic) |v| variadic = methodFromNode(v, variadic_chunk);
+    if (fn_node.slot_base > 0) @memcpy(cell.bindings, locals[0..fn_node.slot_base]);
 
-    const f = try rt.gpa.create(Function);
-    errdefer rt.gpa.destroy(f);
-    f.* = .{
+    cell.f.* = .{
         .header = HeapHeader.init(.fn_val),
         .slot_base = fn_node.slot_base,
-        .methods = methods,
+        .methods = cell.methods,
         .variadic = variadic,
-        .closure_bindings = closure,
+        .closure_bindings = if (fn_node.slot_base > 0) cell.bindings else null,
         .name = fn_node.name,
         .defining_ns = fn_node.defining_ns,
     };
-    try rt.trackHeap(.{ .ptr = @ptrCast(f), .free = freeFunction });
-    return Value.encodeHeapPtr(.fn_val, f);
-}
-
-fn buildFunctionMethods(
-    rt: *Runtime,
-    src: []const node_mod.FnMethod,
-    bytecodes: []const ?*const BytecodeChunk,
-) ![]FunctionMethod {
-    const out = try rt.gpa.alloc(FunctionMethod, src.len);
-    for (src, 0..) |m, i| {
-        out[i] = methodFromNode(m, bytecodes[i]);
-    }
-    return out;
-}
-
-fn buildFunctionMethodsNoBytecode(rt: *Runtime, src: []const node_mod.FnMethod) ![]FunctionMethod {
-    const out = try rt.gpa.alloc(FunctionMethod, src.len);
-    for (src, 0..) |m, i| {
-        out[i] = methodFromNode(m, null);
-    }
-    return out;
+    return Value.encodeHeapPtr(.fn_val, cell.f);
 }
 
 fn methodFromNode(m: node_mod.FnMethod, bytecode: ?*const BytecodeChunk) FunctionMethod {
@@ -368,13 +422,6 @@ fn methodFromNode(m: node_mod.FnMethod, bytecode: ?*const BytecodeChunk) Functio
         .bytecode = bytecode,
         .frame_slots = m.frame_slots, // ADR-0130 frame-rooting
     };
-}
-
-fn freeFunction(gpa: std.mem.Allocator, ptr: *anyopaque) void {
-    const f: *Function = @ptrCast(@alignCast(ptr));
-    if (f.closure_bindings) |s| gpa.free(s);
-    if (f.methods.len > 0) gpa.free(f.methods);
-    gpa.destroy(f);
 }
 
 /// Sentinel body for deserialized (VM-only) functions (ADR-0034 am2 A2-D3).
@@ -390,11 +437,14 @@ const deserialized_fn_body: Node = .{ .constant = .{ .value = .nil_val } };
 pub const SerializedMethod = struct {
     arity: u16,
     has_rest: bool,
+    /// The method's exact frame high-water (ADR-0130); 0 = full MAX_LOCALS.
+    frame_slots: u16 = 0,
     bytecode: ?*const BytecodeChunk,
 };
 
-/// Reconstruct a Function from deserialized data (ADR-0034 am2 A2-D3). gpa +
-/// trackHeap like a compiled top-level fn (so `freeFunction` is unchanged),
+/// Reconstruct a Function from deserialized data (ADR-0034 am2 A2-D3). A
+/// GC cell like every Function (ADR-0184; kept alive by the analysis-root
+/// bracket around deserialize, like a compiled top-level fn),
 /// `closure_bindings = null` (a constant fn never captures runtime locals),
 /// `params = &.{}` (D-139), `body = &deserialized_fn_body`. The method
 /// `bytecode` chunks are borrowed — owned by `serialize.zig`'s allocator and
@@ -405,15 +455,15 @@ pub fn allocFunctionFromSerialized(
     methods: []const SerializedMethod,
     variadic: ?SerializedMethod,
 ) !Value {
-    const out = try rt.gpa.alloc(FunctionMethod, methods.len);
-    errdefer rt.gpa.free(out);
+    const cell = try allocFunctionCell(rt, methods.len, 0);
     for (methods, 0..) |m, i| {
-        out[i] = .{
+        cell.methods[i] = .{
             .arity = m.arity,
             .has_rest = m.has_rest,
             .params = &.{},
             .body = &deserialized_fn_body,
             .bytecode = m.bytecode,
+            .frame_slots = m.frame_slots,
         };
     }
     var variadic_method: ?FunctionMethod = null;
@@ -423,19 +473,17 @@ pub fn allocFunctionFromSerialized(
         .params = &.{},
         .body = &deserialized_fn_body,
         .bytecode = vm.bytecode,
+        .frame_slots = vm.frame_slots,
     };
 
-    const f = try rt.gpa.create(Function);
-    errdefer rt.gpa.destroy(f);
-    f.* = .{
+    cell.f.* = .{
         .header = HeapHeader.init(.fn_val),
         .slot_base = slot_base,
-        .methods = out,
+        .methods = cell.methods,
         .variadic = variadic_method,
         .closure_bindings = null,
     };
-    try rt.trackHeap(.{ .ptr = @ptrCast(f), .free = freeFunction });
-    return Value.encodeHeapPtr(.fn_val, f);
+    return Value.encodeHeapPtr(.fn_val, cell.f);
 }
 
 // --- Top-level eval ---
@@ -445,11 +493,12 @@ pub fn allocFunctionFromSerialized(
 /// deep user recursion (or a self-triggering watch's notify→swap!→notify
 /// chain) overflows the native stack → SIGSEGV where the VM raises the
 /// catchable stack_overflow. Anchor to the shallowest `eval` entry seen on
-/// this thread and raise once the REAL bytes consumed exceed the same 6 MiB
-/// budget. The anchor LIVES in root_set (`conservative_stack_top`) — it
-/// doubles as the D-556 conservative-scan upper bound, one anchor for both
-/// concerns. Per-node cost is a threadlocal read + two compares.
-const STACK_BUDGET_BYTES: usize = 6 * 1024 * 1024;
+/// this thread and raise once the REAL bytes consumed exceed the budget
+/// `runtime_thread.zig` owns (ADR-0195, shared with vm.zig). The anchor
+/// LIVES in root_set (`conservative_stack_top`): it doubles as the D-556
+/// conservative-scan upper bound, one anchor for both concerns. Per-node
+/// cost is a threadlocal read + two compares.
+const STACK_BUDGET_BYTES = runtime_thread.STACK_BUDGET_BYTES;
 
 /// Evaluate one Node into a Value. `locals` is the slot array owned
 /// by the caller — typically a fixed 256-entry stack array.
@@ -723,18 +772,20 @@ fn evalConstructorCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.Int
     // (special_forms.constructInstance) so TreeWalk + VM construct
     // identically — incl. the java-surface `<init>` path `(java.io.File.
     // "path")` rides (ADR-0036 dual-backend parity; D-196 blocker 3).
-    var buf: [MAX_LOCALS]Value = undefined;
     if (n.args.len > MAX_LOCALS)
         return error_catalog.raise(.call_args_exceed_max_locals, n.loc, .{ .got = n.args.len, .max = MAX_LOCALS });
+    const scratch_base = tw_scratch.val_top;
+    defer tw_scratch.val_top = scratch_base;
+    const buf = try borrowVals(n.args.len, n.loc);
     // GC-ROOT: A6b — progressive arg publication (see ArgsFrame).
     var af: ArgsFrame = undefined;
-    af.push(&buf);
+    af.push(buf.ptr);
     defer af.pop();
     for (n.args, 0..) |arg_node, i| {
         buf[i] = try eval(rt, env, locals, &arg_node);
         af.publish(i + 1);
     }
-    return special_forms.constructInstance(rt, env, n.type_name, buf[0..n.args.len], n.loc);
+    return special_forms.constructInstance(rt, env, n.type_name, n.definer_ns, buf[0..n.args.len], n.loc);
 }
 
 /// `(.member recv args...)` / `(.-field recv)` unified instance member
@@ -789,6 +840,9 @@ fn evalInstanceMember(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.Inte
     }
 
     const me = td.lookupMethod(null, n.name) orelse {
+        // ADR-0203: a core wasm module handle answers `(.export h …)` through
+        // wasm/call's path (hook installed only under -Dwasm).
+        if (receiver.tag() == .wasm_module) if (rt.wasm_member_call) |call| return call(rt, receiver, n.name, args_buf[1..], n.loc);
         // Universal java.lang.Object method fallback (D-207): str/=/hash/class.
         if (try object_method.tryObjectMethod(rt, env, receiver, td, n.name, args_buf[1..])) |r| return r;
         // clojure.lang read/op methods on a NATIVE collection (D-371): `.valAt`/
@@ -863,15 +917,13 @@ fn evalStaticMethodCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.In
 }
 
 fn evalDef(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.DefNode) !Value {
-    const ns = env.current_ns orelse
-        return error_catalog.raiseInternal(n.loc, "def: no current namespace");
-    // A no-init `(def x)` interns an UNBOUND placeholder (does not clobber an
-    // existing root — clj parity; leaves `Var.bound` false). `(def x v)`
-    // assigns the value via `intern` (sets `Var.bound`).
-    const var_ptr = if (n.has_init) blk: {
-        const v = try eval(rt, env, locals, n.value_expr);
-        break :blk try env.intern(ns, n.name, v, null);
-    } else try env.internDeclare(ns, n.name);
+    const var_ptr = n.var_ptr;
+    // Evaluate first: a throwing initializer leaves the previous root intact.
+    // A no-init def returns the declared Var without changing its bound state.
+    if (n.has_init) {
+        var_ptr.root = try eval(rt, env, locals, n.value_expr);
+        var_ptr.bound = true;
+    }
     var_ptr.flags.dynamic = n.is_dynamic;
     var_ptr.flags.macro_ = n.is_macro;
     var_ptr.flags.private = n.is_private;
@@ -1004,10 +1056,15 @@ fn evalLoop(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.LoopNode) anye
             return error_catalog.raise(.slot_out_of_range, n.loc, .{ .form = "loop*", .index = b.index, .max = locals.len });
         locals[b.index] = try eval(rt, env, locals, b.value_expr);
     }
+    // PERF: budget threadlocal hoisted out of the back-edge loop (a dyld TLV
+    // call per iteration otherwise); writers are stack-disciplined around
+    // callFn re-entries, so it cannot change between iterations — same
+    // invariant as the vm.eval hoist [refs: O-055, D-450].
+    const budget = eval_budget_mod.current;
     while (true) {
         // ADR-0125: in-process eval budget — TreeWalk loop back-edge (parity
         // with the VM back-edge poll). Unmetered = one optional unwrap.
-        if (rt.eval_budget) |*budget| try budget.tick(rt.io);
+        if (budget) |b| try b.tick(rt.io);
         if (eval(rt, env, locals, n.body)) |result| {
             return result;
         } else |err| switch (err) {
@@ -1042,9 +1099,11 @@ fn evalRecur(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.RecurNode) an
     //
     // GC-ROOT: A6b — already-evaluated recur values are reachable only
     // through this buffer while a LATER arg's eval allocates (D-556).
-    var local_buf: [MAX_LOCALS]Value = undefined;
+    const scratch_base = tw_scratch.val_top;
+    defer tw_scratch.val_top = scratch_base;
+    const local_buf = try borrowVals(n.args.len, n.loc);
     var af: ArgsFrame = undefined;
-    af.push(&local_buf);
+    af.push(local_buf.ptr);
     defer af.pop();
     for (n.args, 0..) |*a, i| {
         local_buf[i] = try eval(rt, env, locals, a);
@@ -1182,15 +1241,21 @@ const ArgsFrame = struct {
 fn evalCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.CallNode) !Value {
     const callee = try eval(rt, env, locals, n.callee);
     // Slot 0 carries the callee; args fill 1..; the frame publishes each.
-    var args_buf: [MAX_LOCALS + 1]Value = undefined;
     if (n.args.len > MAX_LOCALS)
         return error_catalog.raise(.call_args_exceed_max_locals, n.loc, .{ .got = n.args.len, .max = MAX_LOCALS });
+    const val_base = tw_scratch.val_top;
+    const loc_base = tw_scratch.loc_top;
+    defer {
+        tw_scratch.val_top = val_base;
+        tw_scratch.loc_top = loc_base;
+    }
+    const args_buf = try borrowVals(n.args.len + 1, n.loc);
+    const arg_locs = try borrowLocs(n.args.len, n.loc);
     args_buf[0] = callee;
     var af: ArgsFrame = undefined;
-    af.push(&args_buf);
+    af.push(args_buf.ptr);
     defer af.pop();
     af.publish(1);
-    var arg_locs: [MAX_LOCALS]SourceLocation = undefined;
     for (n.args, 0..) |*a, i| {
         args_buf[1 + i] = try eval(rt, env, locals, a);
         af.publish(2 + i);
@@ -1292,7 +1357,13 @@ pub fn treeWalkCall(
         // (#{…} x) / ([…] i) / (entry i). Routes through the same dispatch so
         // the VM, `apply`, and `(map :k coll)` all get it for free. A
         // `.map_entry` is clj's 2-vector AMapEntry, callable like a vector.
-        .keyword, .symbol, .array_map, .hash_map, .hash_set, .vector, .sorted_map, .sorted_set, .map_entry => lookup_mod.invoke(rt, env, callee, args, loc),
+        // A LIVE transient is callable like the persistent collection it will
+        // become (D-199 read-only surface). `get` / `contains?` / `count`
+        // already accepted one; the call path did not, so `((transient m) :k)`
+        // raised value_not_callable. Routed through the same shared invoke, so
+        // the VM gets it here too (this switch is the single both-backend call
+        // choke point) and the ADR-0036 parity contract stays unengaged.
+        .keyword, .symbol, .array_map, .hash_map, .hash_set, .vector, .sub_vector, .sorted_map, .sorted_set, .map_entry, .transient_map, .transient_set, .transient_vector => lookup_mod.invoke(rt, env, callee, args, loc),
         // Var-as-IFn (D-231): a runtime `.var_ref` Value (from `#'f` /
         // `(var f)` / `(resolve 'f)`) in call position derefs to its current
         // value (thread binding else root) and re-dispatches — clj's Var IFn
@@ -1303,17 +1374,22 @@ pub fn treeWalkCall(
         // clojure.lang.IFn `-invoke` is callable as `(inst args…)`. `-invoke`
         // receives (this, …args). Falls through to value_not_callable when the
         // instance does not implement IFn. Shared treeWalkCall = both backends.
-        .typed_instance, .reified_instance => blk: {
-            var cs: dispatch.CallSite = .{};
-            const inv_args = try rt.gpa.alloc(Value, args.len + 1);
-            defer rt.gpa.free(inv_args);
-            inv_args[0] = callee;
-            @memcpy(inv_args[1..], args);
-            if (try dispatch.dispatchOrNull(rt, env, &cs, callee, "IFn", "-invoke", inv_args, loc)) |v| break :blk v;
-            break :blk error_catalog.raise(.value_not_callable, loc, .{ .actual = @tagName(callee.tag()) });
-        },
+        .typed_instance, .reified_instance => callIFnInstance(rt, env, callee, args, loc),
         else => |t| error_catalog.raise(.value_not_callable, loc, .{ .actual = @tagName(t) }),
     };
+}
+
+/// `(inst args…)` on an IFn deftype/reify. Out of line (`noinline`) so its
+/// CallSite + arg copy are not part of `treeWalkCall`'s frame, which every
+/// call of every backend pays (ADR-0195 native budget).
+noinline fn callIFnInstance(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
+    var cs: dispatch.CallSite = .{};
+    const inv_args = try rt.gpa.alloc(Value, args.len + 1);
+    defer rt.gpa.free(inv_args);
+    inv_args[0] = callee;
+    @memcpy(inv_args[1..], args);
+    if (try dispatch.dispatchOrNull(rt, env, &cs, callee, "IFn", "-invoke", inv_args, loc)) |v| return v;
+    return error_catalog.raise(.value_not_callable, loc, .{ .actual = @tagName(callee.tag()) });
 }
 
 /// Dispatch `(m receiver args...)` where `m` is a `.protocol_fn`
@@ -1327,22 +1403,21 @@ pub fn treeWalkCall(
 /// `op_method_call`; this protocol-fn path keeps a per-call CallSite,
 /// so every invocation pays one method_table linear scan — small N,
 /// Clojure protocols typically ≤ 8 methods.)
-pub fn callProtocolFn(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
+pub noinline fn callProtocolFn(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (args.len < 1)
         return error_catalog.raise(.arity_below_min, loc, .{ .fn_name = "protocol-fn", .got = args.len, .min = 1 });
     const pfn = protocol_mod.asProtocolFn(callee);
     const receiver = args[0];
     // D-314 / ADR-0144: `:extend-via-metadata true` protocols dispatch via the
     // receiver's metadata (per-VALUE) ahead of the per-type impl. It MUST run
-    // before `dispatch.dispatch` (which owns the per-TYPE CallSite cache), so a
+    // before `dispatch.dispatchCached` (which owns the per-TYPE ProtocolFn cache), so a
     // meta hit never poisons the type cache. Gated on the flag → other protocols
     // pay nothing. Both backends share this entry (VM wires callFn=treeWalkCall).
     if (try meta_mod.metaDispatch(rt, env, pfn.descriptor, receiver, pfn.methodName(), args, loc)) |v| return v;
-    var cs: method_table.CallSite = .{};
-    return dispatch.dispatch(
+    return dispatch.dispatchCached(
         rt,
         env,
-        &cs,
+        pfn.cache(),
         receiver,
         pfn.descriptor.fqcn(),
         pfn.methodName(),
@@ -1366,16 +1441,16 @@ const RestMode = enum { wrap, bind_direct };
 /// Generic fn call — the entry every backend reaches via `vtable.callFn`.
 /// Always cons-wraps `& rest` (unconditionally correct).
 pub fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation) !Value {
-    return callMethodImpl(rt, env, fn_val.decodePtr(*Function), args, loc, .wrap);
+    return callMethodImpl(rt, env, fn_val, args, loc, .wrap);
 }
 
 /// ADR-0042 am1: `apply`'s lazy-preserving entry. `args = [leading…,
-/// rest_seq]`; `applyFn::canBindDirect` has verified the callee is a
+/// rest_seq]`; `applyVariadic` has verified the callee is a
 /// variadic fn whose `& rest` should bind `rest_seq` DIRECTLY. Distinct
 /// from `callFunction` so the generic path stays wrap-only — no flag, no
 /// shared mutable state, the signal is the in-band `RestMode` argument.
 pub fn callFunctionBindingRest(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation) !Value {
-    return callMethodImpl(rt, env, fn_val.decodePtr(*Function), args, loc, .bind_direct);
+    return callMethodImpl(rt, env, fn_val, args, loc, .bind_direct);
 }
 
 /// Shared call-frame binder — the ONE source of the activation-record
@@ -1387,28 +1462,34 @@ pub fn callFunctionBindingRest(rt: *Runtime, env: *Env, fn_val: Value, args: []c
 /// (the §9.2.S perf-parity work flattening `op_call`) reuses this exact
 /// binder rather than re-deriving the closure/arg/rest layout, so the two
 /// activation paths cannot drift.
+/// The exact slot window a call of method `m` binds and runs in: `fs`.
+// PERF: init + GC-root only the slots this method actually uses, not all 256
+// — cuts the ~2 KB per-call nil-init on the hottest path [refs: O-015]
+// ADR-0130 frame-rooting: m.frame_slots is the analyzer's exact per-method
+// high-water (≥ arg_region by construction; the @max defends a runtime/compile
+// slot_base skew). Sentinel 0 (a no-arg/no-local/no-capture body, or a
+// non-analyzer FnMethod) falls back to the full MAX_LOCALS. A too-low fs is a
+// GC UAF / slot_out_of_range (the O-005 failure modes) — locked by the
+// CLJW_GC_TORTURE `nested_deep` e2e.
+pub fn frameSlots(f: *const Function, m: *const FunctionMethod, loc: SourceLocation) !usize {
+    const arg_region: usize = @as(usize, f.slot_base) + m.arity + @intFromBool(m.has_rest);
+    const fs: usize = if (m.frame_slots == 0) MAX_LOCALS else @max(@as(usize, m.frame_slots), arg_region);
+    if (fs > MAX_LOCALS)
+        return error_catalog.raise(.fn_frame_exceeds_max_locals, loc, .{ .base = f.slot_base, .arity = m.arity, .max = MAX_LOCALS });
+    return fs;
+}
+
 pub fn bindCallFrame(
     rt: *Runtime,
     f: *const Function,
     m: *const FunctionMethod,
     args: []const Value,
-    locals: *[MAX_LOCALS]Value,
+    locals: []Value,
     rest_mode: RestMode,
     loc: SourceLocation,
 ) !usize {
-    const arg_region: usize = @as(usize, f.slot_base) + m.arity + @intFromBool(m.has_rest);
-    // PERF: init + GC-root only the slots this method actually uses, not all 256
-    // — cuts the ~2 KB per-call nil-init on the hottest path [refs: O-015]
-    // ADR-0130 frame-rooting: m.frame_slots is the analyzer's exact per-method
-    // high-water (≥ arg_region by construction; the @max defends a runtime/compile
-    // slot_base skew). Sentinel 0 (a no-arg/no-local/no-capture body, or a
-    // non-analyzer FnMethod) falls back to the full MAX_LOCALS. A too-low fs is a
-    // GC UAF / slot_out_of_range (the O-005 failure modes) — locked by the
-    // CLJW_GC_TORTURE `nested_deep` e2e.
-    const fs: usize = if (m.frame_slots == 0) MAX_LOCALS else @max(@as(usize, m.frame_slots), arg_region);
-    if (fs > MAX_LOCALS)
-        return error_catalog.raise(.fn_frame_exceeds_max_locals, loc, .{ .base = f.slot_base, .arity = m.arity, .max = MAX_LOCALS });
-
+    const fs = try frameSlots(f, m, loc);
+    std.debug.assert(locals.len >= fs);
     @memset(locals[0..fs], .nil_val);
     if (f.closure_bindings) |snap| {
         @memcpy(locals[0..snap.len], snap);
@@ -1417,10 +1498,9 @@ pub fn bindCallFrame(
         locals[f.slot_base + i] = v;
     }
     if (m.has_rest) {
-        // bind_direct only fires on apply's exact shape (one seq-shaped
-        // trailing arg); vectors are excluded so JVM `(apply f x [y])`
-        // spread stays (xs = (y), not [y]). Everything else cons-wraps.
-        if (rest_mode == .bind_direct and args.len == m.arity + 1 and isRestSeqShaped(args[m.arity])) {
+        // apply has normalized its tail to an ISeq. Intent, not a closed
+        // tag list, distinguishes spreading from an ordinary call.
+        if (rest_mode == .bind_direct and args.len == m.arity + 1) {
             locals[f.slot_base + m.arity] = args[m.arity];
         } else {
             // Cons-wrap the trailing args (those past `m.arity`). JVM
@@ -1439,32 +1519,57 @@ pub fn bindCallFrame(
     return fs;
 }
 
-fn callMethodImpl(rt: *Runtime, env: *Env, f: *Function, args: []const Value, loc: SourceLocation, rest_mode: RestMode) !Value {
+fn callMethodImpl(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation, rest_mode: RestMode) !Value {
+    // PERF: no per-call locals buffer on the native stack: callMethodBody
+    // borrows an exact-size window from `tw_scratch`, which neither
+    // 0xaa-fills in ReleaseSafe (O-080's original goal) nor costs native stack
+    // per re-entry (PR #80 recursion depth) [refs: O-064, O-080]
+    return callMethodBody(rt, env, fn_val, args, loc, rest_mode);
+}
+
+fn callMethodBody(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation, rest_mode: RestMode) !Value {
+    const f = fn_val.decodePtr(*Function);
     // Row 7.8 cycle 1 (ADR-0041): linear scan over `methods`, fixed-
     // arity wins on exact match; fall through to `variadic` when
     // `args.len >= variadic.arity`. Single-arity fns produce a
     // 1-element `methods` slice = same code path.
-    const m: *const FunctionMethod = selectMethod(f, args.len) orelse {
+    const selected = if (rest_mode == .bind_direct)
+        (if (f.variadic) |*method| method else null)
+    else
+        selectMethod(f, args.len);
+    const m: *const FunctionMethod = selected orelse {
         return raiseArityNotMatched(f, args.len, loc);
     };
 
-    var locals: [MAX_LOCALS]Value = undefined;
-    const fs = try bindCallFrame(rt, f, m, args, &locals, rest_mode, loc);
-    // GC-ROOT: A6 — tree_walk fn activation roots its live slot window for
-    // the call's whole extent (D-555; the sibling of vm.eval's A1 frame).
-    // Without this, a mid-eval auto-collect (ADR-0164) sweeps any heap value
-    // reachable ONLY through a local slot — the sym-meta / gc_torture
-    // tree_walk-only corruption class. [ref: .dev/gc_rooting.md §A]
+    // GC-ROOT: A6 — tree_walk fn activation roots its live slot window +
+    // the EXECUTING callee for the call's whole extent (D-555; the sibling
+    // of vm.eval's A1 frame). Without the window, a mid-eval auto-collect
+    // (ADR-0164) sweeps any heap value reachable ONLY through a local slot —
+    // the sym-meta / gc_torture tree_walk-only corruption class. The frame
+    // is installed BEFORE bindCallFrame because the binder's `& rest`
+    // consHeap can itself collect while the callee is otherwise held only as
+    // a raw `*Function` (ADR-0184 A, DA gap 1) — the callee slot must
+    // already be live then; the locals window starts empty and is widened
+    // to the bound slots after the binder returns. [ref: .dev/gc_rooting.md §A]
+    // The window comes from `tw_scratch`, not the native stack, sized to the
+    // method's exact frame (`frameSlots`, the binder's own computation).
+    const scratch_base = tw_scratch.val_top;
+    defer tw_scratch.val_top = scratch_base;
+    const locals = try borrowVals(try frameSlots(f, m, loc), loc);
     var gc_stack: [1]Value = .{.nil_val};
     var gc_sp: u16 = 0;
     var gc_frame: root_set.EvalFrame = .{
         .stack = &gc_stack,
         .sp = &gc_sp,
-        .locals = locals[0..fs],
+        .locals = locals[0..0],
+        .callee = fn_val,
         .parent = root_set.eval_frame_head,
     };
     root_set.eval_frame_head = &gc_frame;
     defer root_set.eval_frame_head = gc_frame.parent;
+
+    const fs = try bindCallFrame(rt, f, m, args, locals, rest_mode, loc);
+    gc_frame.locals = locals[0..fs];
     // VM backend hook: when this method carries compiled bytecode and
     // the vtable has the `evalChunk` slot wired (vm.installVTable), run
     // the chunk instead of walking the Node body. The TreeWalk backend
@@ -1490,10 +1595,13 @@ fn callMethodImpl(rt: *Runtime, env: *Env, f: *Function, args: []const Value, lo
     // enclosing `loop*` unwinds to that `evalLoop` first (inner frame), so
     // only fn-tail recurs reach this catch.
     const recur_arity: u16 = m.arity + @intFromBool(m.has_rest);
+    // PERF: budget threadlocal hoisted out of the back-edge loop — same
+    // invariant as the evalLoop hoist above [refs: O-055, D-450].
+    const budget = eval_budget_mod.current;
     while (true) {
         // ADR-0125: in-process eval budget — TreeWalk fn-tail-recur back-edge
         // (parity with the VM + loop* polls). Unmetered = one optional unwrap.
-        if (rt.eval_budget) |*budget| try budget.tick(rt.io);
+        if (budget) |b| try b.tick(rt.io);
         if (eval(rt, env, locals[0..fs], m.body)) |result| {
             return result;
         } else |err| switch (err) {
@@ -1510,17 +1618,6 @@ fn callMethodImpl(rt: *Runtime, env: *Env, f: *Function, args: []const Value, lo
     }
 }
 
-/// ADR-0042: tags eligible for the bind-direct rest-pack fast-path —
-/// already shape-compatible with Clojure's `& rest` binding (an ISeq).
-/// Vector / set / map / etc. are intentionally excluded so their spread
-/// semantics stay observable for `(apply f x [y])`-style calls.
-fn isRestSeqShaped(v: Value) bool {
-    return switch (v.tag()) {
-        .list, .cons, .chunked_cons, .lazy_seq, .nil => true,
-        else => false,
-    };
-}
-
 pub fn selectMethod(f: *const Function, n: usize) ?*const FunctionMethod {
     for (f.methods) |*m| {
         if (m.arity == n) return m;
@@ -1531,7 +1628,9 @@ pub fn selectMethod(f: *const Function, n: usize) ?*const FunctionMethod {
     return null;
 }
 
-fn raiseArityNotMatched(f: *const Function, got: usize, loc: SourceLocation) anyerror {
+// `noinline`: its 256-byte message buffer must not land in callMethodImpl's
+// frame, which every native eval re-entry pays (ADR-0195 budget).
+noinline fn raiseArityNotMatched(f: *const Function, got: usize, loc: SourceLocation) anyerror {
     // For single-arity fixed fns, preserve the existing
     // arity_not_expected / arity_below_min diagnostics so existing
     // user-visible error text stays stable.

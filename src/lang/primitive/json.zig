@@ -38,10 +38,12 @@ const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const vector_collection = @import("../../runtime/collection/vector.zig");
+const sub_vector = @import("../../runtime/collection/sub_vector.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
 const sorted_collection = @import("../../runtime/collection/sorted.zig");
 const print = @import("../../runtime/print.zig");
 const big_int_mod = @import("../../runtime/numeric/big_int.zig");
+const decimal_text = @import("../../runtime/numeric/decimal_text.zig");
 const ratio_mod = @import("../../runtime/numeric/ratio.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
 
@@ -69,10 +71,8 @@ pub fn readStrFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     var arena = std.heap.ArenaAllocator.init(rt.gpa);
     defer arena.deinit();
 
-    const parsed = std.json.parseFromSlice(std.json.Value, arena.allocator(), source, .{}) catch {
-        return error_catalog.raise(.feature_not_supported, loc, .{
-            .name = "JSON parse error in clojure.data.json/read-str",
-        });
+    const parsed = std.json.parseFromSlice(std.json.Value, arena.allocator(), source, .{}) catch |err| {
+        return error_catalog.raise(.json_string_invalid, loc, .{ .reason = @errorName(err) });
     };
     // GC: read-str fabricates an unpublished result tree (vectors/maps/strings)
     // via recursive jsonToCw + bulk fromSlice/fromLiteralPairs buffers that are
@@ -194,8 +194,13 @@ pub fn writeStrFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     errdefer aw.deinit();
     cwToJson(args[0], &aw.writer, opts) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
-        else => return error_catalog.raise(.feature_not_supported, loc, .{
-            .name = "JSON write error in clojure.data.json/write-str",
+        // A value with no JSON encoding is bad DATA, so this is CATCHABLE (clj
+        // throws "Don't know how to write JSON of class …"), not the
+        // uncatchable `.not_implemented` — see `.json_string_invalid`.
+        else => return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "write-str",
+            .expected = "a value with a JSON encoding",
+            .actual = @tagName(args[0].tag()),
         }),
     };
     const owned = try aw.toOwnedSlice();
@@ -236,28 +241,24 @@ fn cwToJson(v: Value, w: *std.Io.Writer, opts: WriteOpts) anyerror!void {
         // formatter rather than Zig's `{d}` (D-171, sibling of D-166).
         .float => try print.printFloat(w, v.asFloat()),
         // JVM data.json writes a BigInt via `(str x)` → plain digits, NO
-        // `N` suffix. `Managed.format` (`{f}`) renders just the digits
+        // `N` suffix. `writeDecimal` renders just the digits, no size ceiling
         // (printBigInt adds the `N` for pr-str; JSON must not). (D-182)
-        .big_int => try w.print("{f}", .{big_int_mod.asManaged(v)}),
-        // JVM data.json writes a Ratio as its double value (1/2 → 0.5).
-        .ratio => {
-            const f = switch (ratio_mod.parts(v)) {
-                .small => |s| @as(f64, @floatFromInt(s.n)) / @as(f64, @floatFromInt(s.d)),
-                .big => |b| b.n.m.toFloat(f64, .nearest_even)[0] / b.d.m.toFloat(f64, .nearest_even)[0],
-            };
-            try print.printFloat(w, f);
-        },
+        .big_int => try decimal_text.writeDecimal(w, big_int_mod.asManaged(v)),
+        // JVM data.json writes a Ratio as `(double x)`, its `Ratio.doubleValue`
+        // (1/2 → 0.5, 1/7 → 0.1428571428571429).
+        .ratio => try print.printFloat(w, try ratio_mod.toF64(v)),
         .string => try writeJsonString(w, string_collection.asString(v), opts),
         // Keywords serialise as their name string (JVM data.json
         // default: `:keyword-fn` keyword? → str).
         .keyword => try writeJsonString(w, keyword_mod.asKeyword(v).name, opts),
-        .vector => {
+        .vector, .sub_vector => {
             try w.writeAll("[");
-            const n = vector_collection.count(v);
+            const is_sub = v.tag() == .sub_vector;
+            const n = if (is_sub) sub_vector.count(v) else vector_collection.count(v);
             var i: u32 = 0;
             while (i < n) : (i += 1) {
                 if (i > 0) try w.writeAll(",");
-                try cwToJson(vector_collection.nth(v, i), w, opts);
+                try cwToJson(if (is_sub) sub_vector.nth(v, i) else vector_collection.nth(v, i), w, opts);
             }
             try w.writeAll("]");
         },
@@ -344,6 +345,12 @@ const Entry = struct {
     f: dispatch.BuiltinFn,
 };
 
+/// These are the raw parsers `read-str` / `write-str` wrap; a caller has no
+/// reason to reach them, and upstream `clojure.data.json` has no such names.
+/// Interned `^:private` so they are not a public surface the project would owe
+/// documentation and compatibility for.
+const PRIVATE: env_mod.MetadataMap = .{ .private = true };
+
 const ENTRIES = [_]Entry{
     // Raw 1-arity parsers; the public `read-str`/`write-str` (clojure.data.json
     // ns, json.clj) wrap these to add the `:key-fn`/`:value-fn` options (D-401).
@@ -354,6 +361,6 @@ const ENTRIES = [_]Entry{
 pub fn register(env: *Env) !void {
     const ns = try env.findOrCreateNs("clojure.data.json");
     for (ENTRIES) |it| {
-        _ = try env.intern(ns, it.name, Value.initBuiltinFn(it.f), null);
+        _ = try env.intern(ns, it.name, Value.initBuiltinFn(it.f), PRIVATE);
     }
 }

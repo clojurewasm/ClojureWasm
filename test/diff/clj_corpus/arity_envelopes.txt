@@ -42,3 +42,13 @@
 ;;=> [10 20 0]
 (vec (int-array 4))
 ;;=> [0 0 0 0]
+(let [a (make-array Long 2 3)] (aset a 0 1 42) (aget a 0 1))
+;;=> 42
+(let [a (make-array Long 2 3)] (aset a 1 2 7) [(aget a 1 2) (aget a 0 0)])
+;;=> [7 nil]
+(let [b (make-array Long 2 2 2)] (aset b 1 0 1 9) (aget b 1 0 1))
+;;=> 9
+(let [a (make-array Long 2 3)] (try (aget a 9 0) (catch Throwable t :oob)))
+;;=> :oob
+(let [a (make-array Long 2 3)] (try (aset a 0 9 1) (catch Throwable t :oob)))
+;;=> :oob

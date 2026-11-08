@@ -119,7 +119,22 @@
                                                   (rest row))))))
                rows))))))
 
-(def parse-opts
+(def ^{:doc "Parses command line arguments args according to option-specs, returning a
+  map with these entries:
+
+  :options      — a map of option-key to parsed value
+  :arguments    — the vector of unprocessed arguments
+  :summary      — a string of the option summaries, for a help message
+  :errors       — a vector of error message strings, or nil when there were none
+
+  Options are key-value pairs:
+
+  :in-order     — stop at the first unrecognised argument rather than
+                  continuing to parse (for sub-commands)
+  :no-defaults  — omit options that were not supplied, instead of filling in
+                  their :default"
+       :arglists (quote ([args option-specs & options]))}
+  parse-opts
   (fn [args option-specs & {:keys [in-order no-defaults]}]
     (let [specs (mapv compile-spec option-specs)
           defaults (reduce (fn [m sp]

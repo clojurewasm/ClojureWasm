@@ -2,10 +2,10 @@
 //! deps.edn `:git/url` resolution: clone a repo at a pinned sha into a
 //! content-addressed cache (Convergence Campaign Stage 1.2 slice 5, ADR-0101).
 //!
-//! This is the ONLY module in cw v1 that spawns a subprocess — the audit
-//! invariant is `rg 'std.process.Child' src/` resolves here (`std.process.run`
-//! wraps Child). `git` is invoked by argv vector (never a shell string), so a
-//! `:git/url` cannot inject shell metacharacters.
+//! One of two modules that spawn a subprocess (the other is the user-facing
+//! `runtime/cljw/process/run.zig`, ADR-0199); `rg 'std.process.(run|spawn)'
+//! src/` resolves to exactly these. `git` is invoked by argv vector (never a
+//! shell string), so a `:git/url` cannot inject shell metacharacters.
 //!
 //! Cache layout (ADR-0101 Shape B): `<cache_base>/gitlibs/<repo>/<full-sha>/`,
 //! content-addressed on the FULL sha so multiple shas of one repo coexist. The

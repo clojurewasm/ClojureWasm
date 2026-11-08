@@ -26,3 +26,5 @@
 ;;=> {}
 (do (defmulti tm6 identity) (defmethod tm6 :default [_] :d) (boolean (.getMethod tm6 :anything)))
 ;;=> true
+(do (derive :mmh/dog :mmh/animal) (defmulti mm-h9 identity) (defmethod mm-h9 :mmh/animal [_] :from-animal) (defmethod mm-h9 :k1 [_] 1) (defmethod mm-h9 :k2 [_] 2) (defmethod mm-h9 :k3 [_] 3) (defmethod mm-h9 :k4 [_] 4) (defmethod mm-h9 :k5 [_] 5) (defmethod mm-h9 :k6 [_] 6) (defmethod mm-h9 :k7 [_] 7) (defmethod mm-h9 :k8 [_] 8) (mm-h9 :mmh/dog))
+;;=> :from-animal

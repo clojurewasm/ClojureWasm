@@ -1,0 +1,38 @@
+# Wasm FFI benchmark: cljw (embedded zwasm) vs wasmtime
+# Generated: 2026-09-04T23:59:27-03:00 by bench/wasm_bench.sh
+
+date: "2026-09-04"
+
+env:
+  machine: Linux 7.0.0-30-generic x86_64
+  cpu: Intel(R) Core(TM) Ultra 9 185H
+  cljw: ClojureWasm v1.14.0 (ReleaseSafe, wasm)
+  wasmtime: wasmtime 48.0.0 (f1412a598 2026-08-20)
+  engine: auto
+  tool: hyperfine
+  runs: 5
+  warmup: 2
+
+startup_ms:
+  cw: 47.2
+  wasmtime: 13.0
+
+benchmarks:
+  fib:
+    cold_ms: {cw: 1333.6, wasmtime: 501.5}
+    warm_ms: {cw: 1286.4, wasmtime: 488.5}
+  tak:
+    cold_ms: {cw: 4301.0, wasmtime: 1619.4}
+    warm_ms: {cw: 4253.8, wasmtime: 1606.4}
+  arith:
+    cold_ms: {cw: 46.3, wasmtime: 10.7}
+    warm_ms: {cw: 0.1, wasmtime: 0.1}
+  sieve:
+    cold_ms: {cw: 95.1, wasmtime: 26.1}
+    warm_ms: {cw: 47.9, wasmtime: 13.1}
+  fib_loop:
+    cold_ms: {cw: 69.4, wasmtime: 18.1}
+    warm_ms: {cw: 22.2, wasmtime: 5.1}
+  gcd:
+    cold_ms: {cw: 185.4, wasmtime: 110.8}
+    warm_ms: {cw: 138.2, wasmtime: 97.8}

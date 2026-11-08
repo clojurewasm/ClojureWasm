@@ -1,0 +1,4 @@
+name: "Double Array Reduce"
+category: numeric
+expected_output: "4999950000"
+description: "(reduce + a) over a 100000-element double-array x10 — reduce over a primitive array source"

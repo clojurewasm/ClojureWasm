@@ -7,6 +7,11 @@
 //! `pub fn main(init: std.process.Init)` so `build.zig` does not
 //! need a `root_source_file` change.
 //!
+//! `cli.dispatch` runs on a spawned runtime thread (`runtime_thread.runMain`,
+//! ADR-0195), never on the process's initial thread: the runtime thread owns
+//! its stack geometry, and the initial thread only joins and reports the
+//! error. Single-threaded targets call through directly.
+//!
 //! The `test {}` aggregator at the bottom intentionally stays here:
 //! it is the second-`addTest()` orphan-fix per `zig_tips.md` "Test
 //! discovery via @import (lazy-decl-analysis trap)" + the
@@ -19,6 +24,7 @@ const std = @import("std");
 const cli = @import("app/cli.zig");
 const error_render = @import("app/error_render.zig");
 const io_default = @import("runtime/concurrency/io_default.zig");
+const runtime_thread = @import("runtime/concurrency/runtime_thread.zig");
 
 pub fn main(init: std.process.Init) !void {
     // Upgrade the process-wide `io_default` singleton from its lazy
@@ -30,7 +36,7 @@ pub fn main(init: std.process.Init) !void {
     // single-threaded default (a per-test threaded io is set where needed), so
     // `io_default` never dangles at a freed test-local `Threaded`.
     io_default.set(init.io);
-    try cli.dispatch(init);
+    try runtime_thread.runMain(cli.dispatch, .{init});
 }
 
 test "smoke: main module loads" {
@@ -62,6 +68,15 @@ test "kindToExitCode maps internal_error → 70 and others → 1 (ADR-0019)" {
 // Pull in tests from the source tree. As more files appear under
 // src/, add them here so the unified `zig build test` discovers them.
 test {
+    // Layer 7 — property suite (ADR-0186). Reached from here like every other
+    // test file, so `zig build test` runs the properties in the same pass as
+    // the unit tests rather than behind a flag someone has to remember.
+    _ = @import("testing/prop.zig");
+    _ = @import("testing/prop_collections.zig");
+    _ = @import("testing/prop_print.zig");
+    _ = @import("testing/prop_equal.zig");
+    _ = @import("testing/prop_compare.zig");
+
     _ = @import("app/cli.zig");
     _ = @import("app/repl/line_editor.zig");
     _ = @import("app/deps/parse.zig");
@@ -78,6 +93,7 @@ test {
     _ = @import("app/render_error.zig");
     _ = @import("runtime/value/value.zig");
     _ = @import("runtime/introspect.zig");
+    _ = @import("app/deps/mvn_fetch.zig");
     _ = @import("runtime/error/info.zig");
     _ = @import("runtime/error/catalog.zig");
     _ = @import("runtime/error/print.zig");
@@ -88,14 +104,21 @@ test {
     _ = @import("runtime/gc/arena.zig");
     _ = @import("runtime/gc/tag_ops.zig");
     _ = @import("runtime/gc/gc_heap.zig");
+    _ = @import("runtime/gc/gc_heap_test.zig");
     _ = @import("runtime/gc/mark_sweep.zig");
-    _ = @import("runtime/gc/free_pool.zig");
+    _ = @import("runtime/gc/mark_sweep_test.zig");
+    _ = @import("runtime/gc/gc_trigger.zig");
+    _ = @import("runtime/gc/gc_types.zig");
+    _ = @import("runtime/gc/conservative_scan.zig");
+    _ = @import("runtime/gc/page_heap.zig");
     _ = @import("runtime/gc/root_set.zig");
     _ = @import("runtime/gc/gc_torture.zig");
     _ = @import("runtime/concurrency/io_default.zig");
     _ = @import("runtime/concurrency/safepoint.zig");
+    _ = @import("runtime/concurrency/latch.zig");
     _ = @import("runtime/concurrency/eval_budget.zig");
     _ = @import("runtime/concurrency/lock_tx.zig");
+    _ = @import("runtime/concurrency/runtime_thread.zig");
     _ = @import("runtime/concurrency/object_monitor.zig");
     _ = @import("runtime/agent.zig");
     _ = @import("runtime/value/heap_tag.zig");
@@ -108,12 +131,14 @@ test {
     _ = @import("runtime/collection/map.zig");
     _ = @import("runtime/collection/set.zig");
     _ = @import("runtime/collection/chunked_cons.zig");
+    _ = @import("runtime/collection/chunked_seq.zig");
     _ = @import("runtime/collection/range.zig");
     _ = @import("runtime/collection/persistent_queue.zig");
     _ = @import("runtime/collection/transient/transient_vector.zig");
     _ = @import("runtime/collection/transient/transient_array_map.zig");
     _ = @import("runtime/collection/transient/transient_hash_set.zig");
     _ = @import("runtime/hash.zig");
+    _ = @import("runtime/iref.zig");
     _ = @import("runtime/keyword.zig");
     _ = @import("runtime/symbol.zig");
     _ = @import("runtime/print.zig");
@@ -130,11 +155,14 @@ test {
     _ = @import("runtime/java/_host_api.zig");
     _ = @import("runtime/numeric/big_int.zig");
     _ = @import("runtime/lazy_seq.zig");
+    _ = @import("runtime/seqable.zig");
+    _ = @import("runtime/char_sequence.zig");
     _ = @import("eval/form.zig");
     _ = @import("eval/tokenizer.zig");
     _ = @import("eval/reader.zig");
     _ = @import("eval/node.zig");
     _ = @import("eval/analyzer/analyzer.zig");
+    _ = @import("eval/analyzer/class_form.zig");
     _ = @import("eval/macro_dispatch.zig");
     _ = @import("eval/backend/tree_walk.zig");
     _ = @import("eval/backend/vm.zig");
@@ -158,6 +186,7 @@ test {
     _ = @import("lang/primitive/protocol.zig");
     _ = @import("lang/primitive.zig");
     _ = @import("lang/macro_transforms.zig");
+    _ = @import("lang/binding_names.zig");
     _ = @import("lang/bootstrap.zig");
     // Phase 6 impl files that ship unit tests but have no
     // in-graph referrer yet (Clojure-ns peer / Java-surface
@@ -171,6 +200,7 @@ test {
     _ = @import("runtime/random.zig");
     _ = @import("runtime/regex/value.zig");
     _ = @import("runtime/regex/dfa.zig");
+    _ = @import("runtime/regex/many_groups_test.zig");
     _ = @import("runtime/time/instant.zig");
     _ = @import("runtime/time/instant_value.zig");
     _ = @import("runtime/time/duration_value.zig");

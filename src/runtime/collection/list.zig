@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! PersistentList — Clojure's singly-linked cons-cell list.
 //!
 //! Each `Cons` cell holds `first` (head), `rest` (tail: `nil` or another
@@ -15,6 +16,35 @@ const tag_ops = @import("../gc/tag_ops.zig");
 const gc_heap_mod = @import("../gc/gc_heap.zig");
 const mark_sweep = @import("../gc/mark_sweep.zig");
 
+/// Sentinel `count` meaning "this cell's length is NOT known in O(1)".
+///
+/// A `.list` cell may hold a NON-list seq as its `rest` — `(cons 1 (map inc
+/// xs))`, `(conj (range 3) 99)` — in which case the stored count can only
+/// describe the `.list` PREFIX, not the realized length. Storing that prefix
+/// length silently makes the field a lie; storing this sentinel makes the
+/// unknown EXPLICIT, so a reader can take the O(1) path when the chain is a
+/// pure list and walk only when it genuinely must.
+///
+/// Chosen as `maxInt(u32)` so every existing `countOf(v) > 0` non-emptiness
+/// test keeps its meaning: a cons cell always holds at least one element, so
+/// "unknown" is correctly non-empty. `isEmpty`'s `== 0` likewise stays exact.
+pub const COUNT_UNKNOWN: u32 = std.math.maxInt(u32);
+
+/// Stored `count` for a cell prepending one element to `tail`: exact when
+/// `tail` is nil or a pure `.list` with an exact count, `COUNT_UNKNOWN`
+/// otherwise (a non-list seq tail, or a tail that is itself unknown —
+/// unknown-ness is contagious head-ward, which is what keeps the field
+/// honest for the whole chain rather than only at the splice point).
+fn countPrepending(tail: Value) u32 {
+    if (tail.isNil()) return 1;
+    if (tail.tag() != .list and tail.tag() != .cons) return COUNT_UNKNOWN;
+    const n = tail.decodePtr(*const Cons).count;
+    // `>= COUNT_UNKNOWN - 1` saturates rather than wrapping into a
+    // plausible-looking small count at the u32 boundary.
+    if (n >= COUNT_UNKNOWN - 1) return COUNT_UNKNOWN;
+    return n + 1;
+}
+
 /// Cons cell — fundamental list-building block. `extern struct` so
 /// declaration order is preserved + HeapHeader lands at offset 0
 /// (required by `gc.alloc(T)` per the comptime check).
@@ -24,6 +54,8 @@ pub const Cons = extern struct {
     first: Value,
     rest: Value,
     meta: Value,
+    /// Element count, or `COUNT_UNKNOWN` when the chain leaves `.list`
+    /// (see that constant). Never a prefix length presented as a total.
     count: u32,
 
     comptime {
@@ -42,7 +74,7 @@ pub fn cons(alloc: std.mem.Allocator, head: Value, tail: Value) !Value {
         .first = head,
         .rest = tail,
         .meta = .nil_val,
-        .count = 1 + countOf(tail),
+        .count = countPrepending(tail),
     };
     return Value.encodeHeapPtr(.list, cell);
 }
@@ -59,6 +91,18 @@ pub fn cons(alloc: std.mem.Allocator, head: Value, tail: Value) !Value {
 /// first / rest / meta so the GC sees the outgoing pointers and
 /// keeps reachable children alive.
 pub fn consHeap(rt: *Runtime, head: Value, tail: Value) !Value {
+    return consHeapTagged(rt, .list, head, tail);
+}
+
+/// Allocate the `clojure.lang.Cons` shape returned by `clojure.core/cons`
+/// when the original tail is non-nil. An empty collection's seq is nil,
+/// but its result still has the Cons tag. PersistentList construction uses
+/// `consHeap`; the shared cell layout is distinguished by the Value/header tag.
+pub fn consSeqHeap(rt: *Runtime, head: Value, tail: Value) !Value {
+    return consHeapTagged(rt, .cons, head, tail);
+}
+
+fn consHeapTagged(rt: *Runtime, comptime tag: HeapTag, head: Value, tail: Value) !Value {
     // D-244 #4: in a `acc = consHeap(rt, x, acc)` fold (the `list` builtin +
     // many primitives) the partial-list `tail`/`acc` is held in a Zig local,
     // unrooted, across this alloc; defer a mid-fold collect (ADR-0150 region).
@@ -68,13 +112,13 @@ pub fn consHeap(rt: *Runtime, head: Value, tail: Value) !Value {
     defer rt.gc.exitFabrication();
     const cell = try rt.gc.alloc(Cons);
     cell.* = .{
-        .header = HeapHeader.init(.list),
+        .header = HeapHeader.init(tag),
         .first = head,
         .rest = tail,
         .meta = .nil_val,
-        .count = 1 + countOf(tail),
+        .count = countPrepending(tail),
     };
-    return Value.encodeHeapPtr(.list, cell);
+    return Value.encodeHeapPtr(tag, cell);
 }
 
 /// Per-tag trace fn called by mark phase to walk outgoing GC-managed
@@ -93,6 +137,7 @@ pub fn traceGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
 /// Idempotent at the same fn pointer; called from `Runtime.init`.
 pub fn registerGcHooks() void {
     tag_ops.registerTrace(.list, &traceGc);
+    tag_ops.registerTrace(.cons, &traceGc);
 }
 
 /// The interned distinct empty list `()` (D-164 / clj-parity C1). A
@@ -118,7 +163,7 @@ pub fn emptyList(rt: *Runtime) !Value {
 
 /// True when `val` is a `.list` Value with no elements (`()` — count 0).
 pub fn isEmpty(val: Value) bool {
-    return val.tag() == .list and countOf(val) == 0;
+    return (val.tag() == .list or val.tag() == .cons) and countOf(val) == 0;
 }
 
 /// Free the interned empty-list singleton (allocated on `gc.infra`, so it
@@ -133,7 +178,7 @@ pub fn deinitEmptyList(rt: *Runtime) void {
 /// First element. `nil` for non-list inputs (matches Clojure's `first`).
 pub fn first(val: Value) Value {
     return switch (val.tag()) {
-        .list => val.decodePtr(*Cons).first,
+        .list, .cons => val.decodePtr(*Cons).first,
         else => .nil_val,
     };
 }
@@ -141,31 +186,41 @@ pub fn first(val: Value) Value {
 /// Rest of a list. `nil` for non-list inputs and at the tail end.
 pub fn rest(val: Value) Value {
     return switch (val.tag()) {
-        .list => val.decodePtr(*Cons).rest,
+        .list, .cons => val.decodePtr(*Cons).rest,
         else => .nil_val,
     };
 }
 
-/// O(1) length. `0` for non-list inputs.
+/// O(1) length. `0` for non-list inputs. May return `COUNT_UNKNOWN` — every
+/// caller here uses it as a `> 0` / `== 0` emptiness test, which stays exact
+/// under the sentinel. A caller wanting a LENGTH must use `exactCountOf`.
 pub fn countOf(val: Value) u32 {
     return switch (val.tag()) {
-        .list => val.decodePtr(*Cons).count,
+        .list, .cons => val.decodePtr(*Cons).count,
         else => 0,
     };
+}
+
+/// Exact O(1) length, or `null` when the chain leaves `.list` so the realized
+/// length is only discoverable by walking it (see `COUNT_UNKNOWN`).
+pub fn exactCountOf(val: Value) ?u32 {
+    if (val.tag() != .list and val.tag() != .cons) return null;
+    const n = val.decodePtr(*const Cons).count;
+    return if (n == COUNT_UNKNOWN) null else n;
 }
 
 /// Sequence view: `val` itself if non-empty, otherwise `nil`. Mirrors
 /// Clojure's `(seq xs)` — empty colls become `nil`.
 pub fn seq(val: Value) Value {
     return switch (val.tag()) {
-        .list => if (val.decodePtr(*Cons).count > 0) val else .nil_val,
+        .list, .cons => if (val.decodePtr(*Cons).count > 0) val else .nil_val,
         else => .nil_val,
     };
 }
 
 /// Raw `Cons` pointer view. Caller must already know `val` is a list.
 pub fn asCons(val: Value) *Cons {
-    std.debug.assert(val.tag() == .list);
+    std.debug.assert(val.tag() == .list or val.tag() == .cons);
     return val.decodePtr(*Cons);
 }
 
@@ -175,12 +230,20 @@ pub fn metaOf(v: Value) Value {
 }
 
 /// `(with-meta lst newmeta)` — shallow copy of the head Cons sharing the
-/// rest chain, meta set. (`.list`-tagged; raw `.cons` with-meta deferred.)
+/// rest chain, meta set, and preserving PersistentList versus Cons identity.
 pub fn withMeta(rt: *Runtime, v: Value, m: Value) !Value {
+    return switch (v.tag()) {
+        .list => withMetaTagged(rt, .list, v, m),
+        .cons => withMetaTagged(rt, .cons, v, m),
+        else => unreachable,
+    };
+}
+
+fn withMetaTagged(rt: *Runtime, comptime tag: HeapTag, v: Value, m: Value) !Value {
     const c = v.decodePtr(*const Cons);
     const nc = try rt.gc.alloc(Cons);
-    nc.* = .{ .header = HeapHeader.init(.list), .first = c.first, .rest = c.rest, .meta = m, .count = c.count };
-    return Value.encodeHeapPtr(.list, nc);
+    nc.* = .{ .header = HeapHeader.init(tag), .first = c.first, .rest = c.rest, .meta = m, .count = c.count };
+    return Value.encodeHeapPtr(tag, nc);
 }
 
 // --- tests ---
@@ -214,6 +277,19 @@ fn consHeapFailingHarness(alloc_inner: std.mem.Allocator) !void {
 
 test "consHeap returns OOM without leaking under each allocation failure (uniform errdefer)" {
     try testing.checkAllAllocationFailures(testing.allocator, consHeapFailingHarness, .{});
+}
+
+test "consSeqHeap preserves Cons identity when an empty collection sequences to nil" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+
+    const cell = try consSeqHeap(&rt, Value.initInteger(42), .nil_val);
+    try testing.expect(cell.tag() == .cons);
+    try testing.expectEqual(@as(u32, 1), countOf(cell));
+    try testing.expectEqual(@as(i48, 42), first(cell).asInteger());
+    try testing.expect(rest(cell).isNil());
 }
 
 test "cons creates a multi-element list (1 2 3)" {
@@ -313,4 +389,37 @@ test "structural sharing across cons calls" {
     try testing.expectEqual(@intFromEnum(rest(a)), @intFromEnum(rest(b)));
     try testing.expectEqual(@as(u32, 3), countOf(a));
     try testing.expectEqual(@as(u32, 3), countOf(b));
+}
+
+test "exactCountOf: pure chain exact, non-list tail unknown, unknown-ness propagates head-ward (O-057)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // A pure `.list` chain reports its length in O(1).
+    const pure = try cons(alloc, Value.initInteger(1), try cons(alloc, Value.initInteger(2), .nil_val));
+    try testing.expectEqual(@as(?u32, 2), exactCountOf(pure));
+
+    // A cell over a NON-list tail cannot know its realized length. A vector
+    // stands in for the seq tails the runtime actually splices here
+    // (`(cons x (map …))`, `(conj (range 3) 99)`); what matters is only that
+    // the tail's tag is not `.list`.
+    const seq_tail = Value.initInteger(7); // any non-list, non-nil tail
+    const mixed = try cons(alloc, Value.initInteger(0), seq_tail);
+    try testing.expectEqual(@as(?u32, null), exactCountOf(mixed));
+    try testing.expectEqual(COUNT_UNKNOWN, countOf(mixed));
+
+    // Unknown-ness is contagious toward the head: consing onto an unknown
+    // cell must not resurrect a plausible small count.
+    const over_mixed = try cons(alloc, Value.initInteger(-1), mixed);
+    try testing.expectEqual(@as(?u32, null), exactCountOf(over_mixed));
+
+    // The sentinel keeps every emptiness test exact — a cons cell always
+    // holds at least one element, so "unknown" must read as NON-empty.
+    try testing.expect(!isEmpty(mixed));
+    try testing.expect(countOf(mixed) > 0);
+    try testing.expect(seq(mixed).tag() == .list);
+
+    // A non-list input has no exact count at all (distinct from length 0).
+    try testing.expectEqual(@as(?u32, null), exactCountOf(.nil_val));
 }

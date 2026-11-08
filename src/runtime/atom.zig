@@ -18,6 +18,7 @@
 //! STM Tier-A start.
 
 const std = @import("std");
+const atomics = @import("atomics.zig");
 const value = @import("value/value.zig");
 const Value = value.Value;
 const HeapHeader = value.HeapHeader;
@@ -66,25 +67,25 @@ pub fn allocWith(rt: *Runtime, init: Value, validator: Value) !Value {
 /// the missing visibility ordering.
 pub fn validatorOf(v: Value) Value {
     const a = v.decodePtr(*const Atom);
-    return @atomicLoad(Value, &a.validator, .acquire);
+    return atomics.load(Value, &a.validator, .acquire);
 }
 
 /// Replace the atom's validator (`set-validator!`). ADR-0081 / D-246 atomic-release.
 pub fn setValidator(v: Value, f: Value) void {
     const a: *Atom = @constCast(v.decodePtr(*const Atom));
-    @atomicStore(Value, &a.validator, f, .release);
+    atomics.store(Value, &a.validator, f, .release);
 }
 
 /// The atom's watches map (`nil` or a persistent `{key → fn}`). ADR-0081 / D-246.
 pub fn watchesOf(v: Value) Value {
     const a = v.decodePtr(*const Atom);
-    return @atomicLoad(Value, &a.watches, .acquire);
+    return atomics.load(Value, &a.watches, .acquire);
 }
 
 /// Replace the atom's watches map (add-watch / remove-watch). ADR-0081 / D-246 release.
 pub fn setWatches(v: Value, m: Value) void {
     const a: *Atom = @constCast(v.decodePtr(*const Atom));
-    @atomicStore(Value, &a.watches, m, .release);
+    atomics.store(Value, &a.watches, m, .release);
 }
 
 /// True when `v` is an atom.
@@ -98,14 +99,14 @@ pub fn isAtom(v: Value) bool {
 /// its state in an `AtomicReference`).
 pub fn current(v: Value) Value {
     const a = v.decodePtr(*const Atom);
-    return @atomicLoad(Value, &a.current, .acquire);
+    return atomics.load(Value, &a.current, .acquire);
 }
 
 /// Unconditionally set the held value (`reset!`), atomic-release. Atom identity
 /// is preserved — the heap cell is the same, only `current` changes.
 pub fn setCurrent(v: Value, newval: Value) void {
     const a: *Atom = @constCast(v.decodePtr(*const Atom));
-    @atomicStore(Value, &a.current, newval, .release);
+    atomics.store(Value, &a.current, newval, .release);
 }
 
 /// Atomic compare-and-set on the held value by reference identity (JVM
@@ -114,19 +115,19 @@ pub fn setCurrent(v: Value, newval: Value) void {
 /// directly. Value is an `enum(u64)`, so the CAS is a single word op.
 pub fn compareAndSet(v: Value, old: Value, new: Value) bool {
     const a: *Atom = @constCast(v.decodePtr(*const Atom));
-    return @cmpxchgStrong(Value, &a.current, old, new, .acq_rel, .acquire) == null;
+    return atomics.cmpxchgStrong(Value, &a.current, old, new, .acq_rel, .acquire) == null;
 }
 
 /// The atom's metadata (`nil` or a map). `meta` / `reset-meta!`. D-246 atomic acquire.
 pub fn metaOf(v: Value) Value {
     const a = v.decodePtr(*const Atom);
-    return @atomicLoad(Value, &a.meta, .acquire);
+    return atomics.load(Value, &a.meta, .acquire);
 }
 
 /// Replace the atom's metadata (`reset-meta!` / `alter-meta!`). D-246 atomic release.
 pub fn setMeta(v: Value, m: Value) void {
     const a: *Atom = @constCast(v.decodePtr(*const Atom));
-    @atomicStore(Value, &a.meta, m, .release);
+    atomics.store(Value, &a.meta, m, .release);
 }
 
 /// Per-tag trace fn — the atom owns one Value (`current`) the GC must

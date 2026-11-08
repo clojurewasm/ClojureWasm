@@ -36,6 +36,8 @@ const tag_ops = @import("../gc/tag_ops.zig");
 const gc_heap_mod = @import("../gc/gc_heap.zig");
 const mark_sweep = @import("../gc/mark_sweep.zig");
 const compile = @import("compile.zig");
+const error_catalog = @import("../error/catalog.zig");
+const SourceLocation = error_catalog.SourceLocation;
 
 /// Heap-managed regex Value. `header` lives at offset 0 (gc.alloc
 /// invariant); `program` + `source` payload live on `gc.infra`.
@@ -120,7 +122,40 @@ pub fn traceRegex(gc_ptr: *anyopaque, header: *HeapHeader) void {
     if (r.meta.heapHeader()) |h| mark_sweep.mark(gc, h);
 }
 
+/// D-573: the source copy + the compiled program shell. The program's
+/// internal instruction lists are owned too; the shell + source is the
+/// stable, cheap approximation.
+fn ownedBytes(header: *HeapHeader) usize {
+    const r: *Regex = @ptrCast(@alignCast(header));
+    return r.source_len + @sizeOf(@TypeOf(r.program.*));
+}
+
+/// Map a `CompileError` to the right catalog raise (shared by every surface
+/// that compiles a pattern). The split matters: a MALFORMED pattern is bad
+/// data (catchable, Java PatternSyntaxException parity); a valid-in-Java
+/// feature cljw rejects (backreferences — ADR-0031's non-backtracking
+/// invariant, the RE2 posture) stays the uncatchable unsupported signal.
+pub fn raiseCompileError(err: anyerror, loc: SourceLocation) error_catalog.ClojureWasmError {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        // INV-1: a nested-counted-repetition compile-bomb is a catchable error.
+        error.PatternTooLarge => error_catalog.raise(.regex_pattern_too_large, loc, .{}),
+        // Too many groups is a resource bound, like PatternTooLarge: catchable.
+        error.TooManyGroups => error_catalog.raise(.regex_too_many_groups, loc, .{ .max = compile.MAX_CAPTURE_GROUPS }),
+        // AD-060: the declined backreference stays the uncatchable unsupported
+        // signal, but names the construct.
+        error.Backreference => error_catalog.raise(.feature_not_supported, loc, .{
+            .name = "a regex backreference (\\N / \\k<name>; needs a backtracking engine)",
+        }),
+        error.NotImplemented => error_catalog.raise(.feature_not_supported, loc, .{
+            .name = "this regex construct (inline flag, Unicode property or class form)",
+        }),
+        else => error_catalog.raise(.regex_pattern_invalid, loc, .{ .reason = @errorName(err) }),
+    };
+}
+
 pub fn registerGcHooks() void {
+    tag_ops.registerOwnedBytes(.regex, &ownedBytes);
     tag_ops.registerTrace(.regex, &traceRegex);
     tag_ops.registerFinaliser(.regex, &finaliseGc);
 }

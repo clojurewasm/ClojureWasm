@@ -1,0 +1,25 @@
+;; Add-only bytecode archive amendment, 2026-09-06 (ADR-0034 D11, ADR-0038).
+;; Earlier records remain unchanged. v8 and v9 changed semantics/opcodes
+;; without changing the v7 chunk-body framing recorded in 1.4.0.edn.
+{:chunk-format
+ {:version 10
+  :magic "CLJW"
+  :base-layout "1.4.0.edn :chunk-format and :chunk-body (v7)"
+  :semantic-history
+  [{:version 8
+    :change "Host-class constants carry canonical JVM FQCNs (ADR-0174)."}
+   {:version 9
+    :change "op_var_meta restores def metadata, including docstrings and source locations."}
+   {:version 10
+    :change "op_def and op_def_unbound address captured Var-reference constants."}]
+  :def-operand
+  {:low-bits 13
+   :constant-type :var-ref
+   :high-bits [:dynamic :macro :private]
+   :op-def "Pop the initializer, bind the captured Var, stamp flags, push the Var."
+   :op-def-unbound "Consume no value; preserve root and bound state, stamp flags, push the Var."}
+  :var-ref
+  {:wire-tag 13
+   :body "Owner namespace name and Var name, each as u32 byte length plus UTF-8 bytes."
+   :resolution "Declare in the owner's local mappings. Never resolve through refers. A new declaration remains unbound until its def executes."}
+  :compatibility "The runtime rejects a chunk version unequal to 10; rebuild older payloads."}}

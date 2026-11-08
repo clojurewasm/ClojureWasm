@@ -1,0 +1,50 @@
+(clojure.math/floor-div -7 2)
+;;=> -4
+(clojure.math/floor-mod -7 2)
+;;=> 1
+(rem -7 2)
+;;=> -1
+(quot -7 2)
+;;=> -3
+(clojure.math/cbrt -8.0)
+;;=> -2.0
+(clojure.math/rint 2.5)
+;;=> 2.0
+(clojure.math/rint 3.5)
+;;=> 4.0
+(clojure.math/round 2.5)
+;;=> 3
+(clojure.math/round -2.5)
+;;=> -2
+(clojure.math/signum -0.0)
+;;=> -0.0
+(clojure.math/signum 0.0)
+;;=> 0.0
+(clojure.math/signum -3.5)
+;;=> -1.0
+(clojure.math/copy-sign 3.0 -1.0)
+;;=> -3.0
+(clojure.math/next-up 1.0)
+;;=> 1.0000000000000002
+(clojure.math/next-down 1.0)
+;;=> 0.9999999999999999
+(clojure.math/get-exponent 8.0)
+;;=> 3
+(clojure.math/scalb 3.0 4)
+;;=> 48.0
+(clojure.math/hypot 3.0 4.0)
+;;=> 5.0
+(clojure.math/expm1 0.0)
+;;=> 0.0
+(clojure.math/log1p 0.0)
+;;=> 0.0
+(clojure.math/IEEE-remainder 5.0 3.0)
+;;=> -1.0
+(clojure.math/to-degrees clojure.math/PI)
+;;=> 180.0
+(clojure.math/ceil 1.2)
+;;=> 2.0
+(clojure.math/floor -1.2)
+;;=> -2.0
+(clojure.math/atan2 1.0 1.0)
+;;=> 0.7853981633974483

@@ -20,6 +20,7 @@ const dispatch = @import("../../runtime/dispatch.zig");
 const atom_mod = @import("../../runtime/atom.zig");
 const agent_mod = @import("../../runtime/agent.zig");
 const ref_mod = @import("../../runtime/stm/ref.zig");
+const iref = @import("../../runtime/iref.zig");
 const volatile_mod = @import("../../runtime/volatile.zig");
 const higher_order = @import("higher_order.zig");
 const root_set = @import("../../runtime/gc/root_set.zig");
@@ -108,6 +109,7 @@ pub fn atomFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         const k = args[i];
         const val = args[i + 1];
         if (@intFromEnum(k) == @intFromEnum(kw_meta)) {
+            try iref.requireMetaMap(val, "atom", loc);
             atom_mod.setMeta(a, val);
         } else if (@intFromEnum(k) == @intFromEnum(kw_validator)) {
             atom_mod.setValidator(a, val);

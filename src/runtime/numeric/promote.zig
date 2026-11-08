@@ -28,42 +28,31 @@ const env_mod = @import("../env.zig");
 const Runtime = @import("../runtime.zig").Runtime;
 const big_int = @import("big_int.zig");
 const nb = @import("../value/nan_box.zig");
+const host_instance = @import("../host_instance.zig");
 
 const Managed = std.math.big.int.Managed;
 
-fn inI48(x: i64) bool {
+pub fn inI48(x: i64) bool {
     return x >= nb.NB_I48_MIN and x <= nb.NB_I48_MAX;
 }
 
-fn toF64(rt: *Runtime, v: Value) f64 {
-    if (v.isFloat()) return v.asFloat();
-    if (v.isInt()) return @floatFromInt(@as(i64, v.asInteger()));
-    if (v.tag() == .big_int) {
-        // Lossy: BigInt → f64. Acceptable for float-contagious paths
-        // where the user already opted into float semantics.
-        return managedToF64(rt, big_int.asManaged(v));
-    }
-    if (v.tag() == .ratio) {
-        return switch (ratio_mod.parts(v)) {
-            .small => |s| @as(f64, @floatFromInt(s.n)) / @as(f64, @floatFromInt(s.d)),
-            .big => |b| managedToF64(rt, b.n.m) / managedToF64(rt, b.d.m),
-        };
-    }
-    if (v.tag() == .big_decimal) {
-        // value = unscaled · 10^(−scale). Lossy (float-contagion semantics).
-        const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
-        return managedToF64(rt, bd.unscaled.m) * std.math.pow(f64, 10.0, @floatFromInt(-bd.scale));
-    }
-    return 0.0; // unreachable for caller that ran ensureNumeric
-}
-
-fn managedToF64(rt: *Runtime, m: *const Managed) f64 {
-    // Correct (round-trips through base-10) but slow: toString +
-    // parseFloat. The lossiness is a Clojure feature (float-contagion
-    // semantics). A direct limb→f64 conversion is a future perf option.
-    const s = m.toString(rt.gc.infra, 10, .lower) catch return 0.0;
-    defer rt.gc.infra.free(s);
-    return std.fmt.parseFloat(f64, s) catch 0.0;
+/// A numeric Value as clj's `Number.doubleValue`: the one conversion that
+/// float contagion, the float arm of `< > <= >= ==`, `double` and the
+/// `.doubleValue` method share (F-011). A BigInt is its nearest double, a
+/// Ratio is `ratio.toF64` (DECIMAL64 first, as clj's `Ratio.doubleValue`), a
+/// BigDecimal is `big_decimal.toFloat` (the double nearest the exact
+/// decimal), a char is its code point. A non-number answers 0.0: every
+/// caller has type-checked.
+pub fn toF64(v: Value) std.mem.Allocator.Error!f64 {
+    return switch (v.tag()) {
+        .float => v.asFloat(),
+        .integer => @floatFromInt(@as(i64, v.asInteger())),
+        .char => @floatFromInt(v.asChar()),
+        .big_int => big_int.asManaged(v).toFloat(f64, .nearest_even)[0],
+        .ratio => ratio_mod.toF64(v),
+        .big_decimal => big_decimal_mod.toFloat(v),
+        else => 0.0,
+    };
 }
 
 /// Allocate a Managed on `rt.gc.infra` initialised from `v`. Caller
@@ -422,18 +411,22 @@ fn coerceToBigDecimal(rt: *Runtime, v: Value) !Value {
 fn bigdecContagion(rt: *Runtime, a: Value, b: Value, op: BdOp) !Value {
     const ba = try coerceToBigDecimal(rt, a);
     const bb = try coerceToBigDecimal(rt, b);
-    return switch (op) {
+    const result = try switch (op) {
         .add => big_decimal_mod.allocAdd(rt, ba, bb),
         .sub => big_decimal_mod.allocSub(rt, ba, bb),
         .mul => big_decimal_mod.allocMul(rt, ba, bb),
     };
+    if (mathContext(rt)) |mc| {
+        return big_decimal_mod.allocRoundPrecision(rt, result, mc.precision, mc.mode);
+    }
+    return result;
 }
 
 /// `a + b` with auto-promotion. Both inputs MUST be numeric (caller
 /// runs `ensureNumeric` first).
 pub fn addPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     if (a.isFloat() or b.isFloat()) {
-        return Value.initFloat(toF64(rt, a) + toF64(rt, b));
+        return Value.initFloat(try toF64(a) + try toF64(b));
     }
     if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
         return try bigdecContagion(rt, a, b, .add);
@@ -472,7 +465,7 @@ pub fn addPromoting(rt: *Runtime, a: Value, b: Value) !Value {
 /// `a - b` with auto-promotion.
 pub fn subPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     if (a.isFloat() or b.isFloat()) {
-        return Value.initFloat(toF64(rt, a) - toF64(rt, b));
+        return Value.initFloat(try toF64(a) - try toF64(b));
     }
     if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
         return try bigdecContagion(rt, a, b, .sub);
@@ -509,7 +502,7 @@ pub fn subPromoting(rt: *Runtime, a: Value, b: Value) !Value {
 /// `a * b` with auto-promotion.
 pub fn mulPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     if (a.isFloat() or b.isFloat()) {
-        return Value.initFloat(toF64(rt, a) * toF64(rt, b));
+        return Value.initFloat(try toF64(a) * try toF64(b));
     }
     if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
         return try bigdecContagion(rt, a, b, .mul);
@@ -547,16 +540,23 @@ pub fn mulPromoting(rt: *Runtime, a: Value, b: Value) !Value {
 /// `a / b` with auto-promotion. Integer/Integer evenly-divisible
 /// returns the quotient; not-evenly-divisible returns a Ratio.
 /// Mirrors `Numbers.divide(Number, Number)` in JVM Clojure.
-/// The active `*math-context*` precision (from `with-precision`), or null when
-/// unbound / not a positive integer. Read lock-free from the dynamic-binding
-/// stack on this thread (D-467).
-fn mathContextPrecision(rt: *Runtime) ?u32 {
+/// Decode the active MathContext (precision + rounding mode). An integer
+/// binding is accepted for callers of the older internal precision var.
+const DecimalContext = struct { precision: u32, mode: i64 };
+fn mathContext(rt: *Runtime) ?DecimalContext {
     const vp = rt.math_context_var orelse return null;
     const v: *const env_mod.Var = @ptrCast(@alignCast(vp));
     const val = v.deref();
     if (val.tag() == .integer) {
         const p = val.asInteger();
-        if (p > 0) return @intCast(p);
+        if (p >= 0 and p <= std.math.maxInt(u32)) return .{ .precision = @intCast(p), .mode = 4 };
+    }
+    if (val.tag() == .host_instance) {
+        const hi = host_instance.asHostInstance(val);
+        if (hi.descriptor.fqcn) |fqcn| {
+            if (std.mem.eql(u8, fqcn, "java.math.MathContext"))
+                return .{ .precision = @intCast(hi.state[0]), .mode = @intCast(hi.state[1]) };
+        }
     }
     return null;
 }
@@ -566,7 +566,7 @@ pub fn divPromoting(rt: *Runtime, a: Value, b: Value) !Value {
         // IEEE-754 float division: x/0.0 → ±Inf, 0.0/0.0 → NaN (Zig float
         // division does not trap). JVM Clojure throws DivideByZero only on
         // the integer/integer path below — float division never throws.
-        return Value.initFloat(toF64(rt, a) / toF64(rt, b));
+        return Value.initFloat(try toF64(a) / try toF64(b));
     }
 
     if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
@@ -574,8 +574,10 @@ pub fn divPromoting(rt: *Runtime, a: Value, b: Value) !Value {
         const bb = try coerceToBigDecimal(rt, b);
         // A `with-precision` binding rounds the quotient to that many significant
         // figures (HALF_UP); else exact (raises on a non-terminating expansion). D-467.
-        if (mathContextPrecision(rt)) |p|
-            return try big_decimal_mod.allocDivPrecision(rt, ba, bb, p, 4); // HALF_UP
+        if (mathContext(rt)) |mc| {
+            if (mc.precision > 0)
+                return try big_decimal_mod.allocDivPrecision(rt, ba, bb, mc.precision, mc.mode);
+        }
         return try big_decimal_mod.allocDiv(rt, ba, bb);
     }
 
@@ -595,32 +597,45 @@ pub fn divPromoting(rt: *Runtime, a: Value, b: Value) !Value {
         return try wrapI64(rt, @divTrunc(ai, bi));
     }
 
-    // Integer / integer path: build Managed for both, compute gcd,
-    // collapse to BigInt if exact; otherwise Ratio.
     var am = try coerceToManaged(rt, a);
     defer am.deinit();
     var bm = try coerceToManaged(rt, b);
     defer bm.deinit();
+    return divideIntegers(rt, &am, &bm, isTrueBigInt(a) or isTrueBigInt(b));
+}
 
-    if (bm.eqlZero()) return error.DivideByZero;
-
-    const ratio = @import("ratio.zig");
-    if (try ratio.allocFromManagedPair(rt, &am, &bm)) |r| {
-        return r;
-    }
-    // Integer-collapse: the result is exact (denominator collapsed
-    // to 1). Compute am / bm as a BigInt and wrap, choosing
-    // immediate-Long if it fits in i48.
+/// clj's `Numbers.divide` over two exact integers: a reduced Ratio, or the exact
+/// quotient when the denominator divides the numerator. `bigint_operand` says
+/// whether either operand is a BigInt (D-165 origin `.bigint`). Two Longs take
+/// clj's LongOps arm, whose quotient is a Long, unless one of them is
+/// Long/MIN_VALUE, which LongOps hands to BigIntOps; any BigIntOps quotient is a
+/// BigInt however small (`(/ 6N 3)` is 2N). Raises `error.DivideByZero` on a
+/// zero `den`. Shared by `/` and the `n/d` ratio literal, so the two agree.
+pub fn divideIntegers(rt: *Runtime, num: *const Managed, den: *const Managed, bigint_operand: bool) !Value {
+    if (try ratio_mod.allocFromManagedPair(rt, num, den)) |r| return r;
+    // `allocFromManagedPair` answers null without reducing the caller's pair,
+    // so the collapsed value is the quotient, not `num`.
     var q = try Managed.init(rt.gc.infra);
     defer q.deinit();
-    var r = try Managed.init(rt.gc.infra);
-    defer r.deinit();
-    try q.divTrunc(&r, &am, &bm);
-    // Category contagion (D-165, mirrors quotPromoting): a BigInt operand
-    // forces a BigInt result (`(/ 6N 3)`→2N); both-Long collapses via
-    // wrapManaged (fits i48 → inline, fits i64 → heap-Long, else BigInt).
-    if (isTrueBigInt(a) or isTrueBigInt(b) or a.tag() == .ratio or b.tag() == .ratio) return try big_int.allocFromManaged(rt, &q, .bigint);
-    return try wrapManaged(rt, &q);
+    var rem = try Managed.init(rt.gc.infra);
+    defer rem.deinit();
+    try q.divTrunc(&rem, num, den);
+    const long_ops = !bigint_operand and !isMinLong(num) and !isMinLong(den);
+    if (long_ops) return try wrapManaged(rt, &q);
+    return try big_int.allocFromManaged(rt, &q, .bigint);
+}
+
+fn isMinLong(m: *const Managed) bool {
+    const x = m.toInt(i64) catch return false;
+    return x == std.math.minInt(i64);
+}
+
+/// Three-way order of two f64 that maps a NaN operand to `.eq`
+/// (the clojure.core/compare rule). Shared by every numeric-tower
+/// ordering site: `valueCompare`'s float arm + `numSign`.
+pub fn floatOrder(a: f64, b: f64) std.math.Order {
+    if (std.math.isNan(a) or std.math.isNan(b)) return .eq;
+    return std.math.order(a, b);
 }
 
 /// Exact sign of a numeric Value: `.lt` (negative) / `.eq` (zero) /
@@ -631,7 +646,7 @@ fn numSign(v: Value) std.math.Order {
     return switch (v.tag()) {
         .integer => std.math.order(@as(i64, v.asInteger()), 0),
         .char => std.math.order(@as(i64, v.asChar()), 0),
-        .float => std.math.order(v.asFloat(), 0),
+        .float => floatOrder(v.asFloat(), 0),
         .big_int => big_int.asManaged(v).toConst().orderAgainstScalar(0),
         .ratio => switch (ratio_mod.parts(v)) {
             .small => |s| std.math.order(s.n, 0),
@@ -662,9 +677,9 @@ pub fn orderNumeric(rt: *Runtime, a: Value, b: Value) !std.math.Order {
 /// scale `max(0, sa−sb)`); a non-terminating ratio operand → arith error.
 pub fn quotPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     if (a.isFloat() or b.isFloat()) {
-        const bd = toF64(rt, b);
+        const bd = try toF64(b);
         if (bd == 0) return error.DivideByZero;
-        return Value.initFloat(@trunc(toF64(rt, a) / bd));
+        return Value.initFloat(@trunc(try toF64(a) / bd));
     }
     if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
         const ba = try coerceToBigDecimal(rt, a);
@@ -739,42 +754,65 @@ pub fn truncToI64(rt: *Runtime, v: Value) !i64 {
         },
         .big_int => return big_int.asManaged(v).toInt(i64) catch error.OutOfRange,
         .ratio => switch (ratio_mod.parts(v)) {
-            // small: |n/d| <= |n| < 2^63 → exact i64, no overflow.
+            // small: |n/d| <= |n| < 2^63, so the quotient is an exact i64.
             .small => |s| return @divTrunc(s.n, s.d),
-            .big => |b| {
-                var q = try Managed.init(rt.gc.infra);
-                defer q.deinit();
-                var r = try Managed.init(rt.gc.infra);
-                defer r.deinit();
-                try q.divTrunc(&r, b.n.m, b.d.m);
-                return q.toInt(i64) catch error.OutOfRange;
-            },
+            .big => return ownedToI64(try truncToManaged(rt, v)),
+        },
+        .big_decimal => return ownedToI64(try truncToManaged(rt, v)),
+        else => return error.NotANumber,
+    }
+}
+
+/// The integer part of an exact numeric Value, truncated toward zero, at any
+/// width: clj's `Ratio.bigIntegerValue` and `BigDecimal.toBigInteger`, which
+/// `bigint` and `biginteger` answer (`(bigint 24691357802469135781/2)` is
+/// 12345678901234567890N). `error.NotANumber` for a float, which has no exact
+/// integer part here (`bigint` takes a double through a BigDecimal first, as
+/// clj does), or for a non-numeric tag. The caller owns the result.
+pub fn truncToManaged(rt: *Runtime, v: Value) !Managed {
+    const infra = rt.gc.infra;
+    switch (v.tag()) {
+        .integer => return Managed.initSet(infra, @as(i64, v.asInteger())),
+        .char => return Managed.initSet(infra, @as(i64, v.asChar())),
+        .big_int => return big_int.asManaged(v).cloneWithDifferentAllocator(infra),
+        .ratio => switch (ratio_mod.parts(v)) {
+            .small => |s| return Managed.initSet(infra, @divTrunc(s.n, s.d)),
+            .big => |b| return truncQuotient(rt, b.n.m, b.d.m),
         },
         .big_decimal => {
+            // value = unscaled * 10^(-scale): divTrunc by 10^scale for a
+            // positive scale, an exact multiply for a negative one.
             const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
-            // value = unscaled * 10^(-scale); trunc toward zero is
-            // divTrunc(unscaled, 10^scale) for scale>0, an exact multiply
-            // for scale<=0.
-            var u = try bd.unscaled.m.cloneWithDifferentAllocator(rt.gc.infra);
+            var u = try bd.unscaled.m.cloneWithDifferentAllocator(infra);
+            if (bd.scale == 0) return u;
             defer u.deinit();
-            if (bd.scale == 0) return u.toInt(i64) catch error.OutOfRange;
             var pow = try tenPow(rt, if (bd.scale < 0) -bd.scale else bd.scale);
             defer pow.deinit();
-            if (bd.scale > 0) {
-                var q = try Managed.init(rt.gc.infra);
-                defer q.deinit();
-                var r = try Managed.init(rt.gc.infra);
-                defer r.deinit();
-                try q.divTrunc(&r, &u, &pow);
-                return q.toInt(i64) catch error.OutOfRange;
-            }
-            var p = try Managed.init(rt.gc.infra);
-            defer p.deinit();
+            if (bd.scale > 0) return truncQuotient(rt, &u, &pow);
+            var p = try Managed.init(infra);
+            errdefer p.deinit();
             try p.mul(&u, &pow);
-            return p.toInt(i64) catch error.OutOfRange;
+            return p;
         },
         else => return error.NotANumber,
     }
+}
+
+/// `n / d` truncated toward zero, as an owned Managed.
+fn truncQuotient(rt: *Runtime, n: *const Managed, d: *const Managed) !Managed {
+    var q = try Managed.init(rt.gc.infra);
+    errdefer q.deinit();
+    var r = try Managed.init(rt.gc.infra);
+    defer r.deinit();
+    try q.divTrunc(&r, n, d);
+    return q;
+}
+
+/// `m` as an i64, or `error.OutOfRange`; takes ownership of `m`.
+fn ownedToI64(m: Managed) error{OutOfRange}!i64 {
+    var owned = m;
+    defer owned.deinit();
+    return owned.toInt(i64) catch error.OutOfRange;
 }
 
 /// Read an EXACT integer Value as an i64 — no truncation, no widening.
@@ -958,6 +996,33 @@ test "divPromoting (1 / 3) returns Ratio 1/3 (not exact)" {
     try testing.expect(v.tag() == .ratio);
 }
 
+test "divideIntegers: LongOps quotient is a Long; MIN_VALUE or a BigInt operand makes a BigInt" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    var n = try Managed.initSet(testing.allocator, @as(i64, 1) << 55);
+    defer n.deinit();
+    var d = try Managed.initSet(testing.allocator, 2);
+    defer d.deinit();
+    const long_q = try divideIntegers(&fix.rt, &n, &d, false);
+    try testing.expect(long_q.tag() == .big_int);
+    try testing.expect(big_int.originOf(long_q) == .long);
+    try testing.expectEqual(@as(i64, 1) << 54, try big_int.asManaged(long_q).toInt(i64));
+
+    const big_q = try divideIntegers(&fix.rt, &n, &d, true);
+    try testing.expect(big_int.originOf(big_q) == .bigint);
+
+    try n.set(std.math.minInt(i64));
+    try d.set(1);
+    const min_q = try divideIntegers(&fix.rt, &n, &d, false);
+    try testing.expect(min_q.tag() == .big_int);
+    try testing.expect(big_int.originOf(min_q) == .bigint);
+    try testing.expectEqual(@as(i64, std.math.minInt(i64)), try big_int.asManaged(min_q).toInt(i64));
+
+    try d.set(0);
+    try testing.expectError(error.DivideByZero, divideIntegers(&fix.rt, &n, &d, false));
+}
+
 test "divPromoting (5 / 0) raises DivideByZero" {
     var fix = Fixture.init();
     defer fix.deinit();
@@ -1071,4 +1136,24 @@ test "exactI64 accepts integer / in-range BigInt; rejects float / ratio" {
     try testing.expectError(error.NotAnInteger, exactI64(Value.initFloat(3.0)));
     const half = try divPromoting(&fix.rt, Value.initInteger(1), Value.initInteger(2));
     try testing.expectError(error.NotAnInteger, exactI64(half));
+}
+
+test "floatOrder maps a NaN operand to .eq (no std.math.order unreachable)" {
+    const nan = std.math.nan(f64);
+    try testing.expectEqual(std.math.Order.eq, floatOrder(nan, 1.0));
+    try testing.expectEqual(std.math.Order.eq, floatOrder(1.0, nan));
+    try testing.expectEqual(std.math.Order.eq, floatOrder(nan, nan));
+    try testing.expectEqual(std.math.Order.lt, floatOrder(1.0, 2.0));
+    try testing.expectEqual(std.math.Order.gt, floatOrder(2.0, 1.0));
+    try testing.expectEqual(std.math.Order.eq, floatOrder(1.0, 1.0));
+}
+
+test "modPromoting with a NaN operand yields NaN, never a numSign panic" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+    const nan = Value.initFloat(std.math.nan(f64));
+    const md = try modPromoting(&fix.rt, nan, Value.initInteger(3));
+    try testing.expect(md.isFloat() and std.math.isNan(md.asFloat()));
+    const mv = try modPromoting(&fix.rt, Value.initInteger(3), nan);
+    try testing.expect(mv.isFloat() and std.math.isNan(mv.asFloat()));
 }

@@ -29,6 +29,7 @@ const vm_compiler = @import("../eval/backend/vm/compiler.zig");
 const serialize = @import("../eval/bytecode/serialize.zig");
 const BytecodeChunk = @import("../eval/backend/vm/opcode.zig").BytecodeChunk;
 const driver = @import("../eval/driver.zig");
+const file_io = @import("../runtime/file_io.zig");
 const Value = @import("../runtime/value/value.zig").Value;
 const vm = @import("../eval/backend/vm.zig");
 const bootstrap = @import("../lang/bootstrap.zig");
@@ -153,17 +154,23 @@ pub fn buildEnvelope(
     reader.file_name = source_label;
     while (true) {
         const form = (try reader.read()) orelse break;
-        // D-430/D-558: per-form analysis bracket. PERSIST (not drop): the
-        // compiled chunk's constants are serialized AFTER this loop ends, so
-        // a drop bracket left them unrooted and a build-time collect baked
-        // swept bytes into the blob (the D-558 corruption).
-        var af: root_set.AnalysisFrame = undefined;
-        root_set.beginAnalysis(&af, rt.gc.infra);
-        defer root_set.endAnalysisPersist(&af, &rt.gc);
-        const node = try analyzeForm(arena, rt, env, null, form, macro_table);
-        const chunk = try vm_compiler.compile(rt, arena, node);
-        try entry_chunks.append(allocator, chunk);
-        _ = try driver.evalForm(rt, env, &locals, arena, node);
+        // D-374: a top-level `(do …)` unrolls into its children so an earlier
+        // child's effect is visible to a LATER child's analysis — the rule every
+        // form-loading path shares. Enumerated here rather than delegated to
+        // `evalTopLevelForm` because each leaf also needs its own chunk.
+        for (try driver.topLevelLeaves(arena, form)) |leaf| {
+            // D-430/D-558: per-form analysis bracket. PERSIST (not drop): the
+            // compiled chunk's constants are serialized AFTER this loop ends, so
+            // a drop bracket left them unrooted and a build-time collect baked
+            // swept bytes into the blob (the D-558 corruption).
+            var af: root_set.AnalysisFrame = undefined;
+            root_set.beginAnalysis(&af, rt.gc.infra);
+            defer root_set.endAnalysisPersist(&af, &rt.gc);
+            const node = try analyzeForm(arena, rt, env, null, leaf, macro_table);
+            const chunk = try vm_compiler.compile(rt, arena, node);
+            try entry_chunks.append(allocator, chunk);
+            _ = try driver.evalForm(rt, env, &locals, arena, node);
+        }
     }
 
     // A3-D5: payload = [closure chunks, post-order] ++ [entry chunks]. At run
@@ -185,8 +192,9 @@ pub fn buildEnvelope(
     return serialize.serializeEnvelope(allocator, all.items, null, components.items, &pb, true);
 }
 
-/// AOT-compile the WHOLE eager bootstrap (`bootstrap.FILES` — clojure.core +
-/// the 23 non-core bundled `.clj` libs) to one bytecode envelope, mirroring
+/// AOT-compile the WHOLE eager bootstrap (`bootstrap.ACTIVE_FILES` — clojure.core
+/// + the non-core bundled `.clj` libs this build carries) to one bytecode
+/// envelope, mirroring
 /// `bootstrap.loadCoreFiles`'s per-file read→analyze→compile→eval loop but
 /// CAPTURING each form's compiled chunk (D-452 Part B / ADR-0056 Cycle 3). The
 /// load path (`bootstrap.loadCoreAot`) runs this via `driver.runEnvelope`
@@ -241,34 +249,40 @@ pub fn buildBootstrapEnvelope(
         while (true) {
             const form = (try reader.read()) orelse break;
             form_idx += 1;
-            // Build-time AOT eval has no renderer; a bare `error.ValueError` from
-            // a bundled lib gives no location. Report file label + form index +
-            // phase on the error path so a bootstrap trap is locatable (the
-            // stdlib/contrib sweep campaign relies on this).
-            // D-430/D-558: per-form analysis bracket. PERSIST (not drop): the
-            // chunks serialize after the loop — see buildEnvelope's note.
-            var af: root_set.AnalysisFrame = undefined;
-            root_set.beginAnalysis(&af, rt.gc.infra);
-            defer root_set.endAnalysisPersist(&af, &rt.gc);
-            const node = analyzeForm(arena, rt, env, null, form, macro_table) catch |err| {
-                const msg = if (error_info.peekLastError()) |info| info.message else "";
-                std.debug.print("\n[AOT-FAIL] analyze: {s} form #{d}: {s}: {s}\n", .{ file.label, form_idx, @errorName(err), msg });
-                return err;
-            };
-            const chunk = try vm_compiler.compile(rt, arena, node);
-            try chunks.append(allocator, chunk);
-            // Eval so later forms / files see earlier defs/macros/in-ns/requires
-            // (A1-D2 Clojure-AOT — identical state evolution to loadCoreFiles).
-            _ = driver.evalForm(rt, env, &locals, arena, node) catch |err| {
-                std.debug.print("\n[AOT-FAIL] eval: {s} form #{d}: {s}\n", .{ file.label, form_idx, @errorName(err) });
-                return err;
-            };
+            // D-374: unroll a top-level `(do …)` into its children, so this path's
+            // state evolution stays identical to loadCoreFiles' (which evaluates
+            // every bundled form through `evalTopLevelForm`). Enumerated rather
+            // than delegated because each leaf also needs its own chunk.
+            for (try driver.topLevelLeaves(arena, form)) |leaf| {
+                // Build-time AOT eval has no renderer; a bare `error.ValueError` from
+                // a bundled lib gives no location. Report file label + form index +
+                // phase on the error path so a bootstrap trap is locatable (the
+                // stdlib/contrib sweep campaign relies on this).
+                // D-430/D-558: per-form analysis bracket. PERSIST (not drop): the
+                // chunks serialize after the loop — see buildEnvelope's note.
+                var af: root_set.AnalysisFrame = undefined;
+                root_set.beginAnalysis(&af, rt.gc.infra);
+                defer root_set.endAnalysisPersist(&af, &rt.gc);
+                const node = analyzeForm(arena, rt, env, null, leaf, macro_table) catch |err| {
+                    const msg = if (error_info.peekLastError()) |info| info.message else "";
+                    std.debug.print("\n[AOT-FAIL] analyze: {s} form #{d}: {s}: {s}\n", .{ file.label, form_idx, @errorName(err), msg });
+                    return err;
+                };
+                const chunk = try vm_compiler.compile(rt, arena, node);
+                try chunks.append(allocator, chunk);
+                // Eval so later forms / files see earlier defs/macros/in-ns/requires
+                // (A1-D2 Clojure-AOT — identical state evolution to loadCoreFiles).
+                _ = driver.evalForm(rt, env, &locals, arena, node) catch |err| {
+                    std.debug.print("\n[AOT-FAIL] eval: {s} form #{d}: {s}\n", .{ file.label, form_idx, @errorName(err) });
+                    return err;
+                };
+            }
         }
         // Serialize this file's chunks as its own region envelope (the bundled
         // bootstrap `:require`s no Wasm components, so the component table is empty).
         const region_env = try serialize.serializeEnvelope(allocator, chunks.items, null, &.{}, pool_builder, false);
         errdefer allocator.free(region_env);
-        const region_ns = bootstrap.nsNameFromLabel(file.label);
+        const region_ns = file.ns;
         // C5' (ADR-0173 / ADR-0172 L2): lazy regions ship flate-compressed —
         // decompressed into rt.load_arena on first `require`; the eager set
         // stays raw for zero-copy instr views from rodata.
@@ -333,12 +347,10 @@ pub fn buildMainEnvelope(
 // === cljw build CLI core + embedded-run startup ===
 
 /// Read an entire file into a freshly `gpa`-allocated slice (caller frees).
+/// One read path for the whole runtime (`file_io.readAll`), so a file that
+/// stats as size 0 reads to EOF here too.
 fn readFileAll(io: std.Io, gpa: std.mem.Allocator, path: []const u8) ![]u8 {
-    const f = try std.Io.Dir.cwd().openFile(io, path, .{});
-    defer f.close(io);
-    var buf: [4096]u8 = undefined;
-    var fr = f.reader(io, &buf);
-    return fr.interface.allocRemaining(gpa, .unlimited);
+    return file_io.readAll(io, gpa, path);
 }
 
 /// Read the running executable's own bytes (the runtime binary
@@ -361,9 +373,17 @@ const BuildSpec = union(enum) {
 /// per `spec`, and append it to a copy of the running cljw binary as a
 /// self-contained `"CLJC"`-trailered executable. `buildFile` / `buildMainFile`
 /// are the two thin entry points (F-009/F-011 — one setup, one write tail).
-fn buildArtifact(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, out_path: []const u8, load_paths: []const []const u8, spec: BuildSpec) !void {
+///
+/// `stdout` is the CLI's one process-shared writer, threaded in for the same
+/// reason `tryRunEmbedded` takes it (D-096): build-time eval runs the entry's
+/// top-level forms, and their `println` must land on that single offset-tracking
+/// writer. A fresh per-call writer restarts at file offset 0, so on a seekable
+/// stdout (`cljw build app.clj > build.log`) every form overwrote the previous
+/// one and only the last survived.
+fn buildArtifact(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, stdout: *std.Io.Writer, out_path: []const u8, load_paths: []const []const u8, spec: BuildSpec) !void {
     var rt = Runtime.init(io, gpa);
     defer rt.deinit();
+    rt.stdout = stdout;
     var env = try Env.init(&rt);
     defer env.deinit();
     driver.installVTable(&rt);
@@ -395,24 +415,30 @@ fn buildArtifact(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, o
     var ow = out.writer(io, &wbuf);
     try ow.interface.writeAll(artifact);
     try ow.interface.flush();
+    // Build-time eval's own output, flushed BEFORE the exit barrier below —
+    // that barrier may hard-exit, which would drop a buffered tail.
+    try stdout.flush();
+    // Exit barrier (ADR-0176): build-time eval may have spawned workers;
+    // hard-exit if any is live rather than tear down under it (D-548(a)).
+    @import("../runtime/thread.zig").exitBarrier(&rt);
 }
 
 /// `cljw build <in.clj> -o <out>` (script mode): compile the source to a
 /// payload envelope and append it to a copy of the running cljw binary as a
 /// self-contained artifact with a `"CLJC"` trailer (ADR-0034 amendment 1/2).
 /// Build-time eval runs top-level side effects (A1-D2). The output is executable.
-pub fn buildFile(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, in_path: []const u8, out_path: []const u8, load_paths: []const []const u8) !void {
+pub fn buildFile(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, stdout: *std.Io.Writer, in_path: []const u8, out_path: []const u8, load_paths: []const []const u8) !void {
     const source = try readFileAll(io, gpa, in_path);
     defer gpa.free(source);
-    return buildArtifact(io, gpa, arena, out_path, load_paths, .{ .script = .{ .src = source, .label = in_path } });
+    return buildArtifact(io, gpa, arena, stdout, out_path, load_paths, .{ .script = .{ .src = source, .label = in_path } });
 }
 
 /// `cljw build -m <ns> [args…] -o <out>` (main mode, ADR-0034 am4): embed the
 /// require closure for `<ns>` + an entry manifest; the produced binary invokes
 /// `(<ns>/-main args)` at run, NOT at build (so a server `-main` does not hang
 /// the build).
-pub fn buildMainFile(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, ns: []const u8, args: []const []const u8, out_path: []const u8, load_paths: []const []const u8) !void {
-    return buildArtifact(io, gpa, arena, out_path, load_paths, .{ .main = .{ .ns = ns, .args = args } });
+pub fn buildMainFile(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, stdout: *std.Io.Writer, ns: []const u8, args: []const []const u8, out_path: []const u8, load_paths: []const []const u8) !void {
+    return buildArtifact(io, gpa, arena, stdout, out_path, load_paths, .{ .main = .{ .ns = ns, .args = args } });
 }
 
 /// Startup hook: if the running binary carries an embedded payload trailer,
@@ -485,6 +511,10 @@ pub fn tryRunEmbedded(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocat
         }
     }
 
+    // Exit barrier (ADR-0176): the embedded program is a full user program —
+    // join its non-daemon Threads and hard-exit if any worker is still live
+    // (the defers would free the heap under it, the D-548(a) teardown race).
+    @import("../runtime/thread.zig").exitBarrier(&rt);
     try stdout.flush();
     return true;
 }
@@ -650,7 +680,7 @@ test "aot: full bootstrap round-trips — a NON-core lib restores from bytecode 
         var table = macro_dispatch.Table.init(A);
         defer table.deinit();
         try bootstrap.setupCorePrefix(&rt, &env, &table);
-        blob = try buildBootstrapEnvelope(A, &rt, &env, &table, arena, bootstrap.FILES);
+        blob = try buildBootstrapEnvelope(A, &rt, &env, &table, arena, bootstrap.ACTIVE_FILES);
     }
     defer A.free(blob);
 
@@ -669,8 +699,8 @@ test "aot: full bootstrap round-trips — a NON-core lib restores from bytecode 
     try bootstrap.setupCorePrefix(&rt, &env, &table);
     // The whole eager bootstrap from the region blob (no .clj re-parse) — mirrors
     // the loadCoreAot path: pre-register loaded_libs, then run every region in order.
-    try bootstrap.markFilesLoaded(&rt, bootstrap.FILES);
-    try bootstrap.runEagerRegions(&rt, &env, arena, blob, bootstrap.FILES);
+    try bootstrap.markFilesLoaded(&rt, bootstrap.ACTIVE_FILES);
+    try bootstrap.runEagerRegions(&rt, &env, arena, blob, bootstrap.ACTIVE_FILES);
 
     // clojure.string/upper-case is a non-core lib var: present ONLY if the
     // non-core AOT chunks ran. Call it to prove the restored fn dispatches.

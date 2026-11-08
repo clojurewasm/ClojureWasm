@@ -127,6 +127,29 @@ pub fn topLevelDoChildren(form: Form) ?[]const Form {
     };
 }
 
+/// The leaves a top-level form evaluates as, per the D-374 unroll: a literal
+/// top-level `(do …)` contributes its children (recursively, so a nested `do`
+/// flattens too); anything else contributes itself. Allocated in `arena`.
+///
+/// This is the enumerating half of the same rule `evalTopLevelForm` applies by
+/// recursion — both anchor on `topLevelDoChildren`, so what counts as a
+/// top-level `do` is defined once. Paths that only evaluate use
+/// `evalTopLevelForm`; `cljw build` uses this, because it must also compile
+/// each leaf to its own chunk and cannot fold the leaves into one call.
+pub fn topLevelLeaves(arena: std.mem.Allocator, form: Form) anyerror![]const Form {
+    var out: std.ArrayList(Form) = .empty;
+    try appendTopLevelLeaves(arena, &out, form);
+    return out.items;
+}
+
+fn appendTopLevelLeaves(arena: std.mem.Allocator, out: *std.ArrayList(Form), form: Form) anyerror!void {
+    if (topLevelDoChildren(form)) |children| {
+        for (children) |child| try appendTopLevelLeaves(arena, out, child);
+    } else {
+        try out.append(arena, form);
+    }
+}
+
 /// Analyze + evaluate one top-level form, unrolling a top-level `(do …)`
 /// recursively so each child is analyzed+evaluated IN SEQUENCE (D-374, clj
 /// parity): an effect in an earlier child (`(import …)` / `(defmacro …)`) is

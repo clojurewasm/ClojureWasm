@@ -38,6 +38,7 @@ const string_mod = @import("../../collection/string.zig");
 const vector_mod = @import("../../collection/vector.zig");
 const java_array = @import("../../collection/java_array.zig");
 const clock = @import("../../clock.zig");
+const compare_mod = @import("../../compare.zig");
 const process_env = @import("../../process_env.zig");
 const mark_sweep = @import("../../gc/mark_sweep.zig");
 const gc_heap_mod = @import("../../gc/gc_heap.zig");
@@ -61,6 +62,13 @@ fn isFileInstance(v: Value) bool {
 /// Mint a File instance carrying the string `path_val` (already a cljw string).
 fn allocFile(rt: *Runtime, path_val: Value) !Value {
     const td = file_descriptor orelse return error.NoVTable;
+    // Every caller hands a freshly allocated, still unrooted path string. The
+    // HostInstance alloc below can trigger a collection (every alloc does under
+    // CLJW_GC_TORTURE_ALLOC=1) that swept that string, leaving the File with a
+    // dangling path (measured: `(.getPath (File. "test/clj/suites"))` -> "/tmp",
+    // `.isDirectory` false). No collection inside the region keeps it alive.
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     return host_instance.alloc(rt, td, .{ @intFromEnum(path_val), 0, 0, 0 });
 }
 
@@ -137,6 +145,18 @@ fn getPath(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return pathValOf(args[0]);
 }
 
+/// `(.compareTo f g)`: JVM `UnixFileSystem.compare`: the `String.compareTo`
+/// of the two paths. Makes File Comparable, so `compare` / `sort` / sorted
+/// collections order Files by path.
+fn compareTo(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("compareTo", args, 2, loc);
+    if (!isFileInstance(args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".compareTo", .expected = "File", .actual = @tagName(args[1].tag()) });
+    return Value.initInteger(compare_mod.javaCompareTo(pathValOf(args[0]), pathValOf(args[1])).?);
+}
+
 fn getParent(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("getParent", args, 1, loc);
@@ -197,6 +217,23 @@ fn getCanonicalPath(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     };
     defer rt.gpa.free(abs);
     return string_mod.alloc(rt, abs);
+}
+
+/// The File-returning twin of getCanonicalPath. The JVM publishes both
+/// spellings of each resolution (`getCanonicalPath` -> String,
+/// `getCanonicalFile` -> File), and a caller that keeps composing paths wants
+/// the File one so it can go straight back into `new File(parent, child)`.
+/// Only the String halves existed here, so `.getCanonicalFile` raised
+/// "No implementation of method" on a real library call.
+fn getCanonicalFile(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("getCanonicalFile", args, 1, loc);
+    return allocFile(rt, try getCanonicalPath(rt, env, args, loc));
+}
+
+/// The File-returning twin of getAbsolutePath, for the same reason.
+fn getAbsoluteFile(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("getAbsoluteFile", args, 1, loc);
+    return allocFile(rt, try getAbsolutePath(rt, env, args, loc));
 }
 
 // --- FS-touching query methods (jail-resolved) ---
@@ -322,6 +359,9 @@ fn createTempFile(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 fn listRoots(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("java.io.File/listRoots", args, 0, loc);
+    // `root` is an unrooted local across the array alloc below (see `list`).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const root = try allocFile(rt, try string_mod.alloc(rt, "/"));
     return java_array.fromSlice(rt, &.{root});
 }
@@ -340,6 +380,12 @@ fn list(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyer
         rt.gpa.free(names);
     }
     // auto-collect is off (see server.zig buildRequest): build without rooting.
+    // That premise does not hold under CLJW_GC_TORTURE_ALLOC (or any allocation
+    // that triggers a collection): `v` is an unrooted Zig local, and a collection
+    // at the next string alloc swept the half-built vector, so `.list` came back
+    // empty or corrupt. Build inside a fabrication region, like the http client.
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     var v = vector_mod.empty();
     for (names) |n| v = try vector_mod.conj(rt, v, try string_mod.alloc(rt, n));
     return v;
@@ -356,6 +402,10 @@ fn listFiles(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         for (names) |n| rt.gpa.free(n);
         rt.gpa.free(names);
     }
+    // Fabrication region: `v` is an unrooted local and every child File is a
+    // GC allocation that can trigger a collection (see `list`).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     var v = vector_mod.empty();
     for (names) |n| {
         const child = try path.join(rt.gpa, &.{ p, n });
@@ -383,13 +433,18 @@ const METHODS = [_]MethodSpec{
     // `toString` reuses getPath (JVM File.toString == getPath); print.zig's
     // host_instance `str` form looks up "toString" on the descriptor.
     .{ .name = "toString", .f = &getPath },
+    .{ .name = "compareTo", .f = &compareTo },
     .{ .name = "getName", .f = &getName },
     .{ .name = "getPath", .f = &getPath },
     .{ .name = "getParent", .f = &getParent },
     .{ .name = "getParentFile", .f = &getParentFile },
     .{ .name = "isAbsolute", .f = &isAbsolute },
+    // Each resolution is published in both JVM spellings, the String half and
+    // the File half. Only the String halves were registered before.
     .{ .name = "getAbsolutePath", .f = &getAbsolutePath },
+    .{ .name = "getAbsoluteFile", .f = &getAbsoluteFile },
     .{ .name = "getCanonicalPath", .f = &getCanonicalPath },
+    .{ .name = "getCanonicalFile", .f = &getCanonicalFile },
     .{ .name = "exists", .f = &exists },
     .{ .name = "isFile", .f = &isFile },
     .{ .name = "isDirectory", .f = &isDirectory },

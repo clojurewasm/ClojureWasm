@@ -1,0 +1,11 @@
+--- exit ---
+1
+--- stdout ---
+before
+--- stderr ---
+Name error at <ROOT>/test/golden/cases/error_missing_ns.clj:2:10
+  Could not locate 'no.such.namespace' on the require resolver
+
+  1 | (println "before")
+  2 | (require '[no.such.namespace :as n])
+                ^--- Could not locate 'no.such.namespace' on the require resolver

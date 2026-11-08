@@ -1,0 +1,73 @@
+name: "🔀 Clojure divergence"
+description: Code that behaves differently on cljw than on JVM Clojure
+title: "[divergence] "
+labels: ["divergence"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most valuable report you can file. ClojureWasm targets
+        behavioural equivalence with JVM Clojure on the user-observable
+        surface, so a difference is either a bug or a gap we have not written
+        down yet.
+
+        Before filing, it is worth a glance at
+        [`docs/clojure_vs_clojurewasm.md`](https://github.com/BuddhiLW/ClojureWasm/blob/main/docs/clojure_vs_clojurewasm.md)
+        — some differences are deliberate and already recorded there. If yours
+        is listed, no need to file; if you think the reasoning is wrong, a
+        Discussion is the better place for that.
+
+  - type: textarea
+    id: expr
+    attributes:
+      label: The expression
+      description: The smallest form that shows the difference.
+      render: clojure
+      placeholder: (map inc [1 2 3])
+    validations:
+      required: true
+
+  - type: textarea
+    id: cljw
+    attributes:
+      label: What cljw prints
+      description: Paste the output verbatim, including any error.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: clj
+    attributes:
+      label: What a JVM Clojure REPL prints
+      description: Verbatim again. If you cannot run a JVM REPL, say so and we will check.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: cljw version
+      description: Output of `cljw --version`.
+      placeholder: ClojureWasm v1.5.1 (ReleaseSafe, wasm)
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: macOS aarch64 / Linux x86_64 / installed via brew
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: >-
+        Optional. If you hit this inside a real library, naming it helps —
+        library compatibility is tracked in `docs/works/ladder.md`.
+    validations:
+      required: false

@@ -1,5 +1,5 @@
-; with-precision (D-467): binds *math-context* so BigDecimal division rounds to N
-; significant figures (HALF_UP) instead of raising on a non-terminating expansion.
+; with-precision (D-467): binds *math-context* so BigDecimal arithmetic rounds
+; to N significant figures (HALF_UP by default), including division of nonterminating decimals.
 ; precision is a MAXIMUM — an exact quotient terminating within it keeps its natural
 ; (un-padded) form. clj-oracle pinned.
 (with-precision 5 (/ 1M 3))
@@ -22,3 +22,59 @@
 ;;=> 0.33M
 (with-precision 10 (/ 1M 1024))
 ;;=> 0.0009765625M
+(with-precision 3 (+ 1.2345M 2.3456M))
+;;=> 3.58M
+(with-precision 3 (- 3.4567M 1.1111M))
+;;=> 2.35M
+(with-precision 3 (* 1.2345M 2.3456M))
+;;=> 2.90M
+(with-precision 3 :rounding DOWN (/ 1M 6M))
+;;=> 0.166M
+(with-precision 3 :rounding HALF_EVEN (+ 1.245M 0M))
+;;=> 1.24M
+(with-precision 3 (+ 1M 2M))
+;;=> 3M
+; Precision is a dynamic MathContext, affecting every binary BigDecimal operation.
+(with-precision 3 (/ 1M 3))
+;;=> 0.333M
+(with-precision 5 :rounding HALF_UP (* 1.23456M 1))
+;;=> 1.2346M
+(with-precision 2 (+ 1.25M 0))
+;;=> 1.3M
+(with-precision 1 :rounding HALF_EVEN (* 1.5M 1M))
+;;=> 2M
+(with-precision 1 :rounding HALF_EVEN (* 2.5M 1M))
+;;=> 2M
+(with-precision 1 :rounding HALF_EVEN (* -1.5M 1M))
+;;=> -2M
+(with-precision 1 :rounding HALF_EVEN (* -2.5M 1M))
+;;=> -2M
+(with-precision 3 :rounding CEILING (/ -1M 6M))
+;;=> -0.166M
+(with-precision 3 :rounding FLOOR (/ -1M 6M))
+;;=> -0.167M
+(with-precision 0 (+ 1.234M 0))
+;;=> 1.234M
+(with-precision 5 (with-precision 2 (+ 1.25M 0)))
+;;=> 1.3M
+(with-precision 2 :rounding UNNECESSARY (+ 1.234M 0))
+;;=> <clj-error> ArithmeticException
+(/ 1M 3)
+;;=> <clj-error> ArithmeticException
+; Every rounding mode for a positive tie, including the required-exactness failure.
+(with-precision 1 :rounding UP (* 2.5M 1M))
+;;=> 3M
+(with-precision 1 :rounding DOWN (* 2.5M 1M))
+;;=> 2M
+(with-precision 1 :rounding CEILING (* 2.5M 1M))
+;;=> 3M
+(with-precision 1 :rounding FLOOR (* 2.5M 1M))
+;;=> 2M
+(with-precision 1 :rounding HALF_UP (* 2.5M 1M))
+;;=> 3M
+(with-precision 1 :rounding HALF_DOWN (* 2.5M 1M))
+;;=> 2M
+(with-precision 1 :rounding HALF_EVEN (* 2.5M 1M))
+;;=> 2M
+(with-precision 1 :rounding UNNECESSARY (* 2.5M 1M))
+;;=> <clj-error> ArithmeticException

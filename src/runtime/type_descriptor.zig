@@ -17,6 +17,7 @@
 //! (`runtime/dispatch/method_table.zig`) without needing GC pinning.
 
 const std = @import("std");
+const atomics = @import("atomics.zig");
 const value_mod = @import("value/value.zig");
 const Value = value_mod.Value;
 const HeapHeader = value_mod.HeapHeader;
@@ -231,6 +232,9 @@ pub const TypeDescriptor = struct {
         time_local_date_epoch,
         time_local_date_time_min,
         time_local_date_time_max,
+        time_zone_offset_utc,
+        time_zone_offset_min, // -18:00
+        time_zone_offset_max, // +18:00
     };
 
     /// The shapes a static field can carry. `int` lifts via
@@ -255,11 +259,23 @@ pub const TypeDescriptor = struct {
         /// A `java.math.MathContext` standard constant (0-3 = DECIMAL32/64/128/
         /// UNLIMITED) → `math_context.zig::singleton` (D-511).
         math_context: u8,
+        /// A `java.time.format.DateTimeFormatter` ISO constant: the index into
+        /// `time/date_time_format.zig::ISO_CONSTANTS` → a fresh formatter.
+        date_time_formatter: u8,
         /// A small-integer `java.math.BigDecimal` constant (ZERO/ONE/TWO/TEN) —
         /// lifted via the BigDecimal constructor at analyze time (ADR-0174 D7),
         /// scale 0.
         big_decimal: i64,
     };
+
+    /// True iff this descriptor is a class the USER defined (`deftype`,
+    /// `defrecord`, `reify`), as opposed to a native / host-surface class.
+    /// A user class is identified by the descriptor itself, never by its
+    /// display name (ADR-0201): two vintages of a redefined `R`, or `aaa.Point`
+    /// and `bbb.Point`, share a simple name and are still different classes.
+    pub fn isUserClass(self: *const TypeDescriptor) bool {
+        return self.kind != .native;
+    }
 
     /// Find a static field by name (ADR-0061). Linear — field tables are
     /// tiny (≤ 2 today). Parallel to `lookupMethod`; walks the parent
@@ -303,68 +319,15 @@ pub const TypeDescriptor = struct {
     /// its `protocol_impls`. Unlike `protocol.satisfies` (which checks the
     /// `method_table`), this consults the declared-interface list, so it
     /// detects a zero-method MARKER protocol (`Sequential`) that has no
-    /// method entry (D-190 / ADR-0068). Shared by the printer's seq-print
-    /// discriminator and `sequential?` — one SSOT for both.
+    /// method entry (D-190 / ADR-0068). An exact-name check: interface
+    /// membership with clj's superinterface closure (`Indexed` is Counted) is
+    /// `class_name.implementsInterface`.
     pub fn declaresProtocol(self: *const TypeDescriptor, protocol_name: []const u8) bool {
         for (self.protocol_impls) |p| {
             if (std.mem.eql(u8, p, protocol_name)) return true;
         }
         if (self.parent) |par| return par.declaresProtocol(protocol_name);
         return false;
-    }
-
-    /// clj `RT.count` discriminator: true iff this descriptor declares `Counted`
-    /// or a Counted-extending `clojure.lang` interface (`Indexed` /
-    /// `IPersistentMap` / `IPersistentVector` / `IPersistentSet`). A Counted
-    /// type's `-count` is authoritative O(1); a type declaring only
-    /// `IPersistentCollection` / `ISeq` / `Seqable` is NOT Counted, so `count`
-    /// WALKS its seq instead of trusting `-count` — matching clj, which ignores
-    /// `IPersistentCollection.count()` unless the type is also `Counted`
-    /// (data.finger-tree's internal trees stub `(count [_])` but aren't Counted;
-    /// only its public `CountedDoubleList` declares `Counted`). The remap
-    /// records the DECLARED interface name verbatim (macro_transforms.zig's
-    /// trailing marker registration), so both bare (D-417) and `clojure.lang.`-
-    /// qualified spellings appear; check both. `defrecord` is Counted-by-nature
-    /// (field_count) and handled by the caller, not here.
-    pub fn isCounted(self: *const TypeDescriptor) bool {
-        const counted_family = [_][]const u8{
-            "Counted",              "Indexed",              "IPersistentMap",              "IPersistentVector",              "IPersistentSet",
-            "clojure.lang.Counted", "clojure.lang.Indexed", "clojure.lang.IPersistentMap", "clojure.lang.IPersistentVector", "clojure.lang.IPersistentSet",
-        };
-        for (counted_family) |name| {
-            if (self.declaresProtocol(name)) return true;
-        }
-        return false;
-    }
-
-    /// clj `RT.count` / `RT.countFrom` walk-eligibility: true iff this descriptor
-    /// declares `IPersistentCollection` or a `clojure.lang` interface that extends
-    /// it (`ISeq` / `IPersistentList` / `IPersistentStack` / `Associative` /
-    /// `IPersistentMap` / `IPersistentVector` / `IPersistentSet`). clj walks a
-    /// non-Counted collection's seq to count it, but a `Seqable`-ONLY type is NOT
-    /// an IPersistentCollection — clj throws `UnsupportedOperationException`
-    /// ("count not supported on this type"). So `count` walks only when this is
-    /// true; a Seqable-only deftype/reify errors instead of being silently walked.
-    /// Both bare (D-417) and `clojure.lang.`-qualified spellings are checked.
-    pub fn isPersistentCollection(self: *const TypeDescriptor) bool {
-        const coll_family = [_][]const u8{
-            "IPersistentCollection",              "ISeq",              "IPersistentList",              "IPersistentStack",              "Associative",              "IPersistentMap",              "IPersistentVector",              "IPersistentSet",
-            "clojure.lang.IPersistentCollection", "clojure.lang.ISeq", "clojure.lang.IPersistentList", "clojure.lang.IPersistentStack", "clojure.lang.Associative", "clojure.lang.IPersistentMap", "clojure.lang.IPersistentVector", "clojure.lang.IPersistentSet",
-        };
-        for (coll_family) |name| {
-            if (self.declaresProtocol(name)) return true;
-        }
-        return false;
-    }
-
-    /// True iff this descriptor declares `IPersistentMap` (bare D-417 or
-    /// `clojure.lang.`-qualified). clj `keys`/`vals` (RT.keys/RT.vals) require an
-    /// IPersistentMap (or java.util.Map) — a non-map type throws ClassCastException,
-    /// NOT a seq-derived key/val list. So `keys`/`vals` derive from a deftype/reify
-    /// ONLY when this holds (a defrecord, which IS an IPersistentMap, is handled by
-    /// its field path before this check).
-    pub fn isPersistentMap(self: *const TypeDescriptor) bool {
-        return self.declaresProtocol("IPersistentMap") or self.declaresProtocol("clojure.lang.IPersistentMap");
     }
 
     /// The defrecord/deftype declared/extmap partition chokepoint (ADR-0154):
@@ -432,14 +395,14 @@ pub const TypedInstance = extern struct {
     /// ORDERING fence (+ to stop the compiler reordering/coalescing) — the
     /// publish half of cross-thread happens-before. Pairs with `getFieldVolatile`.
     pub fn setFieldVolatile(self: *const TypedInstance, index: u32, v: Value) void {
-        @atomicStore(Value, &self.field_values_ptr[index], v, .release);
+        atomics.store(Value, &self.field_values_ptr[index], v, .release);
     }
 
     /// Atomic-acquire read of a `^:volatile-mutable` field slot (D-444 /
     /// ADR-0152) — the consume half; sees every write ordered-before the
     /// matching `setFieldVolatile`'s release.
     pub fn getFieldVolatile(self: *const TypedInstance, index: u32) Value {
-        return @atomicLoad(Value, &self.field_values_ptr[index], .acquire);
+        return atomics.load(Value, &self.field_values_ptr[index], .acquire);
     }
 };
 
@@ -551,7 +514,7 @@ pub fn makeTypeDescriptorRef(rt: *Runtime, td: *const TypeDescriptor) !Value {
         .header = HeapHeader.init(.type_descriptor),
         .td_ptr = td,
     };
-    try rt.trackHeap(.{ .ptr = ref, .free = freeTypeDescriptorRef });
+    try rt.trackHeap(.{ .ptr = ref, .free = freeTypeDescriptorRef, .size = @sizeOf(TypeDescriptorRef) });
     const val = Value.encodeHeapPtr(.type_descriptor, ref);
     // Logical-const memoization (mirrors extendType's @constCast); the
     // descriptor is per-Runtime + process-lifetime so this is safe.
@@ -652,7 +615,9 @@ pub fn reifiedInstWithMeta(rt: *Runtime, v: Value, meta: Value) !Value {
 /// reference was the descriptor was swept once the heap crossed the collect
 /// threshold — its chunk constants then dangled (instaparse AutoFlattenSeq's
 /// `cached-seq` field-name string read as garbage; the gc_rooting §C C8
-/// KNOWN-OPEN class).
+/// class). Since ADR-0184 B the registries themselves are walked as roots
+/// each collect (`markRegistryRoots`), so this is no longer instance-gated
+/// for registered descriptors.
 fn markDescriptorValues(gc: *gc_heap_mod.GcHeap, td_start: *const TypeDescriptor) void {
     var td: ?*const TypeDescriptor = td_start;
     while (td) |d| : (td = d.parent) {
@@ -661,6 +626,27 @@ fn markDescriptorValues(gc: *gc_heap_mod.GcHeap, td_start: *const TypeDescriptor
         }
         if (d.meta.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
     }
+}
+
+/// ADR-0184 Precondition B: walk EVERY registered descriptor's method-table
+/// + meta Values as GC ROOTS. The registries (`rt.types`,
+/// `rt.native_descriptors` — where `(extend-type Long/nil …)` impls land —
+/// and `rt.class_descriptors`) are gpa-side tables the mark phase cannot
+/// otherwise see; before this walk an impl fn was reachable only through a
+/// live instance/ref Value (the C8 strand class — dispatch still found it
+/// via the table after its captures were swept). Called from `collect()`
+/// via the `runtime_embedded` @fieldParentPtr bridge. Reify's anonymous
+/// descriptors are deliberately NOT here — they stay instance-mediated
+/// (`traceReifiedInstance`), so a reify whose instances all died is
+/// collectable as a unit.
+pub fn markRegistryRoots(rt: *Runtime, gc: *gc_heap_mod.GcHeap) void {
+    var it = rt.types.valueIterator();
+    while (it.next()) |tdp| markDescriptorValues(gc, tdp.*);
+    for (rt.native_descriptors) |maybe_td| {
+        if (maybe_td) |td| markDescriptorValues(gc, td);
+    }
+    var cit = rt.class_descriptors.valueIterator();
+    while (cit.next()) |tdp| markDescriptorValues(gc, tdp.*);
 }
 
 /// Trace fn for `.type_descriptor` (the boxed ref `makeTypeDescriptorRef`
@@ -691,17 +677,6 @@ pub fn finaliseReifiedInstance(gc_ptr: *anyopaque, header: *HeapHeader) void {
     _ = header;
 }
 
-/// Allocate a TypeDescriptor on `rt.gpa` with the declared field
-/// layout and register it in `rt.types` under `name`. Re-registering
-/// the same name frees the previous descriptor (keeps the REPL
-/// re-`def` path clean). `field_names` is borrowed; each entry is
-/// `dupe`'d into the descriptor.
-///
-/// Shared by the `__deftype!` and `__defrecord!` Layer-2 primitives —
-/// both lower to the same Layer-0 surface per F-009 (feature-impl
-/// neutrality), differing only in the `kind` argument. Since ADR-0066
-/// both `deftype` and `defrecord` are macros emitting their respective
-/// `rt/__…!` registration call (no analyzer Node fork, no backend op).
 /// Build a defrecord instance from map `m` — clj's `Record/create`:
 /// declared fields pulled by keyword (nil when absent), every remaining
 /// key held in the extmap (nil when empty, so the result `=`/hashes as a
@@ -729,6 +704,19 @@ pub fn recordFromMap(rt: *Runtime, td: *const TypeDescriptor, m: Value) !Value {
     return allocInstanceFull(rt, td, fields, Value.nil_val, ext);
 }
 
+/// Allocate a TypeDescriptor on `rt.gpa` with the declared field layout and
+/// register it in `rt.types` under its qualified key `<defining_ns>.<name>`
+/// (ADR-0198). Re-registering the same key RETIRES the previous descriptor to
+/// `rt.retired_types` rather than freeing it: instances, boxed class values
+/// and CallSite caches still hold it, and the retired descriptor stays a
+/// distinct class from its replacement (ADR-0201). `field_names` is borrowed;
+/// each entry is `dupe`'d into the descriptor.
+///
+/// Shared by the `__deftype!` and `__defrecord!` Layer-2 primitives, which
+/// lower to the same Layer-0 surface per F-009 (feature-impl neutrality) and
+/// differ only in the `kind` argument. Since ADR-0066 both `deftype` and
+/// `defrecord` are macros emitting their `__deftype!` / `__defrecord!`
+/// registration call (no analyzer Node fork, no backend op).
 pub fn registerType(
     rt: *Runtime,
     name: []const u8,
@@ -777,30 +765,71 @@ pub fn registerType(
         .meta = Value.nil_val,
     };
 
-    if (rt.types.fetchRemove(name)) |old| {
-        rt.gpa.free(old.key);
-        if (old.value.field_layout) |old_layout| {
-            for (old_layout) |fe| rt.gpa.free(fe.name);
-            rt.gpa.free(old_layout);
-        }
-        if (old.value.fqcn) |o_n| rt.gpa.free(o_n);
-        if (old.value.defining_ns) |o_ns| rt.gpa.free(o_ns);
-        // Row 7.7 cycle 5: free the old TD's `method_table` slice and
-        // each entry's `method_name` dup (populated by `extend-type`
-        // between the prior `registerType` and now). Mirrors the
-        // equivalent cleanup in `Runtime.deinit`'s rt.types iteration.
-        for (old.value.method_table) |mentry| {
-            rt.gpa.free(mentry.method_name);
-        }
-        if (old.value.method_table.len > 0) rt.gpa.free(old.value.method_table);
-        // `protocol_impls` (D-190 / ADR-0068): borrowed fqcn slices, free
-        // the slice only (mirrors the Runtime.deinit cleanup).
-        if (old.value.protocol_impls.len > 0) rt.gpa.free(old.value.protocol_impls);
-        rt.gpa.destroy(@constCast(old.value));
-    }
-    const key = try rt.gpa.dupe(u8, name);
+    // D-587 part 2 / ADR-0198: the registry key is the FULLY-QUALIFIED class
+    // name, which is what `Runtime.types`'s own doc comment has always
+    // promised. A host surface's fqcn is already qualified
+    // (`java.util.UUID`); a user type's key is `<defining_ns>.<Name>`. A null
+    // `defining_ns` (bare unit-test registration, `ensureRegistered`; reify
+    // is not registered at all) keeps the bare name as its own qualified
+    // form, so the rule is TOTAL with no null branch.
+    //
+    // `td.fqcn` deliberately stays the SIMPLE name: key and printed class
+    // name are decoupled, so `(class x)` and the `#ns.Name{…}` print form are
+    // unchanged (ADR-0059 / AD-003).
+    //
+    // Keying by the simple name made `aaa/Point` and `bbb/Point` ONE entry,
+    // so a record name a second namespace already used silently displaced the
+    // first with nobody intending a redefinition.
+    const key = if (defining_ns) |dns|
+        try std.fmt.allocPrint(rt.gpa, "{s}.{s}", .{ dns, name })
+    else
+        try rt.gpa.dupe(u8, name);
     errdefer rt.gpa.free(key);
+
+    if (rt.types.fetchRemove(key)) |old| {
+        // The displaced descriptor is RETIRED, never freed (D-587). Live
+        // instances hold `inst.descriptor` raw; `makeTypeDescriptorRef`
+        // hands out process-lifetime boxed refs that the GC traces via
+        // `markDescriptorValues`; and `CallSite.last_type` compares
+        // descriptors by ADDRESS from analyzer storage the GC cannot see.
+        // Freeing dangled all three, and the address reuse that follows a
+        // free let a stale call site hit on an ABA-matched pointer and
+        // dispatch through a freed `method_table` -- a silent wrong answer
+        // rather than a crash. Retiring removes that hazard by construction,
+        // because the address is never handed back.
+        //
+        // The prior code freed here to avoid leaking on redefine. That trade
+        // was wrong twice over: the struct's own doc comment declares it
+        // process-lifetime, and clj keeps a superseded class alive for as
+        // long as anything references it, so retention is the oracle's
+        // behaviour (F-011), bounded by re-evaluation count.
+        rt.gpa.free(old.key);
+        try rt.retired_types.append(rt.gpa, old.value);
+    }
     try rt.types.put(key, td);
+
+    // Secondary simple-name index (ADR-0198). Last registration wins, which
+    // is what EVERY lookup did before the key was qualified. It exists for
+    // references that carry no namespace to qualify with, chiefly the VM's
+    // `op_ctor_call`, which resolves a bare `type_name` at RUNTIME where the
+    // current ns is the CALLER's, not the definer's.
+    if (defining_ns != null) {
+        const gop = try rt.types_by_simple.getOrPut(rt.gpa, name);
+        if (!gop.found_existing) {
+            gop.key_ptr.* = rt.gpa.dupe(u8, name) catch |e| {
+                _ = rt.types_by_simple.remove(name);
+                return e;
+            };
+        }
+        gop.value_ptr.* = td;
+    }
+
+    // A redefine changes what `(protocol, method)` resolves to, and the
+    // CallSite cache hits on `last_type == td and cached_generation ==
+    // current_generation`. Retiring already guarantees the cached pointer
+    // stays valid, so this bump is what makes a stale slot MISS and refill
+    // against the new descriptor instead of serving the retired one.
+    rt.protocol_generation +%= 1;
     return td;
 }
 
@@ -887,8 +916,15 @@ pub fn finaliseTypedInstance(gc_ptr: *anyopaque, header: *HeapHeader) void {
     gc.infra.free(inst.field_values_ptr[0..inst.field_count]);
 }
 
+/// D-573: the field-values slice finaliseTypedInstance frees.
+fn typedInstanceOwnedBytes(header: *HeapHeader) usize {
+    const inst: *TypedInstance = @ptrCast(@alignCast(header));
+    return inst.field_count * @sizeOf(Value);
+}
+
 pub fn registerGcHooks() void {
     tag_ops.registerTrace(.typed_instance, &traceTypedInstance);
+    tag_ops.registerOwnedBytes(.typed_instance, &typedInstanceOwnedBytes);
     tag_ops.registerTrace(.type_descriptor, &traceTypeDescriptorRef);
     tag_ops.registerFinaliser(.typed_instance, &finaliseTypedInstance);
     tag_ops.registerTrace(.reified_instance, &traceReifiedInstance);
@@ -916,6 +952,36 @@ const TdFixture = struct {
         self.threaded.deinit();
     }
 };
+
+test "ADR-0184 B: a registered descriptor's method impl survives a collect with no live instance (registry roots)" {
+    var fix = TdFixture.init();
+    defer fix.deinit();
+    const rt = &fix.rt;
+
+    // A descriptor in rt.types whose method impl Value has NO other
+    // reference — before the registry root walk, the collect swept it
+    // (the C8 strand class) even though `(SomeType/m …)` could still
+    // dispatch to it.
+    const td = try registerType(rt, "user.RootedT", null, &.{}, &.{}, .deftype);
+    const impl = try @import("collection/string.zig").alloc(rt, "impl-body-stand-in");
+    // `method_name` must be a gpa dup — Runtime.deinit frees it per entry
+    // (matching the production `__extend-type!` ownership).
+    const entries = [_]TypeDescriptor.MethodEntry{
+        .{ .protocol_name = "user/IP", .method_name = try rt.gpa.dupe(u8, "m"), .method_val = impl },
+    };
+    try @import("protocol.zig").extendTypeWithImpls(rt, @constCast(td), &entries);
+
+    const impl_hdr = impl.heapHeader().?;
+    mark_sweep.collectStopTheWorld(&rt.gc, .{ .envs = &.{}, .gc = &rt.gc }, false);
+    var found = false;
+    for (rt.gc.allocations.items) |rec| {
+        if (rec.header == impl_hdr) {
+            found = true;
+            break;
+        }
+    }
+    try testing.expect(found);
+}
 
 test "TypeDescriptor struct layout: fqcn is optional, kind is required" {
     const td: TypeDescriptor = .{

@@ -31,6 +31,8 @@ const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
+const class_name = @import("../../runtime/class_name.zig");
+const char_sequence = @import("../../runtime/char_sequence.zig");
 const lookup = @import("../../runtime/collection/lookup.zig");
 const tagged_literal_mod = @import("../../runtime/tagged_literal.zig");
 
@@ -45,7 +47,11 @@ const IPS_FQCN: []const u8 = "IPersistentSet";
 const sequence = @import("sequence.zig");
 const range_mod = @import("../../runtime/collection/range.zig");
 const vector = @import("../../runtime/collection/vector.zig");
+const sub_vector = @import("../../runtime/collection/sub_vector.zig");
+const array_seq = @import("../../runtime/collection/array_seq.zig");
+const string_seq = @import("../../runtime/collection/string_seq.zig");
 const java_array = @import("../../runtime/collection/java_array.zig");
+const promote = @import("../../runtime/numeric/promote.zig");
 const list = @import("../../runtime/collection/list.zig");
 const map = @import("../../runtime/collection/map.zig");
 const map_entry = @import("../../runtime/collection/map_entry.zig");
@@ -87,10 +93,36 @@ pub fn conjFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     return acc;
 }
 
+/// Count of a `.vector` OR `.sub_vector` — the two indexed persistent-vector
+/// representations share these Indexed/Associative op arms.
+fn vecCount(v: Value) u32 {
+    return switch (v.tag()) {
+        .sub_vector => sub_vector.count(v),
+        else => vector.count(v),
+    };
+}
+
+/// `nth` into a `.vector` OR `.sub_vector`.
+fn vecNth(v: Value, i: u32) Value {
+    return switch (v.tag()) {
+        .sub_vector => sub_vector.nth(v, i),
+        else => vector.nth(v, i),
+    };
+}
+
+/// `assoc` on a `.vector` OR `.sub_vector` (a subvec assoc stays a subvec).
+fn vecAssoc(rt: *Runtime, v: Value, i: u32, x: Value) !Value {
+    return switch (v.tag()) {
+        .sub_vector => sub_vector.assoc(rt, v, i, x),
+        else => vector.assoc(rt, v, i, x),
+    };
+}
+
 fn conjOne(rt: *Runtime, env: *Env, coll: Value, x: Value, loc: SourceLocation) anyerror!Value {
     if (coll.isNil()) return try list.consHeap(rt, x, .nil_val);
     return switch (coll.tag()) {
         .vector => try vector.conj(rt, coll, x),
+        .sub_vector => try sub_vector.conj(rt, coll, x),
         // conj on a MapEntry DROPS the map-entry nature → a plain vector
         // `[k v x]` (clj `AMapEntry.cons` routes through `asVector()`, D-209).
         .map_entry => blk: {
@@ -98,11 +130,21 @@ fn conjOne(rt: *Runtime, env: *Env, coll: Value, x: Value, loc: SourceLocation) 
             vec = try vector.conj(rt, vec, map_entry.valOf(coll));
             break :blk try vector.conj(rt, vec, x);
         },
-        // conj onto any ISeq is a prepend ≡ `(cons x coll)`. Delegate to
-        // the cons primitive so per-seq-tag handling (unforced lazy_seq
-        // tail / seq-view over range / string_seq / array_seq) stays
-        // single-sourced (F-011) instead of being re-encoded here.
-        .list, .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq => try sequence.consFn(rt, env, &.{ x, coll }, loc),
+        // PersistentList.cons preserves PersistentList identity; routing this
+        // through public `cons` would mint a clojure.lang.Cons and break the
+        // list-only IPersistentStack contract (`peek`/`pop`). Other ISeqs use
+        // public cons so their distinct tail/class semantics stay centralized.
+        .list => blk: {
+            // PersistentList.cons carries the list's meta (clj `new
+            // PersistentList(meta(), o, this, count+1)`).
+            const m = list.metaOf(coll);
+            if (m.isNil()) break :blk try list.consHeap(rt, x, coll);
+            rt.gc.enterFabrication();
+            defer rt.gc.exitFabrication();
+            const c = try list.consHeap(rt, x, coll);
+            break :blk try list.withMeta(rt, c, m);
+        },
+        .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq => try sequence.consFn(rt, env, &.{ x, coll }, loc),
         .hash_set => try set.conj(rt, coll, x),
         // conj on a queue appends to the rear (FIFO, ADR-0087).
         .persistent_queue => try persistent_queue.conj(rt, coll, x),
@@ -192,6 +234,11 @@ fn mapConj(rt: *Runtime, m: Value, entry: Value, loc: SourceLocation) anyerror!V
         try map.forEachEntry(entry, &ctx, MapMergeCtx.cb);
         return acc;
     }
+    // (conj m nil) — a no-op returning the map. clj's APersistentMap.cons walks
+    // `RT.seq(o)`, and seq of nil is nil, so the loop never runs and `this` comes
+    // back. `(conj [1] nil)` / `(conj #{1} nil)` DO take the nil as an element;
+    // only the map arm drops it.
+    if (entry.isNil()) return m;
     // (conj m [k v]) — vector pair gets destructured into assoc. A non-pair
     // entry → IllegalArgumentException in clj (PersistentArrayMap.cons), NOT
     // ClassCastException. D-459.
@@ -236,6 +283,8 @@ fn sortedMapConj(rt: *Runtime, env: *Env, m: Value, entry: Value, loc: SourceLoc
         try map.forEachEntry(entry, &ctx, SortedMapMergeCtx.cb);
         return acc;
     }
+    // (conj sorted-map nil) — a no-op, same as the hash/array-map arm above.
+    if (entry.isNil()) return m;
     // (conj sorted-map [k v]) — same [k v]-pair contract as hash/array map.
     if (entry.tag() != .vector or vector.count(entry) != 2) {
         return error_catalog.raise(.arg_value_invalid, loc, .{
@@ -254,19 +303,23 @@ fn sortedMapConj(rt: *Runtime, env: *Env, m: Value, entry: Value, loc: SourceLoc
 /// JVM reference: clojure.core/disj → IPersistentSet.disjoin
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn disjFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("disj", args, 2, loc);
-    const coll = args[0];
+    // clj: ([set] set) ([set k] …) ([set k & ks] …) — remove each key in turn.
+    try error_catalog.checkArityMin("disj", args, 1, loc);
+    var coll = args[0];
     if (coll.isNil()) return .nil_val;
-    return switch (coll.tag()) {
-        .hash_set => try set.disj(rt, coll, args[1]),
-        .sorted_set => try sorted.disjSet(rt, env, coll, args[1], loc),
-        else => blk: {
-            // D-089 row 8.6 cycle 4: IPersistentSet -disjoin slow-path
-            // (close cycle for the retro-audit cluster).
-            var cs: dispatch.CallSite = .{};
-            break :blk try dispatch.dispatch(rt, env, &cs, coll, IPS_FQCN, "-disjoin", args, loc);
-        },
-    };
+    for (args[1..]) |k| {
+        coll = switch (coll.tag()) {
+            .hash_set => try set.disj(rt, coll, k),
+            .sorted_set => try sorted.disjSet(rt, env, coll, k, loc),
+            else => blk: {
+                // D-089 row 8.6 cycle 4: IPersistentSet -disjoin slow-path
+                // (close cycle for the retro-audit cluster).
+                var cs: dispatch.CallSite = .{};
+                break :blk try dispatch.dispatch(rt, env, &cs, coll, IPS_FQCN, "-disjoin", &.{ coll, k }, loc);
+            },
+        };
+    }
+    return coll;
 }
 
 // --- contains? ---
@@ -294,10 +347,10 @@ pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
         // A vector is Indexed: `contains?` tests index validity, NOT element
         // membership. A non-integer key is simply absent (false), not an error
         // (matches clj `(contains? [1 2 3] :x)` → false).
-        .vector => blk: {
+        .vector, .sub_vector => blk: {
             if (k.tag() != .integer) break :blk .false_val;
             const idx: i64 = k.asInteger();
-            break :blk if (idx >= 0 and idx < @as(i64, vector.count(coll))) .true_val else .false_val;
+            break :blk if (idx >= 0 and idx < @as(i64, vecCount(coll))) .true_val else .false_val;
         },
         // A MapEntry is a 2-vector: indices 0 and 1 are valid (D-209).
         .map_entry => blk: {
@@ -307,10 +360,22 @@ pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
         },
         // A String is Indexed: `contains?` tests index validity (D-217;
         // clj `(contains? "abc" 1)` → true, `(contains? "abc" 10)` → false).
+        // clj RT.contains: a Number key is truncated (`intValue`) — so
+        // `(contains? "abc" 1.5)` / `1N` are true — and any other key raises
+        // "contains? not supported on type" (String is not Associative).
         .string => blk: {
-            if (k.tag() != .integer) break :blk .false_val;
-            const idx: i64 = k.asInteger();
+            const idx = try indexedContainsKey(rt, k, "a String is indexed, not associative", loc);
             break :blk if (idx >= 0 and idx < @as(i64, @intCast(string.codepointCount(string.asString(coll))))) .true_val else .false_val;
+        },
+        // A Java array is Indexed but NOT Associative (ADR-0105): `contains?`
+        // tests INDEX validity for an integer key. Unlike a vector — whose
+        // non-integer key is simply absent (false) via the Associative path —
+        // an array has no `containsKey`, so clj's RT.contains falls through to
+        // an IllegalArgumentException for a non-integer key. cljw matches with a
+        // catchable type error rather than a silent false.
+        .array => blk: {
+            const idx = try indexedContainsKey(rt, k, "an array is indexed, not associative", loc);
+            break :blk if (idx >= 0 and idx < @as(i64, java_array.alength(coll))) .true_val else .false_val;
         },
         // A live transient mirrors its persistent peer (clj parity, D-199):
         // map/set by key/element membership; vector by index validity.
@@ -366,6 +431,25 @@ pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     };
 }
 
+/// Index key for `contains?` on a String / Java array (clj RT.contains):
+/// any Number is truncated toward zero like `Number.intValue`; a non-number
+/// key is a type error (clj IllegalArgumentException). An integer part that
+/// overflows i64 reads as out of range (-1).
+fn indexedContainsKey(rt: *Runtime, k: Value, why: []const u8, loc: SourceLocation) anyerror!i64 {
+    switch (k.tag()) {
+        .integer => return k.asInteger(),
+        .float, .big_int, .ratio, .big_decimal => return promote.truncToI64(rt, k) catch |e| switch (e) {
+            error.OutOfRange => -1,
+            else => return e,
+        },
+        else => return error_catalog.raise(.arg_value_invalid, loc, .{
+            .fn_name = "contains?",
+            .expected = why,
+            .actual = @tagName(k.tag()),
+        }),
+    }
+}
+
 // --- get ---
 
 /// Implements clojure.core/get.
@@ -398,20 +482,32 @@ pub fn getFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             }
             break :blk default;
         },
-        .hash_set => if (try set.contains(coll, k)) k else default,
-        .vector => blk: {
+        // A set answers its STORED element (clj PersistentHashSet.get), not
+        // the probe: `(get #{1N} 1)` is 1N, `(get #{0.0} -0.0)` is 0.0.
+        .hash_set => (try set.get(coll, k)) orelse default,
+        .sorted_set => (try sorted.setGet(rt, env, coll, k, loc)) orelse default,
+        .vector, .sub_vector => blk: {
             if (k.tag() != .integer) break :blk default;
             const idx = k.asInteger();
             if (idx < 0) break :blk default;
-            const n = vector.count(coll);
+            const n = vecCount(coll);
             if (idx >= n) break :blk default;
-            break :blk vector.nth(coll, @intCast(idx));
+            break :blk vecNth(coll, @intCast(idx));
         },
         // A MapEntry is a 2-vector: `(get entry 0/1)` → key/val (D-209).
         .map_entry => blk: {
             if (k.tag() != .integer) break :blk default;
             const idx = k.asInteger();
             break :blk if (idx == 0 or idx == 1) map_entry.nth(coll, @intCast(idx)) else default;
+        },
+        // A Java array is index-gettable (clj RT.get: `Array.getLength` /
+        // `Array.get` for an in-range Number key, else the default).
+        .array => blk: {
+            if (k.tag() != .integer) break :blk default;
+            const idx = k.asInteger();
+            const arr = java_array.asArray(coll);
+            if (idx < 0 or idx >= arr.len) break :blk default;
+            break :blk try java_array.get(rt, arr, @intCast(idx));
         },
         // A String is index-gettable (clj `(get "abc" 1)` → \b): return the
         // codepoint char, else default (OOR / non-integer key). D-217.
@@ -425,7 +521,11 @@ pub fn getFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             break :blk default;
         },
         // A live transient is a first-class read target (clj parity, D-199):
-        // a transient map reads by key; a transient vector by index.
+        // a transient map reads by key, a transient vector by index, and a
+        // transient SET by membership, returning the element exactly as the
+        // persistent `.hash_set` arm above does. The set arm was missing, so
+        // `(get (transient #{42}) 42)` fell to lookupDispatch and answered the
+        // default instead of 42.
         .transient_map => blk: {
             try transient_array_map.ensureLive(coll, "get", loc);
             if (try transient_array_map.contains(coll, k)) {
@@ -437,6 +537,10 @@ pub fn getFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             try transient_vector.ensureLive(coll, "get", loc);
             if (k.tag() != .integer) break :blk default;
             break :blk transient_vector.nth(coll, k.asInteger(), default);
+        },
+        .transient_set => blk: {
+            try transient_hash_set.ensureLive(coll, "get", loc);
+            break :blk (try transient_hash_set.get(coll, k)) orelse default;
         },
         // Declared field → ILookup -lookup slow-path → default. Shared
         // with the keyword-as-fn `(:k rec)` path so the two agree (D-089).
@@ -455,6 +559,33 @@ pub fn getFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         // (D-089 row 8.6 historic semantic preserved).
         else => try lookup.lookupDispatch(rt, env, coll, k, args.len == 3, default, loc),
     };
+}
+
+// --- find (entryAt) ---
+
+/// `(cljw.internal/__entry-at m k)`: the backing of clojure.core/find and
+/// `.entryAt`: the map entry for k as STORED in m (clj Associative.entryAt),
+/// or nil when absent. The entry carries the map's own key object, so
+/// `(find {1N :a} 1)` is [1N :a] and `(find {0.0 :z} -0.0)` is [0.0 :z].
+/// Every other receiver (vector, record, deftype, transient map) keeps the
+/// contains?/get composition, whose entry carries the PROBE: that is clj's
+/// own answer there, `ATransientMap.entryAt` builds its entry from the probe,
+/// so `(find (transient {1N :a}) 1)` is [1 :a] on the JVM.
+pub fn entryAtFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("find", args, 2, loc);
+    const coll = args[0];
+    const k = args[1];
+    const found: ?map.Entry = switch (coll.tag()) {
+        .nil => return .nil_val,
+        .array_map, .hash_map => try map.entryAt(coll, k),
+        .sorted_map => try sorted.entryAt(rt, env, coll, k, loc),
+        else => blk: {
+            if ((try containsQFn(rt, env, args, loc)) != .true_val) break :blk null;
+            break :blk .{ .key = k, .val = try getFn(rt, env, args, loc) };
+        },
+    };
+    const e = found orelse return .nil_val;
+    return map_entry.make(rt, e.key, e.val);
 }
 
 // --- nth ---
@@ -484,17 +615,51 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     const has_default = args.len == 3;
     const default: Value = if (has_default) args[2] else .nil_val;
 
-    if (coll.isNil()) {
-        if (has_default) return default;
-        return error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "nth",
-            .expected = "indexed collection",
-            .actual = "nil",
-        });
-    }
+    // clj's `RT.nth(nil, i)` returns nil for ANY index (and the notFound for the
+    // 3-arg form) — `(nth nil 0)` is nil, not an error. This is also what makes
+    // `(rand-nth nil)` nil rather than throw.
+    if (coll.isNil()) return default;
 
     return switch (coll.tag()) {
-        .vector => blk: {
+        .vector, .sub_vector => blk: {
+            if (idx < 0) {
+                if (has_default) break :blk default;
+                // clj raises IndexOutOfBoundsException at BOTH ends; the
+                // catalog entry for index_out_of_range says as much. A type
+                // error here made one function answer two classes.
+                break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
+            }
+            const n = vecCount(coll);
+            if (idx >= n) {
+                if (has_default) break :blk default;
+                break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
+            }
+            break :blk vecNth(coll, @intCast(idx));
+        },
+        // PERF: clj reaches `nth` on a vector's seq through `RT.nthFrom`, which
+        // WALKS (PersistentVector$ChunkedSeq is Counted, not Indexed). The view
+        // holds the backing vector, so the same answer is one indexed read.
+        // Index discipline mirrors the `.vector` arm. [refs: O-058]
+        .array_seq => blk: {
+            if (idx < 0) {
+                if (has_default) break :blk default;
+                // clj raises IndexOutOfBoundsException at BOTH ends; the
+                // catalog entry for index_out_of_range says as much. A type
+                // error here made one function answer two classes.
+                break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
+            }
+            if (idx >= array_seq.countOf(coll)) {
+                if (has_default) break :blk default;
+                break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
+            }
+            break :blk try array_seq.nth(rt, coll, @intCast(idx));
+        },
+        // `nth` into UTF-8 is a forward walk by nature, so this arm is O(idx)
+        // rather than the vector view's O(1). The bounds check rides on that
+        // same walk — `string_seq.nth` answers nil past the end — instead of
+        // calling `countOf`, which would scan the whole remainder first and
+        // make every indexed read O(n). [refs: D-179]
+        .string_seq => blk: {
             if (idx < 0) {
                 if (has_default) break :blk default;
                 break :blk error_catalog.raise(.type_arg_invalid, loc, .{
@@ -503,12 +668,12 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
                     .actual = "negative",
                 });
             }
-            const n = vector.count(coll);
-            if (idx >= n) {
+            const e = string_seq.nth(coll, @intCast(idx));
+            if (e.isNil()) {
                 if (has_default) break :blk default;
                 break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
             }
-            break :blk vector.nth(coll, @intCast(idx));
+            break :blk e;
         },
         // A MapEntry is a 2-vector: index 0→key, 1→val (D-209 / ADR-0078).
         .map_entry => blk: {
@@ -523,7 +688,7 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
                 if (has_default) break :blk default;
                 break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
             }
-            break :blk try java_array.aget(coll, idx, "nth", loc);
+            break :blk try java_array.aget(rt, coll, idx, "nth", loc);
         },
         // A live transient vector is Indexed (clj parity, D-199) — same
         // index discipline as a persistent vector.
@@ -531,11 +696,10 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             try transient_vector.ensureLive(coll, "nth", loc);
             if (idx < 0) {
                 if (has_default) break :blk default;
-                break :blk error_catalog.raise(.type_arg_invalid, loc, .{
-                    .fn_name = "nth",
-                    .expected = "non-negative integer index",
-                    .actual = "negative",
-                });
+                // clj raises IndexOutOfBoundsException at BOTH ends; the
+                // catalog entry for index_out_of_range says as much. A type
+                // error here made one function answer two classes.
+                break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
             }
             if (idx >= transient_vector.count(coll)) {
                 if (has_default) break :blk default;
@@ -557,6 +721,15 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
                     break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
                 }
             }
+            // An EMPTY list has nothing at any index. The walk above never runs
+            // for idx 0, so without this `(nth '() 0)` fell through to
+            // `list.first`, which answers nil for an empty list — a silent wrong
+            // answer where clj raises IndexOutOfBounds. `(nth '(1) 5)` already
+            // raised, because that case does walk and hits the nil tail.
+            if (list.isEmpty(cur)) {
+                if (has_default) break :blk default;
+                break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
+            }
             break :blk list.first(cur);
         },
         // PERF: O(1) nth on a compact range — `start + i*step`, no walk [refs: O-001]
@@ -565,7 +738,7 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
                 if (has_default) break :blk default;
                 break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
             }
-            break :blk range_mod.elementAt(coll, idx);
+            break :blk try range_mod.elementAt(rt, coll, idx);
         },
         // A String is Indexed (clj `(nth "abc" 1)` → \b): return the
         // codepoint char at `idx`. OOR → default, or throw (clj
@@ -602,6 +775,10 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             }
             var cs: dispatch.CallSite = .{};
             const slow_args = [_]Value{ coll, i_val };
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, INDEXED_FQCN, "-nth", &slow_args, loc)) |r| break :blk r;
+            // clj RT.nthFrom: a CharSequence that is not Indexed answers its
+            // charAt (java.lang.StringBuilder, instaparse's Segment).
+            if (try char_sequence.nthOrNull(rt, env, coll, i_val, if (has_default) default else null, loc)) |r| break :blk r;
             break :blk try dispatch.dispatch(rt, env, &cs, coll, INDEXED_FQCN, "-nth", &slow_args, loc);
         },
     };
@@ -685,7 +862,7 @@ pub fn assocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             }
             break :blk acc;
         },
-        .vector => blk: {
+        .vector, .sub_vector => blk: {
             var acc: Value = coll;
             var i: usize = 1;
             while (i + 1 < args.len) : (i += 2) {
@@ -704,11 +881,11 @@ pub fn assocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
                 if (idx < 0) {
                     break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "assoc" });
                 }
-                const n = vector.count(acc);
+                const n = vecCount(acc);
                 if (idx > n) {
                     break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "assoc" });
                 }
-                acc = try vector.assoc(rt, acc, @intCast(idx), args[i + 1]);
+                acc = try vecAssoc(rt, acc, @intCast(idx), args[i + 1]);
             }
             break :blk acc;
         },
@@ -852,21 +1029,40 @@ pub fn dissocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             break :blk try td_mod.allocInstanceFull(rt, inst.descriptor, fields, inst.meta, ext);
         },
         else => blk: {
-            // D-089 row 8.6 cycle 3: IPersistentMap -without slow-path.
-            // Single-key only; multi-key extension folds via reduce in
-            // user code (same shape as the assoc outer-else).
-            if (args.len != 2) {
-                break :blk error_catalog.raise(.feature_not_supported, loc, .{
-                    .name = "multi-key dissoc on extend-type IPersistentMap receiver",
-                });
+            // D-089 row 8.6 cycle 3: IPersistentMap `-without` slow-path. Multi-key
+            // folds over repeated single-key `-without` (mirrors the assoc else arm,
+            // D-378); a non-map receiver raises a catchable protocol-no-impl on the
+            // first dispatch, same as the single-key path.
+            var acc: Value = coll;
+            var i: usize = 1;
+            while (i < args.len) : (i += 1) {
+                var cs: dispatch.CallSite = .{};
+                acc = try dispatch.dispatch(rt, env, &cs, acc, IPM_FQCN, "-without", &.{ acc, args[i] }, loc);
             }
-            var cs: dispatch.CallSite = .{};
-            break :blk try dispatch.dispatch(rt, env, &cs, coll, IPM_FQCN, "-without", args, loc);
+            break :blk acc;
         },
     };
 }
 
 // --- keys ---
+
+/// `keys`/`vals` on a non-entry element — clj raises ClassCastException here.
+fn entryCastError(fn_name: []const u8, entry: Value, loc: SourceLocation) anyerror {
+    return error_catalog.raise(.type_arg_invalid, loc, .{
+        .fn_name = fn_name,
+        .expected = "a seq of map entries",
+        .actual = @tagName(entry.tag()),
+    });
+}
+
+/// True for the tags whose `(seq coll)` clj walks as map entries (D-285): `keys`
+/// takes any seq of entries, not only an IPersistentMap.
+fn isEntrySeqTag(tag: Value.Tag) bool {
+    return switch (tag) {
+        .list, .lazy_seq, .cons, .chunked_cons, .array_seq, .vector, .sub_vector => true,
+        else => false,
+    };
+}
 
 /// Implements clojure.core/keys.
 /// Spec: `(keys m)` returns a seq of map keys, or nil if empty.
@@ -877,7 +1073,7 @@ pub fn dissocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 /// 1 (val) of each entry (cljw's entries are 2-vectors). Walks `(seq coll)` via the
 /// seq protocol (firstFn/nextFn), mirroring apply's accumulator walk in
 /// higher_order.zig (same GC-safety). Returns a list in seq order, or nil if empty.
-fn seqDeriveEntryColumn(rt: *Runtime, env: *Env, coll: Value, col: u32, loc: SourceLocation) anyerror!Value {
+fn seqDeriveEntryColumn(rt: *Runtime, env: *Env, coll: Value, col: u32, fn_name: []const u8, loc: SourceLocation) anyerror!Value {
     var cells: std.ArrayList(Value) = .empty;
     defer cells.deinit(rt.gpa);
     var cur = try sequence.seqFn(rt, env, &.{coll}, loc);
@@ -887,7 +1083,11 @@ fn seqDeriveEntryColumn(rt: *Runtime, env: *Env, coll: Value, col: u32, loc: Sou
         // `.map_entry` (when the deftype's seq delegates to a native map's seq).
         const cell = switch (entry.tag()) {
             .map_entry => map_entry.nth(entry, col),
-            else => vector.nth(entry, col),
+            .vector => if (vector.count(entry) == 2)
+                vector.nth(entry, col)
+            else
+                return entryCastError(fn_name, entry, loc),
+            else => return entryCastError(fn_name, entry, loc),
         };
         try cells.append(rt.gpa, cell);
         cur = try sequence.nextFn(rt, env, &.{cur}, loc);
@@ -938,10 +1138,10 @@ pub fn keysFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             // D-285: a non-record map deftype/reify (priority-map etc.). clj keys/vals
             // require an IPersistentMap (else ClassCastException) — gate on it, then try
             // the optional -keys impl, else derive from seq: keys = (map key (seq m)).
-            if (desc.isPersistentMap()) {
+            if (class_name.implementsInterface(coll, "IPersistentMap")) {
                 var cs: dispatch.CallSite = .{};
                 if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPM_FQCN, "-keys", args, loc)) |v| break :blk v;
-                break :blk try seqDeriveEntryColumn(rt, env, coll, 0, loc);
+                break :blk try seqDeriveEntryColumn(rt, env, coll, 0, "keys", loc);
             }
             return error_catalog.raise(.protocol_no_satisfies, loc, .{
                 .protocol = IPM_FQCN,
@@ -950,6 +1150,9 @@ pub fn keysFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             });
         },
         else => blk: {
+            // D-285: clj's `keys` seqs the coll and reads `key` off each entry.
+            if (isEntrySeqTag(coll.tag()))
+                break :blk try seqDeriveEntryColumn(rt, env, coll, 0, "keys", loc);
             // D-089 row 8.6 cycle 3: IPersistentMap -keys slow-path.
             // DIVERGENCE D1 (survey §6): JVM has no -keys protocol
             // method (keys = seq over keyset); cw v1 surfaces it
@@ -999,10 +1202,10 @@ pub fn valsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             // D-285: non-record map deftype/reify — gate on IPersistentMap (clj vals
             // requires it), then -vals impl, else derive from seq (vals = (map val
             // (seq m))). col 1 = val of each 2-vector entry.
-            if (desc.isPersistentMap()) {
+            if (class_name.implementsInterface(coll, "IPersistentMap")) {
                 var cs: dispatch.CallSite = .{};
                 if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPM_FQCN, "-vals", args, loc)) |v| break :blk v;
-                break :blk try seqDeriveEntryColumn(rt, env, coll, 1, loc);
+                break :blk try seqDeriveEntryColumn(rt, env, coll, 1, "vals", loc);
             }
             return error_catalog.raise(.protocol_no_satisfies, loc, .{
                 .protocol = IPM_FQCN,
@@ -1011,6 +1214,9 @@ pub fn valsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             });
         },
         else => blk: {
+            // D-285: clj's `vals` seqs the coll and reads `val` off each entry.
+            if (isEntrySeqTag(coll.tag()))
+                break :blk try seqDeriveEntryColumn(rt, env, coll, 1, "vals", loc);
             // D-089 row 8.6 cycle 3: IPersistentMap -vals slow-path
             // (DIVERGENCE D1 mirror of -keys above).
             var cs: dispatch.CallSite = .{};
@@ -1043,6 +1249,68 @@ pub fn queuePopFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     if (args[0].tag() != .persistent_queue)
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "__queue-pop", .expected = "a queue", .actual = @tagName(args[0].tag()) });
     return persistent_queue.pop(rt, args[0]);
+}
+
+/// `(__vector-pop v)` — drop the LAST element via `vector.pop`, the JVM
+/// `PersistentVector.pop()` algorithm (tail fast path, else pull the last leaf
+/// out of the trie and collapse a level if it empties): O(log32 n) and it
+/// shares structure with the parent.
+///
+/// The Clojure-level `pop` used to rebuild instead — `(into [] (take (dec
+/// (count coll)) coll))` — which is O(n) and allocates a whole fresh trie, so
+/// `pop` was ~4000x slower than clj's on a 16k vector while the correct
+/// algorithm sat in `vector.zig` reachable only from `java.util.ArrayDeque`.
+/// Empty is rejected here so `pop` keeps raising IllegalStateException.
+pub fn vectorPopFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("__vector-pop", args, 1, loc);
+    const popped = switch (args[0].tag()) {
+        .vector => vector.pop(rt, args[0]),
+        .sub_vector => sub_vector.pop(rt, args[0]),
+        else => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "__vector-pop", .expected = "a vector", .actual = @tagName(args[0].tag()) }),
+    };
+    return popped catch |e| switch (e) {
+        error.PopEmpty => error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "__vector-pop", .expected = "a non-empty vector", .actual = "an empty vector" }),
+        else => e,
+    };
+}
+
+/// `(__subvec v start end)` — the O(1) `subvec` VIEW over a vector's index range
+/// `[start, end)`. `start`/`end` are pre-validated by the `clojure.core/subvec`
+/// wrapper (which bounds-checks + throws IndexOutOfBoundsException); this prim
+/// just builds the view (flattening a nested subvec, returning `[]` for an empty
+/// range). Accepts `.vector` and `.sub_vector` (nested subvec).
+pub fn subvecFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("__subvec", args, 3, loc);
+    const v = args[0];
+    if (v.tag() != .vector and v.tag() != .sub_vector)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "__subvec", .expected = "a vector", .actual = @tagName(v.tag()) });
+    const start: u32 = @intCast(args[1].asInteger());
+    const end: u32 = @intCast(args[2].asInteger());
+    return sub_vector.make(rt, v, start, end);
+}
+
+/// `(__subvec-fast v start end)` — the common `subvec` call answered in one
+/// native step: `v` a vector (or subvec view), `start`/`end` immediate
+/// integers with `0 <= start <= end <= (count v)` → the O(1) view. Any other
+/// shape (nil, a non-vector, a float / ratio / non-number index, an
+/// out-of-bounds range) answers nil, and `clojure.core/subvec` falls through
+/// to its full coercion + throwing path. A real subvec is never nil, so nil
+/// is an unambiguous "not handled".
+/// PERF: the wrapper otherwise allocated an `->idx` closure and ran ~10
+/// interpreted checks per call (bench/vs_bb vector_assoc). [refs: O-073]
+pub fn subvecFastFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("__subvec-fast", args, 3, loc);
+    const v = args[0];
+    if (v.tag() != .vector and v.tag() != .sub_vector) return .nil_val;
+    if (!args[1].isInt() or !args[2].isInt()) return .nil_val;
+    const start = args[1].asInteger();
+    const end = args[2].asInteger();
+    const c: i64 = if (v.tag() == .vector) vector.count(v) else sub_vector.count(v);
+    if (start < 0 or end < start or c < end) return .nil_val;
+    return sub_vector.make(rt, v, @intCast(start), @intCast(end));
 }
 
 /// `#queue (e1 e2 …)` data-reader (ADR-0087): build a queue by conj-ing the
@@ -1118,9 +1386,13 @@ const ENTRIES = [_]Entry{
     .{ .name = "__kv-reduce-or", .f = &kvReduceOrFn },
     .{ .name = "queue?", .f = &queueQFn },
     .{ .name = "__queue-pop", .f = &queuePopFn },
+    .{ .name = "__vector-pop", .f = &vectorPopFn },
+    .{ .name = "__subvec", .f = &subvecFn },
+    .{ .name = "__subvec-fast", .f = &subvecFastFn },
     .{ .name = "disj", .f = &disjFn },
     .{ .name = "contains?", .f = &containsQFn },
     .{ .name = "get", .f = &getFn },
+    .{ .name = "__entry-at", .f = &entryAtFn },
     .{ .name = "nth", .f = &nthFn },
     .{ .name = "assoc", .f = &assocFn },
     .{ .name = "dissoc", .f = &dissocFn },
@@ -1161,8 +1433,18 @@ test "conj nil x → (x)" {
     try fix.init(testing.allocator);
     defer fix.deinit();
     const r = try conjFn(&fix.rt, &fix.env, &.{ .nil_val, Value.initInteger(42) }, .{ .line = 0, .column = 0 });
-    try testing.expect(r.tag() == .list or r.tag() == .cons);
+    try testing.expectEqual(Value.Tag.list, r.tag());
     try testing.expectEqual(@as(i64, 42), list.first(r).asInteger());
+}
+
+test "conj PersistentList preserves list identity" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    const existing = try list.consHeap(&fix.rt, Value.initInteger(1), .nil_val);
+    const r = try conjFn(&fix.rt, &fix.env, &.{ existing, Value.initInteger(2) }, .{ .line = 0, .column = 0 });
+    try testing.expectEqual(Value.Tag.list, r.tag());
+    try testing.expectEqual(@as(i64, 2), list.first(r).asInteger());
 }
 
 test "conj vector appends" {
@@ -1202,6 +1484,25 @@ test "contains? vector tests index validity (ADR-0069, JVM-match)" {
     try testing.expectEqual(Value.false_val, try containsQFn(&fix.rt, &fix.env, &.{ v, kw }, loc));
 }
 
+test "contains? array tests index validity; a non-integer key throws (clj RT.contains)" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    const arr = try java_array.fromSlice(&fix.rt, &.{ Value.initInteger(10), Value.initInteger(20), Value.initInteger(30) });
+    const loc: SourceLocation = .{ .line = 0, .column = 0 };
+    // integer key → INDEX validity (true in-bounds, false OOB / negative).
+    try testing.expectEqual(Value.true_val, try containsQFn(&fix.rt, &fix.env, &.{ arr, Value.initInteger(0) }, loc));
+    try testing.expectEqual(Value.true_val, try containsQFn(&fix.rt, &fix.env, &.{ arr, Value.initInteger(2) }, loc));
+    try testing.expectEqual(Value.false_val, try containsQFn(&fix.rt, &fix.env, &.{ arr, Value.initInteger(3) }, loc));
+    try testing.expectEqual(Value.false_val, try containsQFn(&fix.rt, &fix.env, &.{ arr, Value.initInteger(-1) }, loc));
+    // an array is NOT Associative — a non-integer key is unsupported (clj throws),
+    // NOT a false like a vector's miss.
+    const kw = try keyword_mod.intern(&fix.rt, null, "x");
+    try testing.expectError(error.ValueError, containsQFn(&fix.rt, &fix.env, &.{ arr, kw }, loc));
+    // a non-integer NUMBER key truncates like Number.intValue (clj RT.contains).
+    try testing.expectEqual(Value.true_val, try containsQFn(&fix.rt, &fix.env, &.{ arr, Value.initFloat(1.5) }, loc));
+}
+
 test "get nil → nil; get nil :a default → default" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
@@ -1221,6 +1522,25 @@ test "nth vector returns indexed element" {
     v = try vector.conj(&fix.rt, v, Value.initInteger(20));
     const r = try nthFn(&fix.rt, &fix.env, &.{ v, Value.initInteger(1) }, .{ .line = 0, .column = 0 });
     try testing.expectEqual(@as(i64, 20), r.asInteger());
+}
+
+test "nth: a negative index is an index error, like its out-of-range sibling" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    const loc: SourceLocation = .{ .line = 0, .column = 0 };
+    var v = vector.empty();
+    v = try vector.conj(&fix.rt, v, Value.initInteger(10));
+
+    // clj raises IndexOutOfBoundsException for BOTH ends. cljw's positive arm
+    // already did; the negative arm raised a type error, so one function
+    // answered two different classes for the same kind of mistake.
+    try testing.expectError(error_mod.ClojureWasmError.IndexError, nthFn(&fix.rt, &fix.env, &.{ v, Value.initInteger(-1) }, loc));
+    try testing.expectError(error_mod.ClojureWasmError.IndexError, nthFn(&fix.rt, &fix.env, &.{ v, Value.initInteger(99) }, loc));
+
+    // A supplied default still wins over either bound (clj: `(nth [1] -1 :d)` => :d).
+    const d = try nthFn(&fix.rt, &fix.env, &.{ v, Value.initInteger(-1), Value.initInteger(7) }, loc);
+    try testing.expectEqual(@as(i64, 7), d.asInteger());
 }
 
 test "assoc nil :a 1 → {:a 1}" {

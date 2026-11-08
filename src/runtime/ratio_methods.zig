@@ -16,7 +16,7 @@ const Runtime = @import("runtime.zig").Runtime;
 const Env = @import("env.zig").Env;
 const ratio_mod = @import("numeric/ratio.zig");
 const promote = @import("numeric/promote.zig");
-const type_descriptor = @import("type_descriptor.zig");
+const number_methods = @import("number_methods.zig");
 const SourceLocation = @import("error/info.zig").SourceLocation;
 
 /// `(.numerator r)` — the Ratio's numerator as an integer. Mirrors
@@ -44,20 +44,10 @@ fn ratioDenominator(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
 /// Populate the per-Runtime `.ratio` native descriptor's method table.
 /// Idempotent. Called at runtime init alongside the other native installers.
 pub fn installNativeMethods(rt: *Runtime) !void {
-    const td = try rt.nativeDescriptor(.ratio);
-    if (td.method_table.len != 0) return; // idempotent re-run
-    const gpa = rt.gc.infra;
-    const specs = .{
+    const own = .{
         .{ "numerator", &ratioNumerator },
         .{ "denominator", &ratioDenominator },
     };
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
-    inline for (specs, 0..) |spec, i| {
-        entries[i] = .{
-            .protocol_name = "",
-            .method_name = try gpa.dupe(u8, spec[0]),
-            .method_val = Value.initBuiltinFn(spec[1]),
-        };
-    }
-    td.method_table = entries;
+    // The java.lang.Number surface is shared with Long / Double / BigInt.
+    try number_methods.installSpecs(rt, try rt.nativeDescriptor(.ratio), own ++ number_methods.specs);
 }

@@ -1,0 +1,22 @@
+package local:spin@0.1.0;
+
+/// The CPU / memory budget fixture for `(wasm/load-component path opts)`
+/// (CLJW-COMPONENT-FUEL). Scalars only, so the guest is hand-written WAT and
+/// needs no toolchain beyond `wasm-tools` (recipe: README_spin.md).
+world spin {
+  /// Never returns: `loop { br 0 }`. Only a fuel budget brings the caller back.
+  export spin: func() -> u32;
+
+  /// Returns 42 at once. The control: a component that cannot answer this is
+  /// broken for a reason unrelated to budgets.
+  export ok: func() -> u32;
+
+  /// Counts `n` down to zero and returns `n`. Costs a fuel amount linear in
+  /// `n`, which is what lets a test tell a per-CALL budget from a per-INSTANCE
+  /// lifetime budget: many calls that each fit must all succeed.
+  export burn: func(n: u32) -> u32;
+
+  /// `memory.grow` by `pages`: the previous size in pages, or -1 when the
+  /// grow is refused (the `:max-memory-pages` ceiling is one reason).
+  export grow: func(pages: u32) -> s32;
+}

@@ -1,0 +1,37 @@
+;; `conj!` on a TRANSIENT map accepts everything persistent `conj` on a map
+;; accepts: nil is a no-op and another map merges entry by entry. Both raised
+;; IllegalArgumentException until 2026-09-10, which also broke
+;; `(into (transient {}) {…})`. The persistent half is conj_map_merge.txt; the
+;; persistent side had been taught the rule and the transient twin was missed.
+;;
+;; Note the deliberate asymmetry pinned below: `(conj! (transient []) nil)` is
+;; [nil], because a vector conj's nil as an ELEMENT, while the map treats nil
+;; as nothing to add. A set likewise keeps #{nil}.
+;;
+;; NOT covered here: a non-nil, non-map, non-[k v] entry (e.g. '(:a 1)). cljw
+;; raises IllegalArgumentException where clj raises ClassCastException; that is
+;; the pre-existing D-459 choice, unchanged by this fix.
+(persistent! (conj! (transient {}) nil))
+;;=> {}
+(persistent! (conj! (transient {}) {}))
+;;=> {}
+(persistent! (conj! (transient {}) {:a 1}))
+;;=> {:a 1}
+(persistent! (conj! (transient {:z 0}) {:a 1 :b 2}))
+;;=> {:z 0, :a 1, :b 2}
+(persistent! (conj! (transient {:a 1}) {:a 9}))
+;;=> {:a 9}
+(persistent! (conj! (transient {}) [:a 1]))
+;;=> {:a 1}
+(persistent! (conj! (transient {}) (first {:x 9})))
+;;=> {:x 9}
+(persistent! (conj! (conj! (transient {}) {:a 1}) {:b 2}))
+;;=> {:a 1, :b 2}
+(count (persistent! (conj! (transient {}) {:a 1 :b 2 :c 3})))
+;;=> 3
+(persistent! (conj! (transient []) nil))
+;;=> [nil]
+(persistent! (conj! (transient #{}) nil))
+;;=> #{nil}
+(persistent! (reduce conj! (transient {}) [{:a 1} {:b 2} nil]))
+;;=> {:a 1, :b 2}

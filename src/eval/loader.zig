@@ -108,6 +108,40 @@ fn loadTopLevelForm(
     }
 }
 
+/// Read and evaluate every form of `source` in order, reading each form only
+/// after the previous one ran, as `loadNamespace` does: a `(ns …)` in the text
+/// decides how its later forms read and resolve (`::kw`, syntax-quote). Backs
+/// `load-string` and `load-file`. `label` names the source in errors and in
+/// `:file` meta. Restores the caller's ns. => the last form's value, nil for
+/// none. Unlike `loadNamespace` it records no lib: loading twice runs twice.
+pub fn loadSource(rt: *Runtime, env: *Env, label: []const u8, source: []const u8, loc: SourceLocation) !Value {
+    const table_opaque = rt.macro_table orelse
+        return error_catalog.raiseInternal(loc, "load: macro_table not installed");
+    const macro_table: *const macro_dispatch.Table = @ptrCast(@alignCast(table_opaque));
+    // Forms borrow the text (symbol names, string literals), and a loaded fn
+    // keeps its Nodes for the session, so the text lives in the load arena too.
+    const arena = rt.load_arena.allocator();
+    const text = try arena.dupe(u8, source);
+    const name = try arena.dupe(u8, label);
+    // Replace, not register: a file loaded again after an edit must render
+    // its errors against the new text.
+    try rt.replaceSource(name, text);
+
+    const saved_ns = env.current_ns;
+    defer if (saved_ns) |s| env.setCurrentNs(s);
+
+    var reader = Reader.init(arena, text);
+    reader.file_name = name;
+    var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
+    // Only the last form's value is returned, and between one eval and the
+    // next only the reader runs (arena Forms, no GC allocation), so `result`
+    // needs no root.
+    var result: Value = .nil_val;
+    while (try reader.read()) |form|
+        result = try driver.evalTopLevelForm(rt, env, &locals, arena, form, macro_table);
+    return result;
+}
+
 /// Return the named namespace, loading it via the require resolver if it has
 /// not been loaded yet. "Loaded" is keyed off `rt.loaded_libs` (ADR-0163), NOT
 /// `mappings.count() > 0`: a ns can EXIST with interned vars yet have an

@@ -1,0 +1,136 @@
+(.shortValue 70000.5M)
+;;=> 4464
+(.shortValue -1.9M)
+;;=> -1
+(.byteValue 300M)
+;;=> 44
+(.byteValue 1E20M)
+;;=> 0
+(.byteValue -129.99M)
+;;=> 127
+(.floatValue 1.5M)
+;;=> 1.5
+(.floatValue 0.1M)
+;;=> 0.1
+(.doubleValue 0.1M)
+;;=> 0.1
+(.doubleValue 0.3M)
+;;=> 0.3
+(.doubleValue 1E400M)
+;;=> ##Inf
+(.doubleValue -1E400M)
+;;=> ##-Inf
+(.intValue 99999999999.9M)
+;;=> 1215752191
+(.intValue -0.5M)
+;;=> 0
+(.intValue 2147483648.5M)
+;;=> -2147483648
+(.longValue 1E30M)
+;;=> 5076944270305263616
+(.longValue -1E30M)
+;;=> -5076944270305263616
+(.longValue 18446744073709551617.5M)
+;;=> 1
+(.longValue 9223372036854775808.9M)
+;;=> -9223372036854775808
+(.shortValue 1E30M)
+;;=> 0
+(.intValue 1E-30M)
+;;=> 0
+(.longValue 0.999999999999999999999M)
+;;=> 0
+(.longValue -12345678901234567890123.5M)
+;;=> -4807115922877859019
+(.intValue -12345678901234567890123.5M)
+;;=> -1900168395
+(.compareTo 1.5M 2.5M)
+;;=> -1
+(.compareTo 1.5M 1.50M)
+;;=> 0
+(.equals 1.5M 1.50M)
+;;=> false
+(double 0.3M)
+;;=> 0.3
+(double 0.7M)
+;;=> 0.7
+(double 9.95M)
+;;=> 9.95
+(double -0.3M)
+;;=> -0.3
+(double 0.1M)
+;;=> 0.1
+(double 1.1M)
+;;=> 1.1
+(double 2.675M)
+;;=> 2.675
+(double 1E-400M)
+;;=> 0.0
+(double 1E-320M)
+;;=> 1.0E-320
+(double 1.7976931348623157E308M)
+;;=> 1.7976931348623157E308
+(double 1.7976931348623159E308M)
+;;=> ##Inf
+(double 123456789012345678901234567890.123456789M)
+;;=> 1.2345678901234568E29
+(double 0.000000000000000000000000000001M)
+;;=> 1.0E-30
+(double (bigdec (str "1." (apply str (repeat 400 "0")))))
+;;=> 1.0
+(double (bigdec (str "0." (apply str (repeat 60 "3")))))
+;;=> 0.3333333333333333
+(+ 0.0 0.3M)
+;;=> 0.3
+(* 1.0 0.7M)
+;;=> 0.7
+(- 0.3M 0.1)
+;;=> 0.19999999999999998
+(/ 0.3M 1.0)
+;;=> 0.3
+(== 0.3 0.3M)
+;;=> true
+(< 0.29999999999999998 0.3M)
+;;=> false
+(> 0.30000000000000004 0.3M)
+;;=> true
+(compare 0.3 0.3M)
+;;=> 0
+(float 0.3M)
+;;=> 0.3
+(format "%.3f" 0.3M)
+;;=> "0.300"
+(format "%e" 0.3M)
+;;=> "3.000000e-01"
+(.compareTo 1/2 1.5M)
+;;=> -1
+(.compareTo 1/2 0.5M)
+;;=> 0
+(.compareTo 3/2 1.4M)
+;;=> 1
+(mapv (fn [n] (.byteValue n)) [300 300.5 601/2 300N 300.5M])
+;;=> [44 44 44 44 44]
+(mapv (fn [n] (.shortValue n)) [70000 70000.5 140001/2 70000N 70000.5M])
+;;=> [4464 4464 4464 4464 4464]
+(mapv (fn [n] (.doubleValue n)) [1 0.5 1/3 5N 0.3M])
+;;=> [1.0 0.5 0.3333333333333333 5.0 0.3]
+(reduce + (map (fn [n] (.longValue n)) [1 2.5 7/2 4N 5.5M]))
+;;=> 15
+(java.math.BigDecimal/.shortValue 70000.5M)
+;;=> 4464
+(.. 7.9M doubleValue intValue)
+;;=> 7
+(try (.compareTo 1.5M 2) (catch ClassCastException e :cce))
+;;=> :cce
+(try (.isNaN 1.5M) (catch IllegalArgumentException e :iae))
+;;=> :iae
+(try (Long/valueOf 5N) (catch IllegalArgumentException e :iae))
+;;=> :iae
+(try (Long/valueOf 5.0) (catch IllegalArgumentException e :iae))
+;;=> :iae
+(try (.compareTo 5 6.0) (catch ClassCastException e :cce))
+;;=> :cce
+(try (.isNaN 5) (catch IllegalArgumentException e :iae))
+;;=> :iae
+(try (Long/valueOf nil) (catch NumberFormatException e :nfe))
+;;=> :nfe

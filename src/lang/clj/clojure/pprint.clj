@@ -76,8 +76,8 @@
 ;; `V`/`#` runtime-valued params resolve against argv (D-458: `V`→next operand consumed,
 ;; `#`→remaining-arg count). Still raising (no silent mishandle): the ~<…~:;…~> pretty-
 ;; print column mode (needs a column-tracking writer cljw lacks).
-(defn cl-digit? [c] (let [i (int c)] (and (>= i (int \0)) (<= i (int \9)))))
-(defn cl-int [c] (- (int c) (int \0)))
+(defn- cl-digit? [c] (let [i (int c)] (and (>= i (int \0)) (<= i (int \9)))))
+(defn- cl-int [c] (- (int c) (int \0)))
 
 ;; Parse a directive's `~[params][:][@]d` prefix from `fmt` starting at `i` (the
 ;; char just after `~`). Returns [params colon? at? directive-char next-i], where
@@ -85,7 +85,7 @@
 ;; `V`/`v` → the `:cl-arg` sentinel (param value = the next operand, consumed at
 ;; format time); `#` → `:cl-remaining` (param value = count of args remaining).
 ;; cl-run resolves both against argv before dispatching the directive (D-458).
-(defn cl-dir [fmt i]
+(defn- cl-dir [fmt i]
   (loop [j i params [] cur nil cur? false neg? false colon? false at? false]
     (let [c (nth fmt j)
           signed (fn [v] (if (and neg? (number? v)) (- v) v))]
@@ -104,7 +104,7 @@
 ;; `:cl-arg` (from `V`) pulls + CONSUMES the next operand (advancing pos); each
 ;; `:cl-remaining` (from `#`) becomes the count of args still to process (no
 ;; consume). Returns [resolved-params pos*] — pos* is past the V-consumed args.
-(defn cl-resolve-params [params argv pos na]
+(defn- cl-resolve-params [params argv pos na]
   (loop [ps params out [] p pos]
     (if (empty? ps)
       [out p]
@@ -115,14 +115,14 @@
           :else (recur (rest ps) (conj out v) p))))))
 
 ;; Left-pad `s` to `width` with `padchar` (CL-format right-justification default).
-(defn cl-pad [s width padchar]
+(defn- cl-pad [s width padchar]
   (let [len (count s) w (or width 0)]
     (if (< len w) (str (apply str (repeat (- w len) padchar)) s) s)))
 
 ;; ~mincol,colinc,minpad,padchar column pad for ~A/~S: lay `text` to at least
 ;; `mincol` columns (grown by `colinc` until text + `minpad` fits), `padchar`
 ;; fill. Default = left-justify (pad on the right); `at?` (~@a) = pad on the left.
-(defn cl-pad-col [text mincol colinc minpad padchar at?]
+(defn- cl-pad-col [text mincol colinc minpad padchar at?]
   (let [mc (or mincol 0) ci (max 1 (or colinc 1)) mp (or minpad 0) pc (or padchar \space)
         tl (count text)
         base (+ tl mp)
@@ -134,7 +134,7 @@
 ;; Group a digit string with `commachar` every `interval` digits from the right
 ;; (the ~:d comma grammar; `~mincol,padchar,commachar,comma-interval:d`). `digits`
 ;; is the unsigned magnitude; the caller re-attaches any sign.
-(defn cl-group [digits commachar interval]
+(defn- cl-group [digits commachar interval]
   (let [n (count digits)
         iv (if (and interval (pos? interval)) interval 3)
         cc (or commachar \,)
@@ -147,7 +147,7 @@
 ;; ~D/~B/~O/~X and ~nR: magnitude in `base`, ~: groups it (commachar/interval),
 ;; then the sign — "-" for negative, "+" for ~@ on a non-negative (clj uses
 ;; sign-magnitude, NOT two's complement, for a negative ~B/~O/~X/~R).
-(defn cl-radix [x base colon? at? commachar interval]
+(defn- cl-radix [x base colon? at? commachar interval]
   (let [neg? (neg? x)
         mag (Long/toString (if neg? (- x) x) base)
         body (if colon? (cl-group mag (or commachar \,) (or interval 3)) mag)]
@@ -155,7 +155,7 @@
 
 ;; ~:C — spell a character: the named specials, else Control-<c+64> for a control
 ;; char (Control-? for 127), else the char itself. Mirrors clj's pretty-character.
-(defn cl-char-pretty [c]
+(defn- cl-char-pretty [c]
   (let [as-int (int c)
         base (bit-and as-int 127)
         special {8 "Backspace" 9 "Tab" 10 "Newline" 13 "Return" 32 "Space"}]
@@ -168,7 +168,7 @@
 
 ;; Parse a base-10 integer string (optional leading +/-). Self-contained so the
 ;; ~F natural-precision path does not depend on read-string in the bundled .clj.
-(defn cl-parse-int [s]
+(defn- cl-parse-int [s]
   (let [neg? (= (nth s 0) \-)
         ds (if (or neg? (= (nth s 0) \+)) (subs s 1) s)]
     (* (if neg? -1 1)
@@ -179,7 +179,7 @@
 ;; "10000000000.0"), but cljw's `(str (double x))` switches to E past ~1e7 /
 ;; below ~1e-3. The shortest-round-trip digits are preserved; trailing zeros of
 ;; the significand are dropped, then the decimal point is placed per the exponent.
-(defn cl-expand-exp [s]
+(defn- cl-expand-exp [s]
   (let [neg? (= (nth s 0) \-)
         body (if neg? (subs s 1) s)
         epos (loop [k 0] (if (or (= (nth body k) \E) (= (nth body k) \e)) k (recur (inc k))))
@@ -201,13 +201,13 @@
 ;; clj's ~F without a d-param: the float's natural (shortest round-trip) value in
 ;; PLAIN fixed notation, always with a decimal point (D-465). `(str (double x))`
 ;; gives the shortest round-trip; expand any exponent the printer emitted.
-(defn cl-float-natural [x]
+(defn- cl-float-natural [x]
   (let [s (str (double x))]
     (if (some (fn [c] (or (= c \E) (= c \e))) s) (cl-expand-exp s) s)))
 
 ;; Find the sub-format between an opener (at index `i`) and its matching `~<close>`
 ;; (`~}` for iteration, `~)` for case). Returns [subfmt next-i]. (Non-nested.)
-(defn cl-close [fmt i close]
+(defn- cl-close [fmt i close]
   (loop [j i]
     (if (and (= (nth fmt j) \~) (= (nth fmt (inc j)) close)) [(subs fmt i j) (+ j 2)] (recur (inc j)))))
 
@@ -215,7 +215,7 @@
 ;; `i` (just after the opener), using cl-dir to step over each directive's params
 ;; so a `~10,2[` param prefix or a quoted `~']` char-param is not mistaken for a
 ;; bracket. Returns [body-between next-i].
-(defn cl-close-nested [fmt i open close]
+(defn- cl-close-nested [fmt i open close]
   (let [n (count fmt)]
     (loop [j i depth 0]
       (if (>= j n)
@@ -232,7 +232,7 @@
 ;; (respecting nested `open`/`close` pairs). Returns [clauses default-idx], where
 ;; default-idx is the index of the clause introduced by `~:;` (the ~[ else / ~<
 ;; per-line overflow clause), or nil.
-(defn cl-clauses [fmt open close]
+(defn- cl-clauses [fmt open close]
   (let [n (count fmt)]
     (loop [j 0 start 0 depth 0 clauses [] didx nil]
       (if (>= j n)
@@ -251,14 +251,14 @@
 ;; A ~< justification segment is dropped (with all following) when it leads with
 ;; ~^ and no operands remain — CL's ~^ escape. (Only a LEADING ~^ is modelled;
 ;; the upstream oracle uses exactly that.)
-(defn cl-seg-escapes? [seg pos na]
+(defn- cl-seg-escapes? [seg pos na]
   (and (>= pos na) (>= (count seg) 2) (= (nth seg 0) \~) (= (nth seg 1) \^)))
 
 ;; Distribute padding to justify `segs` to `mincol` (grown by `colinc` until the
 ;; text + `minpad`-per-gap fits). `:` adds a gap before the first segment, `@` a
 ;; gap after the last; earlier gaps absorb the remainder. The ~mincol,colinc,
 ;; minpad,padchar< column grammar.
-(defn cl-justify [segs mincol colinc minpad padc colon? at?]
+(defn- cl-justify [segs mincol colinc minpad padc colon? at?]
   (let [n (count segs)
         textlen (apply + (map count segs))
         gaps (+ (max 0 (dec n)) (if colon? 1 0) (if at? 1 0))]
@@ -283,7 +283,7 @@
 
 ;; Capitalize the first letter of each space-separated word, lowercasing the rest
 ;; (the `~:(` transform). Manual char walk (single pass, no regex needed).
-(defn cl-cap-words [s]
+(defn- cl-cap-words [s]
   (loop [cs (seq s) prev-space? true acc ""]
     (if (nil? cs)
       acc
@@ -295,7 +295,7 @@
 
 ;; `~(`-region case transform per the `:`/`@` flags: ~( lower / ~:( cap-each-word
 ;; / ~@( cap-first / ~:@( upper.
-(defn cl-case [s colon? at?]
+(defn- cl-case [s colon? at?]
   (cond
     (and colon? at?) (clojure.string/upper-case s)
     colon? (cl-cap-words s)
@@ -306,21 +306,21 @@
 ;; groups of 3 digits are joined with ", " (clj-faithful). cl-ordinal → "forty-
 ;; second" (the last cardinal word gets the ordinal suffix). cl-roman → subtractive
 ;; Roman ("XLII"). Radix (~NR) is `(Long/toString n base)` inline in cl-run.
-(def cl-ones ["zero" "one" "two" "three" "four" "five" "six" "seven" "eight" "nine"
+(def ^:private cl-ones ["zero" "one" "two" "three" "four" "five" "six" "seven" "eight" "nine"
               "ten" "eleven" "twelve" "thirteen" "fourteen" "fifteen" "sixteen"
               "seventeen" "eighteen" "nineteen"])
-(def cl-tens ["" "" "twenty" "thirty" "forty" "fifty" "sixty" "seventy" "eighty" "ninety"])
-(def cl-scales ["" " thousand" " million" " billion" " trillion" " quadrillion"])
-(defn cl-under-100 [n]
+(def ^:private cl-tens ["" "" "twenty" "thirty" "forty" "fifty" "sixty" "seventy" "eighty" "ninety"])
+(def ^:private cl-scales ["" " thousand" " million" " billion" " trillion" " quadrillion"])
+(defn- cl-under-100 [n]
   (cond (< n 20) (cl-ones n)
         (zero? (rem n 10)) (cl-tens (quot n 10))
         :else (str (cl-tens (quot n 10)) "-" (cl-ones (rem n 10)))))
-(defn cl-under-1000 [n]
+(defn- cl-under-1000 [n]
   (if (< n 100)
     (cl-under-100 n)
     (let [h (quot n 100) r (rem n 100)]
       (str (cl-ones h) " hundred" (when (pos? r) (str " " (cl-under-100 r)))))))
-(defn cl-cardinal [n]
+(defn- cl-cardinal [n]
   (cond (zero? n) "zero"
         (neg? n) (str "minus " (cl-cardinal (- n)))
         :else (loop [n n i 0 parts ()]
@@ -329,18 +329,18 @@
                   (let [grp (rem n 1000)]
                     (recur (quot n 1000) (inc i)
                            (if (pos? grp) (cons (str (cl-under-1000 grp) (cl-scales i)) parts) parts)))))))
-(def cl-ord-ones {"one" "first" "two" "second" "three" "third" "five" "fifth"
+(def ^:private cl-ord-ones {"one" "first" "two" "second" "three" "third" "five" "fifth"
                   "eight" "eighth" "nine" "ninth" "twelve" "twelfth"})
-(defn cl-ordinalize-word [w]
+(defn- cl-ordinalize-word [w]
   (cond (contains? cl-ord-ones w) (cl-ord-ones w)
         (clojure.string/ends-with? w "y") (str (subs w 0 (dec (count w))) "ieth")
         :else (str w "th")))
-(defn cl-ordinal [n]
+(defn- cl-ordinal [n]
   (let [c (cl-cardinal n) idx (max (.lastIndexOf c " ") (.lastIndexOf c "-"))]
     (str (subs c 0 (inc idx)) (cl-ordinalize-word (subs c (inc idx))))))
-(def cl-roman-pairs [[1000 "M"] [900 "CM"] [500 "D"] [400 "CD"] [100 "C"] [90 "XC"]
+(def ^:private cl-roman-pairs [[1000 "M"] [900 "CM"] [500 "D"] [400 "CD"] [100 "C"] [90 "XC"]
                      [50 "L"] [40 "XL"] [10 "X"] [9 "IX"] [5 "V"] [4 "IV"] [1 "I"]])
-(defn cl-roman [n]
+(defn- cl-roman [n]
   (loop [n n acc "" pairs cl-roman-pairs]
     (if (or (zero? n) (empty? pairs))
       acc
@@ -350,13 +350,13 @@
 (declare cl-iter cl-iter-sub)
 
 ;; Current output column = chars since the last newline in `s` (~T uses it).
-(defn cl-col [s]
+(defn- cl-col [s]
   (loop [i (dec (count s)) c 0]
     (if (or (< i 0) (= (nth s i) \newline)) c (recur (dec i) (inc c)))))
 
 ;; ~T tabulate: spaces to reach column `colnum`; if already at/past it, advance
 ;; to the next `colinc` multiple beyond `colnum` (CL semantics; colinc<=0 = no-op).
-(defn cl-tab [acc colnum colinc]
+(defn- cl-tab [acc colnum colinc]
   (let [col (cl-col acc)
         need (if (< col colnum)
                (- colnum col)
@@ -367,7 +367,7 @@
 ;; integer digits (default 1, zero-padded), w minimum total width, padchar (default
 ;; space). `@` forces a leading "+" on non-negatives. `:` places the sign before the
 ;; width padding (`@:` → "+    12.0"); the default folds the sign into the padded body.
-(defn cl-money [x dec n w padc at? colon?]
+(defn- cl-money [x dec n w padc at? colon?]
   (let [neg? (neg? x)
         mag (format (str "%." dec "f") (if neg? (- (double x)) (double x)))
         di (clojure.string/index-of mag ".")
@@ -385,13 +385,13 @@
 ;; shortest decimal digit string + exponent from the host's `(str f)` (which is
 ;; already shortest-round-trip), then reformat — no Ratio/BigDecimal machinery.
 
-(defn cl-rtrim [s c]
+(defn- cl-rtrim [s c]
   (loop [n (count s)] (if (and (pos? n) (= (nth s (dec n)) c)) (recur (dec n)) (subs s 0 n))))
-(defn cl-ltrim [s c]
+(defn- cl-ltrim [s c]
   (loop [n 0] (if (and (< n (count s)) (= (nth s n) c)) (recur (inc n)) (subs s n))))
 
 ;; Decompose (str f) into [digit-string exp]: value's first digit sits at 10^exp.
-(defn cl-float-parts-base [f]
+(defn- cl-float-parts-base [f]
   (let [s (clojure.string/lower-case (str f))
         eloc (clojure.string/index-of s "e")
         dloc (clojure.string/index-of s ".")]
@@ -403,7 +403,7 @@
         [(subs s 0 eloc) (subs s (inc eloc))]
         [(str (subs s 0 1) (subs s 2 eloc)) (subs s (inc eloc))]))))
 
-(defn cl-float-parts [f]
+(defn- cl-float-parts [f]
   (let [pb (cl-float-parts-base f) m (nth pb 0) e (nth pb 1)
         m1 (cl-rtrim m \0) m2 (cl-ltrim m1 \0)
         delta (- (count m1) (count m2))
@@ -411,7 +411,7 @@
     (if (= (count m2) 0) ["0" 0] [m2 (- (parse-long e) delta)])))
 
 ;; Increment a decimal digit-string by 1 (carries; may grow by a digit).
-(defn cl-inc-s [s]
+(defn- cl-inc-s [s]
   (let [len-1 (dec (count s))]
     (loop [i len-1]
       (cond
@@ -421,7 +421,7 @@
 
 ;; Round digit-string `m` (first digit at 10^e) to `d` fraction digits / `w` width.
 ;; Returns [rounded-digits exp expanded?] (expanded? = carry grew the exponent).
-(defn cl-round-str [m e d w]
+(defn- cl-round-str [m e d w]
   (if (or d w)
     (let [len (count m)
           w (if w (max 2 w) nil)
@@ -442,22 +442,22 @@
           [m e false])))
     [m e false]))
 
-(defn cl-expand-fixed [m e d]
+(defn- cl-expand-fixed [m e d]
   (let [m1 (if (neg? e) (str (apply str (repeat (dec (- e)) \0)) m) m)
         e1 (if (neg? e) -1 e)
         len (count m1)
         target-len (if d (+ e1 d 1) (inc e1))]
     (if (< len target-len) (str m1 (apply str (repeat (- target-len len) \0))) m1)))
 
-(defn cl-insert-decimal [m e]
+(defn- cl-insert-decimal [m e]
   (if (neg? e) (str "." m) (str (subs m 0 (inc e)) "." (subs m (inc e)))))
-(defn cl-get-fixed [m e d] (cl-insert-decimal (cl-expand-fixed m e d) e))
-(defn cl-insert-scaled-decimal [m k]
+(defn- cl-get-fixed [m e d] (cl-insert-decimal (cl-expand-fixed m e d) e))
+(defn- cl-insert-scaled-decimal [m k]
   (if (neg? k) (str "." m) (str (subs m 0 k) "." (subs m k))))
 
 ;; Fixed-format float (the ~F engine, also ~G's fixed branch). String form of v0's
 ;; fixed-float. w width, d fraction digits, k scale, oc overflow char, pc pad char.
-(defn cl-ffixed [x w d k oc pc at?]
+(defn- cl-ffixed [x w d k oc pc at?]
   (let [neg? (neg? x)
         sign (if neg? "-" "+")
         fp (cl-float-parts (if neg? (- (double x)) (double x)))
@@ -485,7 +485,7 @@
       (str (if add-sign sign "") (if prepend-zero "0" "") fr (if append-zero "0" "")))))
 
 ;; Exponential-format float (~E). Params w,d,e(exp digits),k(scale),expchar,oc,pc.
-(defn cl-efloat [x w d e k expchar oc pc at?]
+(defn- cl-efloat [x w d e k expchar oc pc at?]
   (let [negx? (neg? x)
         fp (cl-float-parts (if negx? (- (double x)) (double x)))]
     (loop [mantissa (nth fp 0) exp (nth fp 1)]
@@ -523,7 +523,7 @@
           (recur rm (inc exp)))))))
 
 ;; General float (~G): pick fixed or exponential by magnitude, per CLtL.
-(defn cl-gfloat [x w d e k expchar oc pc at?]
+(defn- cl-gfloat [x w d e k expchar oc pc at?]
   (let [neg? (neg? x)
         fp (cl-float-parts (if neg? (- (double x)) (double x)))
         mantissa (nth fp 0) exp (nth fp 1)
@@ -540,7 +540,7 @@
 ;; [acc next-pos]. The index navigator lets ~* jump and ~:P / ~:* back up. `~^`
 ;; (escape) returns early, which `~{~}` iteration uses to stop before the
 ;; trailing separator once the operands are exhausted.
-(defn cl-run [fmt argv pos0]
+(defn- cl-run [fmt argv pos0]
   (let [n (count fmt) na (count argv)]
     (loop [i 0 pos pos0 acc ""]
       (if (>= i n)
@@ -703,7 +703,7 @@
 ;; `subfmt` exits when the list is exhausted (so the trailing separator is dropped
 ;; on the last element). `(cl-run subfmt items)` returning `items` unchanged means
 ;; `~^` fired with nothing consumed → stop.
-(defn cl-iter [subfmt lst]
+(defn- cl-iter [subfmt lst]
   (let [v (vec lst) nv (count v)]
     (loop [pos 0 acc ""]
       (if (>= pos nv)
@@ -713,7 +713,7 @@
 
 ;; ~:{ / ~:@{ — each element of `lst` is itself a sublist of body-args; run
 ;; `subfmt` over each sublist from its own pos 0 and concatenate.
-(defn cl-iter-sub [subfmt lst]
+(defn- cl-iter-sub [subfmt lst]
   (apply str (map (fn [sub] (nth (cl-run subfmt (vec sub) 0) 0)) lst)))
 
 (defn cl-format [stream fmt & args]

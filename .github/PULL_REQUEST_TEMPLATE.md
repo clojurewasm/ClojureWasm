@@ -4,7 +4,7 @@
   ClojureWasm is a small, resource-limited project and cannot review external
   PRs right now. Please close this PR and instead start a thread in Discussions:
 
-      https://github.com/clojurewasm/ClojureWasm/discussions
+      https://github.com/BuddhiLW/ClojureWasm/discussions
 
   and mention @chaploud. Thanks for understanding — we do want to hear about
   behaviour that differs from JVM Clojure, just through Discussions while PRs

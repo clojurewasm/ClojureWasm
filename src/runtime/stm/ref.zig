@@ -29,6 +29,7 @@
 //! `LockingTransaction`.
 
 const std = @import("std");
+const atomics = @import("../atomics.zig");
 const value = @import("../value/value.zig");
 const Value = value.Value;
 const HeapHeader = value.HeapHeader;
@@ -37,6 +38,7 @@ const tag_ops = @import("../gc/tag_ops.zig");
 const gc_heap_mod = @import("../gc/gc_heap.zig");
 const mark_sweep = @import("../gc/mark_sweep.zig");
 const tval_mod = @import("tval.zig");
+const safepoint = @import("../concurrency/safepoint.zig");
 const TVal = tval_mod.TVal;
 
 /// Heap layout for an STM Ref. Carries the ring head + ring-growth
@@ -85,7 +87,7 @@ pub const Ref = extern struct {
 /// initial 1-node self-loop ring (`tvals.prior == tvals == tvals.next`).
 /// Phase B takes the lock + splices a new TVal on each commit.
 /// Monotonic Ref-id source for the STM lock-ordering (see `Ref.id`).
-var next_ref_id: std.atomic.Value(u64) = .init(0);
+var next_ref_id: atomics.Value(u64) = .init(0);
 
 pub fn alloc(rt: *Runtime, init: Value) !Value {
     const seed = try tval_mod.allocSelfLoop(rt, init, 0, 0);
@@ -110,7 +112,12 @@ pub fn isRef(v: Value) bool {
 /// `v` is a Ref. Mirrors the in-transaction `lock_tx.doGet` read discipline.
 pub fn current(v: Value) Value {
     const r: *Ref = @constCast(v.decodePtr(*const Ref));
-    while (!r.lock.tryLock()) std.atomic.spinLoopHint();
+    // A committer holds this lock across user code (a commute fn, a
+    // validator) that can collect, so the spin is a safepoint.
+    while (!r.lock.tryLock()) {
+        safepoint.poll();
+        std.atomic.spinLoopHint();
+    }
     defer r.lock.unlock();
     return r.tvals.val;
 }

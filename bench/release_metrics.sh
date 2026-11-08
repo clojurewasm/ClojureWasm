@@ -11,6 +11,7 @@
 # Needs:  Zig 0.16 on PATH (direnv / nix develop); optionally `hyperfine`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source "$(dirname "$0")/../scripts/lib_build_lock.sh"
 
 echo "== ClojureWasm release metrics =="
 echo "zig: $(zig version)   host: $(uname -ms)"
@@ -18,7 +19,7 @@ echo
 
 LAST_STRIPPED=""
 measure() { # <optimize-mode> — prints a size line, sets LAST_STRIPPED to a temp stripped binary
-  zig build -Dwasm -Doptimize="$1" >/dev/null
+  with_build_lock zig build -Dwasm -Doptimize="$1" >/dev/null
   local s sz disk
   s=$(mktemp); strip -o "$s" zig-out/bin/cljw
   sz=$(wc -c < "$s"); disk=$(wc -c < zig-out/bin/cljw)

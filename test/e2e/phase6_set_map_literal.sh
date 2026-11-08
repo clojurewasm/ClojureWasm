@@ -32,7 +32,12 @@ assert_eq 'set_three_ints'   "$("$BIN" -e '#{1 2 3}')"               '#{1 2 3}'
 assert_eq 'set_empty'        "$("$BIN" -e '#{}')"                    '#{}'
 assert_eq 'set_count'        "$("$BIN" -e '(count #{:a :b :c})')"    '3'
 assert_eq 'set_contains'     "$("$BIN" -e '(contains? #{:a :b} :a)')" 'true'
-assert_eq 'set_duplicates'   "$("$BIN" -e '(count #{1 1 2 2 3})')"    '3'
+# ADR-0200: a repeated set-literal element is clj's IllegalArgumentException
+# ("Duplicate key"), not a silent collapse; `set` still dedups a collection.
+diag=$("$BIN" -e '#{1 1 2}' 2>&1 || true)
+[[ "$diag" == *"Duplicate key: 1"* ]] || fail "set_duplicates: got '$diag', want 'Duplicate key: 1'"
+echo "PASS set_duplicates -> Duplicate key: 1"
+assert_eq 'set_dedup_fn'     "$("$BIN" -e '(count (set [1 1 2 2 3]))')" '3'
 assert_eq 'set_subset'       "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/subset? #{1 2} #{1 2 3}))')" 'true'
 
 # --- map literal ---

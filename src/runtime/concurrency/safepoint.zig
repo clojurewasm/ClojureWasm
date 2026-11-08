@@ -26,6 +26,7 @@
 //! safepoint is bounded by the poll discipline, not a wait timeout).
 
 const std = @import("std");
+const atomics = @import("../atomics.zig");
 const io_default = @import("io_default.zig");
 const root_set = @import("../gc/root_set.zig");
 const clock = @import("../clock.zig");
@@ -37,7 +38,7 @@ const clock = @import("../clock.zig");
 /// OBSERVABLE — if this grows into real pause-time trouble, D-560 names the
 /// publish-roots redesign that removes the cliff. Monotonic max; read on demand
 /// (no print path wired — a probe reads it via a debugger / future stats dump).
-pub var max_stopworld_wait_ns: std.atomic.Value(i64) = .init(0);
+pub var max_stopworld_wait_ns: atomics.Value(i64) = .init(0);
 
 /// Armed by a collecting thread (`stopWorld`); read by the VM back-edge poll +
 /// the `alloc`-boundary check. A worker that observes this set at a safe point
@@ -58,7 +59,10 @@ var resume_cond: std.Io.Condition = .init;
 
 /// Worker safe point: register as parked, wake the collector, then block until
 /// the pending collection finishes. Called when `gc_requested` is observed set
-/// at the `alloc` boundary or the VM back-edge poll. Signalling `all_parked` on
+/// at the `alloc` boundary, the VM back-edge poll, or the registration
+/// safepoint at the tail of `root_set.registerThread` (ADR-0175 — a worker
+/// born while a collect is arming/running parks before its first mutator
+/// step). Signalling `all_parked` on
 /// every entry (not only the last) is robust against the collector checking the
 /// count before this thread parks. The resume guard tests the FLAG, not the
 /// count, so a spurious `Condition` wakeup re-parks correctly.
@@ -96,7 +100,11 @@ pub fn stopWorld(self_registered: bool) void {
         if (waited > max_stopworld_wait_ns.load(.monotonic))
             max_stopworld_wait_ns.store(waited, .monotonic);
     }
-    gc_requested.store(true, .release);
+    // Seq_cst, pairing with `registerThread`'s seq_cst count-add + flag-load
+    // (ADR-0175): a worker mid-registration is either visible in the count read
+    // below (we wait for its park) or sees this flag and parks at its
+    // registration safepoint — never both-miss (the spawn-to-register window).
+    gc_requested.store(true, .seq_cst);
     io_default.lockMutex(&sp_mutex);
     defer io_default.unlockMutex(&sp_mutex);
     // Recompute the target on every wake: a worker that finishes a tiny action
@@ -107,7 +115,7 @@ pub fn stopWorld(self_registered: bool) void {
     // no `registry_mutex`-under-`sp_mutex` inversion. A late-arriving worker
     // raises the count and parks at its first poll; an overshoot relaxes `<`.
     while (true) {
-        const registered = root_set.registeredCountRelaxed();
+        const registered = root_set.registeredCountLockFree();
         const target: u32 = if (self_registered and registered > 0) registered - 1 else registered;
         if (parked_count >= target) return;
         io_default.condWait(&all_parked, &sp_mutex);
@@ -133,6 +141,11 @@ pub fn noteWorkerLeft() void {
 /// torture deadlock: `force` runs the thunk under the once-lock, so the COLLECTING
 /// main thread holds it across a collect while a worker blocks on it).
 pub fn enterBlocked() void {
+    // Brackets nest (a blocking call inside a blocked region): only the
+    // outermost one counts, or the worker is counted parked twice and a
+    // collection can start while another worker is still running.
+    blocked_depth += 1;
+    if (blocked_depth > 1) return;
     // ADR-0150 am1 / D-559: same invariant as `park` — counting a mid-bracket
     // thread as parked would let the collector proceed over its unrooted
     // builder intermediates (the side door the alloc-prologue gate does not
@@ -148,13 +161,34 @@ pub fn enterBlocked() void {
 /// End an `enterBlocked` region. Decrement the parked count; if a collection
 /// armed while we were blocked, park now (re-checking the flag) so the
 /// post-acquire heap-touching code does not run before the collector resumes.
+/// An inner bracket of a nested pair only unwinds the depth.
 pub fn exitBlocked() void {
+    std.debug.assert(blocked_depth > 0);
+    blocked_depth -= 1;
+    if (blocked_depth > 0) return;
     {
         io_default.lockMutex(&sp_mutex);
         defer io_default.unlockMutex(&sp_mutex);
         parked_count -= 1;
     }
     if (gc_requested.load(.acquire)) park();
+}
+
+/// How many `enterBlocked` brackets this thread is inside. Only the outermost
+/// one changes `parked_count`.
+threadlocal var blocked_depth: u32 = 0;
+
+/// Call `f` with `args`, counting a registered worker as parked for the call so
+/// a collection another thread requests does not wait for it to return. For
+/// calls that block in the OS (a child process, a socket, DNS). `f` must not
+/// allocate GC memory, create a Value or raise: it returns data or a Zig error,
+/// and the caller builds or raises after this returns. On the main /
+/// unregistered thread it is a plain call.
+pub fn blocking(comptime f: anytype, args: anytype) @TypeOf(@call(.auto, f, args)) {
+    if (!root_set.is_registered_worker) return @call(.auto, f, args);
+    enterBlocked();
+    defer exitBlocked();
+    return @call(.auto, f, args);
 }
 
 /// Acquire `m` at a GC safepoint when running on a registered worker: a worker
@@ -171,6 +205,14 @@ pub fn lockMutexAtSafepoint(m: *std.Io.Mutex) void {
     enterBlocked();
     io_default.lockMutex(m);
     exitBlocked();
+}
+
+/// The poll for a spin loop on a registered worker: park if a collection is
+/// pending. A thread spinning on a lock whose holder can park (or collect)
+/// never reaches another safepoint, so the spin itself must be one. Call it
+/// only while holding nothing another thread needs to finish the collection.
+pub fn poll() void {
+    if (root_set.is_registered_worker and gc_requested.load(.acquire)) park();
 }
 
 /// Resume the world: clear the safe-point flag and wake every parked worker.
@@ -359,6 +401,56 @@ test "collectStopTheWorld with no other registered worker is a fenced collect (D
     try testing.expect(!gc_requested.load(.acquire));
 }
 
+test "registerThread during an active STW collect parks the newborn until resumeWorld (spawn-to-register window)" {
+    var tio: ThreadedIo = .{};
+    tio.start();
+    defer tio.deinit();
+
+    const Shared = struct {
+        /// True between stopWorld-return and resumeWorld on the main thread —
+        /// the span where NO registered worker may run mutator code.
+        var in_stw: std.atomic.Value(bool) = .init(false);
+        var ran_during_collect: std.atomic.Value(bool) = .init(false);
+        var registered_ret: std.atomic.Value(bool) = .init(false);
+
+        fn worker() void {
+            var ctx: root_set.ThreadGcContext = .{
+                .frame_slot = &env_mod.current_frame,
+                .analysis_frame_slot = &root_set.analysis_frame_head,
+                .eval_frame_slot = &root_set.eval_frame_head,
+                .self_guard_slot = &root_set.gc_self_guard,
+            };
+            root_set.registerThread(&ctx) catch return;
+            // First mutator step after registration: if the collector is still
+            // between stopWorld and resumeWorld here, the newborn raced the
+            // collect (the spawn-to-register window).
+            if (in_stw.load(.seq_cst)) ran_during_collect.store(true, .seq_cst);
+            registered_ret.store(true, .release);
+            root_set.unregisterThread(&ctx);
+        }
+    };
+    Shared.in_stw.store(false, .monotonic);
+    Shared.ran_during_collect.store(false, .monotonic);
+    Shared.registered_ret.store(false, .monotonic);
+
+    // Arm + complete the rendezvous with ZERO registered workers (target 0 →
+    // returns at once) — the collector is now "collecting".
+    stopWorld(false);
+    Shared.in_stw.store(true, .seq_cst);
+
+    // A worker born mid-collect must park inside registerThread until
+    // resumeWorld, never run its first mutator step during the collect.
+    var t = try std.Thread.spawn(.{}, Shared.worker, .{});
+    while (parkedCountForTest() == 0 and !Shared.registered_ret.load(.acquire)) std.atomic.spinLoopHint();
+
+    Shared.in_stw.store(false, .seq_cst);
+    resumeWorld();
+    t.join();
+
+    try testing.expect(!Shared.ran_during_collect.load(.seq_cst));
+    try testing.expectEqual(@as(u32, 0), parkedCountForTest());
+}
+
 test "collectStopTheWorld parks real workers allocating through gc.alloc, then resumes them (D-244 #4)" {
     var tio: ThreadedIo = .{};
     tio.start();
@@ -371,7 +463,7 @@ test "collectStopTheWorld parks real workers allocating through gc.alloc, then r
     const Shared = struct {
         var gc_ptr: *GcHeap = undefined;
         var ready: std.atomic.Value(u32) = .init(0);
-        var allocs: std.atomic.Value(u64) = .init(0);
+        var allocs: atomics.Value(u64) = .init(0);
         var done: std.atomic.Value(bool) = .init(false);
 
         fn worker() void {
@@ -416,4 +508,20 @@ test "collectStopTheWorld parks real workers allocating through gc.alloc, then r
     for (&threads) |t| t.join();
     try testing.expect(Shared.allocs.load(.acquire) > 0); // workers really ran
     try testing.expectEqual(@as(u32, 0), parkedCountForTest()); // all resumed cleanly
+}
+
+test "blocking counts a registered worker as parked for the call and passes the result through" {
+    const Probe = struct {
+        fn seen(bump: u32) error{Refused}!u32 {
+            if (bump == 0) return error.Refused;
+            return parkedCountForTest() + bump;
+        }
+    };
+    try testing.expectEqual(@as(u32, 1), try blocking(Probe.seen, .{1}));
+
+    root_set.is_registered_worker = true;
+    defer root_set.is_registered_worker = false;
+    try testing.expectEqual(@as(u32, 2), try blocking(Probe.seen, .{1}));
+    try testing.expectError(error.Refused, blocking(Probe.seen, .{0}));
+    try testing.expectEqual(@as(u32, 0), parkedCountForTest());
 }

@@ -15,6 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib_build_lock.sh"
 CLJW="$PROJECT_ROOT/zig-out/bin/cljw"
 
 # --- Colors ---
@@ -121,7 +122,7 @@ fi
 # --- Build CW if needed ---
 if ! $SKIP_BUILD; then
   echo -e "${CYAN}Building ClojureWasm (ReleaseSafe)...${RESET}"
-  (cd "$PROJECT_ROOT" && zig build -Dwasm -Doptimize=ReleaseSafe) || {
+  (cd "$PROJECT_ROOT" && with_build_lock zig build -Dwasm -Doptimize=ReleaseSafe) || {
     echo -e "${RED}Build failed${RESET}" >&2
     exit 1
   }
@@ -131,7 +132,42 @@ fi
 TMPDIR_CMP=$(mktemp -d)
 trap "rm -rf $TMPDIR_CMP" EXIT
 
-# --- Helper: run hyperfine and get mean time in ms (float) ---
+# --- CPU pinning (Linux hybrid-core hosts) ---------------------------------
+# A hybrid Intel host schedules a short process onto whatever core is free, and
+# an LP-E core runs at half a P core's clock. Measured 2026-09-04 on an Ultra 9
+# 185H (P 0-11 at 4.8-5.1 GHz, E 12-19 at 3.8, LP-E 20-21 at 2.5): unpinned
+# `cljw -e 1` came out 62.8 ms +/- 23.4 (37% sigma, range 30-125 ms). Pinned to
+# the P cores: 44.9 +/- 10.2. Same binary, same box, same minute.
+#
+# So pin. Otherwise the harness reports core-assignment lottery as a language
+# difference, and a Suite taken over 35 minutes cannot even compare its own
+# columns to each other.
+PIN=""
+PIN_DESC="none"
+if [[ "$(uname -s)" == "Linux" ]] && command -v taskset >/dev/null 2>&1; then
+  # Fast cores = within 10% of the host's top advertised clock. Not "equal to
+  # the maximum": on this host that picked 4 of the 12 P cores (the 5.1 GHz
+  # ones, leaving out the 4.8 GHz ones), and starving the scheduler of threads
+  # is its own source of variance. The 10% band separates P from E (4.8 vs 3.8)
+  # without splitting P.
+  PERF_CPUS=$(lscpu -e=CPU,MAXMHZ 2>/dev/null | awk 'NR>1{print $1, $2}' \
+    | sort -k2 -g -r \
+    | awk 'NR==1{top=$2} $2>=top*0.9{printf "%s%s", sep, $1; sep=","}')
+  if [[ -n "$PERF_CPUS" ]]; then
+    PIN="taskset -c $PERF_CPUS "
+    PIN_DESC="taskset -c $PERF_CPUS"
+  fi
+fi
+
+# The CPU governor is recorded, not corrected: setting it needs root, and a
+# Suite measured under `powersave` is a weaker rung of evidence than one under
+# `performance`. Say which, rather than let a reader assume the better one.
+GOVERNOR="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo n/a)"
+
+# --- Helper: run hyperfine, return "<mean_ms> <stddev_ms>" -----------------
+# The stddev travels with the mean because a comparison narrower than the noise
+# is not a result. Recording only the mean lets a 30%-sigma run be published as
+# though it were a ranking.
 hf_mean_ms() {
   local cmd="$1"
   local json_file="$TMPDIR_CMP/hf_${RANDOM}_$$.json"
@@ -139,18 +175,18 @@ hf_mean_ms() {
     --warmup "$WARMUP" \
     --runs "$RUNS" \
     --export-json "$json_file" \
-    "$cmd" \
+    "${PIN}${cmd}" \
     >/dev/null 2>&1
   python3 -c "
 import json
 with open('$json_file') as f:
     data = json.load(f)
-mean_s = data['results'][0]['mean']
+r = data['results'][0]
 # Record ms at 0.1-µs resolution (4 dp). hyperfine's JSON mean is a full-float
 # seconds value; rounding to 0.1 ms (the old :.1f) collapsed every sub-100µs
 # warm / compiled-lang time to 0. The yaml stays ms (hyperfine's native unit);
 # gen_cross_table.py converts to µs for display.
-print(f'{mean_s * 1000:.4f}')
+print(f\"{r['mean'] * 1000:.4f} {(r.get('stddev') or 0.0) * 1000:.4f}\")
 "
   rm -f "$json_file"
 }
@@ -243,6 +279,7 @@ exec clojure -J-Xmx2g -M %s
 
 # --- Measure startup times if warm mode ---
 declare -A STARTUP_MS
+declare -A STARTUP_SD
 if [[ "$MODE" == "warm" || "$MODE" == "both" ]]; then
   echo -e "\n${BOLD}Measuring startup times...${RESET}"
 
@@ -306,9 +343,10 @@ GOEOF
       *)    continue ;;
     esac
 
-    ms=$(hf_mean_ms "$noop_cmd")
+    read -r ms sd <<< "$(hf_mean_ms "$noop_cmd")"
     STARTUP_MS["$lang"]="$ms"
-    printf "  %-12s %8s ms\n" "$(lang_display_name "$lang")" "$ms"
+    STARTUP_SD["$lang"]="$sd"
+    printf "  %-12s %8s ms  (sd %s)\n" "$(lang_display_name "$lang")" "$ms" "$sd"
   done
   echo ""
 fi
@@ -317,6 +355,7 @@ fi
 # Associative arrays: COLD_MS[bench:lang]=value, WARM_MS[bench:lang]=value
 declare -A COLD_MS
 declare -A WARM_MS
+declare -A COLD_SD
 
 echo -e "${BOLD}Running benchmarks...${RESET}\n"
 
@@ -340,8 +379,9 @@ for bench_dir in "${BENCH_DIRS[@]}"; do
     fi
 
     # Measure
-    cold=$(hf_mean_ms "$cmd")
+    read -r cold cold_sd <<< "$(hf_mean_ms "$cmd")"
     COLD_MS["${bench_name}:${lang}"]="$cold"
+    COLD_SD["${bench_name}:${lang}"]="$cold_sd"
 
     if [[ "$MODE" == "warm" || "$MODE" == "both" ]]; then
       startup="${STARTUP_MS[$lang]:-0}"
@@ -448,14 +488,33 @@ if [[ -n "$YAML_FILE" ]]; then
     echo "# Generated: $(date -Iseconds)"
     echo ""
     echo "env:"
-    echo "  machine: $(system_profiler SPHardwareDataType 2>/dev/null | awk -F': +' '/Model Name/{print $2; exit}' || echo '?') ($(sysctl -n hw.model 2>/dev/null || echo '?'))"
-    echo "  cpu: $(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'unknown'), $(sysctl -n hw.ncpu 2>/dev/null || echo '?')-core ($(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || echo '?')P+$(sysctl -n hw.perflevel1.physicalcpu 2>/dev/null || echo '?')E)"
-    echo "  ram: $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 )) GB"
-    echo "  os: $(sw_vers -productName 2>/dev/null || echo macOS) $(sw_vers -productVersion 2>/dev/null) ($(sw_vers -buildVersion 2>/dev/null))"
-    echo "  kernel: $(uname -s) $(uname -r)"
+    # Host description is per-OS. Every value is QUOTED: an undetected field
+    # used to interpolate a bare `?`, which is YAML's explicit-key indicator,
+    # so a Linux run produced a file that would not parse at all (`mapping keys
+    # are not allowed in this context`) and the Suite was unreadable by its own
+    # renderers. A missing field must degrade to "unknown", never to a syntax
+    # error.
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      env_machine="$(system_profiler SPHardwareDataType 2>/dev/null | awk -F': +' '/Model Name/{print $2; exit}') ($(sysctl -n hw.model 2>/dev/null))"
+      env_cpu="$(sysctl -n machdep.cpu.brand_string 2>/dev/null), $(sysctl -n hw.ncpu 2>/dev/null)-core ($(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null)P+$(sysctl -n hw.perflevel1.physicalcpu 2>/dev/null)E)"
+      env_ram="$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 )) GB"
+      env_os="$(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null) ($(sw_vers -buildVersion 2>/dev/null))"
+    else
+      env_machine="$(cat /sys/devices/virtual/dmi/id/product_name 2>/dev/null || uname -m)"
+      env_cpu="$(awk -F': *' '/^model name/ {print $2; exit}' /proc/cpuinfo 2>/dev/null), $(nproc 2>/dev/null)-core"
+      env_ram="$(awk '/^MemTotal:/ {printf "%d", $2/1048576}' /proc/meminfo 2>/dev/null) GB"
+      env_os="$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"
+    fi
+    printf '  machine: "%s"\n' "${env_machine:-unknown}"
+    printf '  cpu: "%s"\n'     "${env_cpu:-unknown}"
+    printf '  ram: "%s"\n'     "${env_ram:-unknown}"
+    printf '  os: "%s"\n'      "${env_os:-unknown}"
+    printf '  kernel: "%s"\n'  "$(uname -s) $(uname -r) $(uname -m)"
     echo "  tool: hyperfine"
     echo "  runs: $RUNS"
     echo "  warmup: $WARMUP"
+    printf '  governor: "%s"\n' "$GOVERNOR"
+    printf '  pinned: "%s"\n' "$PIN_DESC"
     echo ""
     echo "date: \"$(date +%Y-%m-%d)\""
     echo ""
@@ -478,6 +537,13 @@ if [[ -n "$YAML_FILE" ]]; then
         echo "    cold:"
         for lang in "${ALL_LANGS[@]}"; do
           val="${COLD_MS[${bench_name}:${lang}]:-}"
+          [[ -n "$val" ]] && echo "      $lang: $val"
+        done
+        # Per-measurement dispersion, carried so a renderer can refuse to
+        # present a difference that sits inside it.
+        echo "    cold_sd:"
+        for lang in "${ALL_LANGS[@]}"; do
+          val="${COLD_SD[${bench_name}:${lang}]:-}"
           [[ -n "$val" ]] && echo "      $lang: $val"
         done
       fi

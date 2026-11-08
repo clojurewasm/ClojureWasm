@@ -6,8 +6,8 @@
 # `// VM-DEFER:` marker, or when a VM-DEFER marker is malformed
 # (missing the `[refs: D-NNN, feature_deps.yaml#<key>]` block).
 #
-# Discipline source: .claude/rules/dual_backend_parity.md +
-# .dev/decisions/0036_dual_backend_parity_contract.md.
+# Discipline source: memory 20260909234759-18586426 (dual_backend_parity) +
+# memory query :tags ["adr" "adr-0036"].
 # Sibling hook: scripts/check_provisional_sync.sh (PROVISIONAL marker
 # discipline) — the present hook adapts the same shape.
 #
@@ -37,11 +37,29 @@
 #                                 HEAD (= what would land in the
 #                                 next commit). Used by quick local
 #                                 sanity checks.
+#   --gate                      : sweep the WORKING TREE (no git range,
+#                                 no hook payload) — every in-scope
+#                                 file's `return error.NotImplemented`
+#                                 must carry a VM-DEFER marker directly
+#                                 above, and every VM-DEFER marker in
+#                                 the tree must carry a well-formed
+#                                 `[refs: ...]` block. This is the
+#                                 batch-suite form of the invariant: it
+#                                 holds regardless of what any commit
+#                                 did, so the discipline is checkable
+#                                 where hooks do not run (CI, the full
+#                                 gate). Mirrors the two-entry-point
+#                                 shape of scripts/check_clj_attribution.sh.
+#
+# The diff walk and the tree sweep share ONE marker validator
+# (`marker_refs_defect`) and ONE body-discipline walk
+# (`scan_text_unmarked`) — a second copy is exactly the drift this
+# hook exists to prevent.
 #
 # Exit codes:
 #   0  pass (or non-push command in default mode)
 #   1  internal error (bad input)
-#   2  hook blocked the push
+#   2  hook blocked the push / --gate found a violation
 
 set -u
 set -o pipefail
@@ -61,6 +79,10 @@ case "${1:-}" in
     ;;
   --test-staged)
     MODE="test_staged"
+    shift
+    ;;
+  --gate)
+    MODE="gate"
     shift
     ;;
 esac
@@ -86,6 +108,114 @@ is_parity_scope() {
     src/eval/backend/tree_walk.zig)   return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# --- 3a. Shared predicates (ONE validator, two call paths) ------------------
+#
+# The diff walk (hook / --test-*) and the working-tree sweep (--gate) must
+# agree on what a violation is, so both call the functions below. A second,
+# mode-local copy of any of them would be the drift defect.
+
+# The silent-gap body shape a VM compile arm must not ship unmarked.
+NOTIMPL_RE='return[[:space:]]+error\.NotImplemented'
+# The marker that licenses it, on the line directly above.
+VM_DEFER_ABOVE_RE='^[[:space:]]*//[[:space:]]+VM-DEFER:'
+
+# Marker-form predicate: does this VM-DEFER line carry a well-formed
+# `[refs: D-NNN, feature_deps.yaml#<key>]` block? Echoes the defect
+# reason; EMPTY output means well-formed.
+marker_refs_defect() {
+  local body="$1"
+  if ! [[ "$body" == *'[refs:'* ]]; then
+    echo "missing [refs: block"
+  elif ! [[ "$body" =~ D-[0-9]+ ]]; then
+    echo "missing D-NNN"
+  elif ! [[ "$body" == *feature_deps.yaml#* ]]; then
+    echo "missing feature_deps.yaml#"
+  fi
+}
+
+# Body-discipline walk over one file's text: emit a violation line for
+# every `return error.NotImplemented` whose preceding line is not a
+# VM-DEFER marker. The diff path feeds it the post-image at the range
+# tip; --gate feeds it the file on disk.
+scan_text_unmarked() {
+  local f="$1" content="$2"
+  local prev="" line
+  local lineno=0
+  while IFS= read -r line; do
+    lineno=$((lineno + 1))
+    if [[ "$line" =~ $NOTIMPL_RE ]]; then
+      if ! [[ "$prev" =~ $VM_DEFER_ABOVE_RE ]]; then
+        printf '%s:%d: unmarked `return error.NotImplemented` (line above: %q)\n' \
+          "$f" "$lineno" "$prev"
+      fi
+    fi
+    prev="$line"
+  done <<< "$content"
+}
+
+# Marker-form walk over one file's text (--gate only): apply
+# `marker_refs_defect` to EVERY VM-DEFER marker in the tree, not just to
+# the ones a commit happens to add.
+scan_text_markers() {
+  local f="$1" content="$2"
+  local line defect
+  local lineno=0
+  while IFS= read -r line; do
+    lineno=$((lineno + 1))
+    [[ "$line" == *"VM-DEFER:"* ]] || continue
+    defect="$(marker_refs_defect "$line")"
+    [[ -n "$defect" ]] && printf '%s:%d: %s :: %s\n' "$f" "$lineno" "$defect" "$line"
+  done <<< "$content"
+}
+
+# Failure report shared by both entry points. Consumes $HEADLINE and
+# $FAIL_MSGS; never returns (exits 2).
+report_failure() {
+  echo "$HEADLINE" >&2
+  cat >&2 <<'EOF'
+
+A VM compile arm body ships as a silent gap without a
+`// VM-DEFER:` marker, OR a VM-DEFER marker is malformed
+and lacks the required `[refs: D-NNN, feature_deps.yaml#<key>]`
+block.
+
+Required canonical marker shape (see memory 20260909234759-18586426 (dual_backend_parity)):
+    // VM-DEFER: <one-line why> [refs: D-NNN, feature_deps.yaml#<key>]
+    return error.NotImplemented;
+
+The `[refs: ...]` block must include at least one D-NNN reference
+AND at least one feature_deps.yaml#<key> reference.
+
+When introducing a VM compile arm that cannot land its real
+implementation in the current cycle, the commit must:
+
+  1. Add the `// VM-DEFER:` marker directly above the body line
+     (no blank line between).
+  2. Add (or amend) the matching feature_deps.yaml entry
+     (`status: provisional`, `provisional_markers:` lists the
+     source location).
+  3. Add (or amend) the matching `.dev/debt.yaml` row with a
+     close-out barrier predicate.
+
+When discharging a VM-DEFER (the real impl lands), remove the
+marker entirely (do not comment-out), flip the yaml entry to
+`landed`, and discharge the debt row.
+
+Findings:
+EOF
+  for m in "${FAIL_MSGS[@]}"; do
+    printf '  %s\n' "$m" >&2
+  done
+
+  cat >&2 <<'EOF'
+
+(Discipline source: memory 20260909234759-18586426 (dual_backend_parity) +
+memory query :tags ["adr" "adr-0036"] +
+memory 20260911004145-390e301f, the Dual-backend drift smell.)
+EOF
+  exit 2
 }
 
 # Walk a git diff range, find any post-image line matching the body-
@@ -142,22 +272,8 @@ collect_unmarked_notimpl() {
     fi
     [[ -z "$content" ]] && continue
 
-    # Walk lines; track the previous line for the above-line check.
-    local prev=""
-    local lineno=0
-    while IFS= read -r line; do
-      lineno=$((lineno + 1))
-      if [[ "$line" =~ return[[:space:]]+error\.NotImplemented ]]; then
-        # Check prev is a VM-DEFER marker (allowing leading
-        # whitespace). The marker syntax: `// VM-DEFER:` (with at
-        # least one space after the slashes).
-        if ! [[ "$prev" =~ ^[[:space:]]*//[[:space:]]+VM-DEFER: ]]; then
-          printf '%s:%d: unmarked `return error.NotImplemented` (line above: %q)\n' \
-            "$f" "$lineno" "$prev"
-        fi
-      fi
-      prev="$line"
-    done <<< "$content"
+    # Same walk --gate runs, on the range's post-image.
+    scan_text_unmarked "$f" "$content"
   done
 }
 
@@ -184,13 +300,9 @@ malformed_markers() {
       "+"*)
         if [[ $in_scope -eq 1 ]] && [[ "$line" == *"VM-DEFER:"* ]]; then
           local body="${line#+}"
-          if ! [[ "$body" == *'[refs:'* ]]; then
-            bad+=("$current_file :: missing [refs: block :: $body")
-          elif ! [[ "$body" =~ D-[0-9]+ ]]; then
-            bad+=("$current_file :: missing D-NNN :: $body")
-          elif ! [[ "$body" == *feature_deps.yaml#* ]]; then
-            bad+=("$current_file :: missing feature_deps.yaml# :: $body")
-          fi
+          local defect
+          defect="$(marker_refs_defect "$body")"
+          [[ -n "$defect" ]] && bad+=("$current_file :: $defect :: $body")
         fi
         ;;
     esac
@@ -201,21 +313,59 @@ malformed_markers() {
   fi
 }
 
+# --- 3b. --gate: working-tree sweep -----------------------------------------
+#
+# No git range, no hook payload: enumerate the in-scope files ON DISK and
+# apply the same two predicates to all of them. Conservative by design —
+# it flags pre-existing drift, not just what the current commit touched.
+
+if [[ "$MODE" == "gate" ]]; then
+  GATE_FILES=()
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    is_parity_scope "$f" && GATE_FILES+=("$f")
+  done < <(find src/eval/backend -type f -name '*.zig' 2>/dev/null | sort)
+
+  FAIL_MSGS=()
+  notimpl_total=0
+  marker_total=0
+
+  # Guarded: `"${arr[@]}"` on an empty array is an unbound-variable error
+  # under `set -u` on the macOS-shipped bash (3.2) the gate also runs on.
+  if [[ ${#GATE_FILES[@]} -gt 0 ]]; then
+    for f in "${GATE_FILES[@]}"; do
+      content="$(cat "$f")"
+      [[ -z "$content" ]] && continue
+
+      n="$(grep -cE "$NOTIMPL_RE" "$f" 2>/dev/null)"; notimpl_total=$((notimpl_total + ${n:-0}))
+      m="$(grep -c 'VM-DEFER:' "$f" 2>/dev/null)";    marker_total=$((marker_total + ${m:-0}))
+
+      while IFS= read -r v; do
+        [[ -n "$v" ]] && FAIL_MSGS+=("$v")
+      done < <(scan_text_unmarked "$f" "$content")
+      while IFS= read -r v; do
+        [[ -n "$v" ]] && FAIL_MSGS+=("$v")
+      done < <(scan_text_markers "$f" "$content")
+    done
+  fi
+
+  if [[ ${#FAIL_MSGS[@]} -eq 0 ]]; then
+    echo "    dual_backend_parity: ${#GATE_FILES[@]} in-scope backend file(s); $notimpl_total \`return error.NotImplemented\` site(s) all VM-DEFER-marked; $marker_total marker(s) carry a well-formed [refs: D-NNN, feature_deps.yaml#<key>] block"
+    exit 0
+  fi
+
+  HEADLINE="✗ gate failed: scripts/check_dual_backend_parity.sh (working-tree sweep)"
+  report_failure
+fi
+
 # --- 4. Build the range to inspect ------------------------------------------
 
 case "$MODE" in
   hook)
-    UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo '')"
-    if [[ -n "$UPSTREAM" ]]; then
-      REV_RANGE="$UPSTREAM..HEAD"
-    else
-      REV_RANGE="HEAD"
-    fi
-    REV_OUT="$(git rev-list "$REV_RANGE" 2>&1)" || {
-      echo "internal: git rev-list $REV_RANGE failed — failing closed" >&2
-      echo "$REV_OUT" >&2
-      exit 1
-    }
+    # Commits not yet on any remote branch. Replaces `@{u}..HEAD`, which
+    # re-flagged already-published commits on a cross-branch push
+    # ([CLJW-SMELLHOOK]); hook_unpushed_shas fails closed on a git error.
+    REV_OUT="$(hook_unpushed_shas)"
     RANGES=()
     while IFS= read -r sha; do
       [[ -z "$sha" ]] && continue
@@ -272,47 +422,5 @@ if [[ $FAIL -eq 0 ]]; then
   exit 0
 fi
 
-cat >&2 <<'EOF'
-✗ push blocked by scripts/check_dual_backend_parity.sh
-
-A commit ships a VM compile arm body as a silent gap without a
-`// VM-DEFER:` marker, OR introduces a malformed VM-DEFER marker
-that lacks the required `[refs: D-NNN, feature_deps.yaml#<key>]`
-block.
-
-Required canonical marker shape (see .claude/rules/dual_backend_parity.md):
-    // VM-DEFER: <one-line why> [refs: D-NNN, feature_deps.yaml#<key>]
-    return error.NotImplemented;
-
-The `[refs: ...]` block must include at least one D-NNN reference
-AND at least one feature_deps.yaml#<key> reference.
-
-When introducing a VM compile arm that cannot land its real
-implementation in the current cycle, the commit must:
-
-  1. Add the `// VM-DEFER:` marker directly above the body line
-     (no blank line between).
-  2. Add (or amend) the matching `feature_deps.yaml` entry
-     (`status: provisional`, `provisional_markers:` lists the
-     source location).
-  3. Add (or amend) the matching `.dev/debt.yaml` row with a
-     close-out barrier predicate.
-
-When discharging a VM-DEFER (the real impl lands), remove the
-marker entirely (do not comment-out), flip the yaml entry to
-`landed`, and discharge the debt row.
-
-Findings:
-EOF
-for m in "${FAIL_MSGS[@]}"; do
-  printf '  %s\n' "$m" >&2
-done
-
-cat >&2 <<'EOF'
-
-(Discipline source: .claude/rules/dual_backend_parity.md +
-.dev/decisions/0036_dual_backend_parity_contract.md +
-.dev/principle.md "Dual-backend drift" entry.)
-EOF
-
-exit 2
+HEADLINE="✗ push blocked by scripts/check_dual_backend_parity.sh"
+report_failure

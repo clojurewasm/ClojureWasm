@@ -115,11 +115,8 @@ fn compile(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
         if (bits & ~@as(i64, 0x02 | 0x04 | 0x08 | 0x20) != 0)
             return error_catalog.raise(.feature_not_supported, loc, .{ .name = "java.util.regex.Pattern/compile flag (only CASE_INSENSITIVE/COMMENTS/MULTILINE/DOTALL are supported)" });
     }
-    return regex_value.alloc(rt, string_collection.asString(args[0]), flags) catch |err| switch (err) {
-        error.OutOfMemory => error.OutOfMemory,
-        error.PatternTooLarge => error_catalog.raise(.regex_pattern_too_large, loc, .{}),
-        else => error_catalog.raise(.feature_not_supported, loc, .{ .name = "java.util.regex.Pattern/compile (unsupported pattern syntax)" }),
-    };
+    return regex_value.alloc(rt, string_collection.asString(args[0]), flags) catch |err|
+        regex_value.raiseCompileError(err, loc);
 }
 
 /// Implements `(java.util.regex.Pattern/matches regex input)` — whether `input`
@@ -133,11 +130,12 @@ fn matches(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "java.util.regex.Pattern/matches", .actual = @tagName(args[0].tag()) });
     if (args[1].tag() != .string)
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "java.util.regex.Pattern/matches", .actual = @tagName(args[1].tag()) });
-    var program = compile_mod.compile(rt.gpa, string_collection.asString(args[0]), .{}) catch
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "java.util.regex.Pattern/matches (invalid regex pattern)" });
+    var program = compile_mod.compile(rt.gpa, string_collection.asString(args[0]), .{}) catch |err|
+        return regex_value.raiseCompileError(err, loc);
     defer program.deinit(rt.gpa);
     const m = regex_match.matchFull(rt.gpa, &program, string_collection.asString(args[1])) catch
         return error_catalog.raise(.feature_not_supported, loc, .{ .name = "java.util.regex.Pattern/matches" });
+    defer if (m) |r| r.deinit(rt.gpa);
     return Value.initBoolean(m != null);
 }
 

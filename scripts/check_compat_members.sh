@@ -26,7 +26,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 BIN="zig-out/bin/cljw"
-[ -x "$BIN" ] || { echo "building cljw…" >&2; zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null; }
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 command -v yq >/dev/null || { echo "check_compat_members: yq required" >&2; exit 1; }
 
 run_bounded() {

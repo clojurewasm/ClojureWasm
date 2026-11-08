@@ -10,7 +10,7 @@
 # `test {}` blocks silently never run. Worse, latent compile
 # errors inside the file go undetected.
 #
-# See .claude/rules/zig_tips.md "Test discovery via @import".
+# See memory 20260909235200-1f86720b (zig_tips) "Test discovery via @import".
 #
 # Usage:
 #   bash scripts/check_test_reach.sh            # informational
@@ -127,7 +127,7 @@ for f in "${unreachable[@]}"; do
     echo "    _ = @import(\"${rel_from_main}\");   // $n test blocks"
 done
 echo
-echo "Background: .claude/rules/zig_tips.md \"Test discovery via @import\""
+echo "Background: memory 20260909235200-1f86720b (zig_tips) \"Test discovery via @import\""
 
 if [[ "$mode" == "--gate" ]]; then
     exit 1

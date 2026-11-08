@@ -18,6 +18,7 @@ const root_set = @import("gc/root_set.zig");
 const map_mod = @import("collection/map.zig");
 const list_mod = @import("collection/list.zig");
 const error_mod = @import("error/info.zig");
+const error_catalog = @import("error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("dispatch.zig");
 const ex_info = @import("collection/ex_info.zig");
@@ -45,6 +46,24 @@ pub fn validateOrThrow(rt: *Runtime, env: *Env, validator: Value, newval: Value)
     }
 }
 
+/// clj's `setup-reference` casts a `:meta` ctor option to `IPersistentMap`, so a
+/// non-nil, non-map `:meta` throws ClassCastException. This is the ONE guard the
+/// atom / ref / agent ctors share (they all take the same `:meta`/`:validator`
+/// kwargs) — call it before `setMeta`. A nil `:meta` is the no-metadata default.
+/// The raised Code is `type_arg_invalid` (Kind `type_error` → catchable as
+/// ClassCastException via the ADR-0060 bridge, matching clj's exception class).
+pub fn requireMetaMap(val: Value, fn_name: []const u8, loc: error_mod.SourceLocation) !void {
+    if (val.isNil()) return;
+    switch (val.tag()) {
+        .array_map, .hash_map, .sorted_map => {},
+        else => return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = fn_name,
+            .expected = "a map for :meta",
+            .actual = @tagName(val.tag()),
+        }),
+    }
+}
+
 /// Fire every registered watch `(fn key ref old new)` for `ref_val`. `watches`
 /// is the ref's `{key -> fn}` map (nil / empty short-circuits). A watch fn may
 /// re-enter the VM (e.g. a nested `swap!`), so `[ref, watch map, key cursor]`
@@ -69,4 +88,17 @@ pub fn notifyWatches(rt: *Runtime, env: *Env, ref_val: Value, watches: Value, ol
         _ = try vt.callFn(rt, env, f, &cb, loc);
         cur = list_mod.rest(cur);
     }
+}
+
+test "requireMetaMap: nil passes; a non-map :meta raises a type error (clj ClassCastException)" {
+    const testing = @import("std").testing;
+    const loc: error_mod.SourceLocation = .{ .line = 0, .column = 0 };
+    // nil is the no-metadata default — allowed.
+    try requireMetaMap(Value.nil_val, "atom", loc);
+    // a number / boolean / other non-map is a ClassCastException in clj; here it
+    // is a type_error Code (same Kind via the ADR-0060 bridge). Covers all three
+    // ctors — atom / ref / agent delegate to this one guard.
+    try testing.expectError(error.TypeError, requireMetaMap(Value.initInteger(5), "atom", loc));
+    try testing.expectError(error.TypeError, requireMetaMap(Value.true_val, "ref", loc));
+    try testing.expectError(error.TypeError, requireMetaMap(Value.initFloat(1.5), "agent", loc));
 }

@@ -1,0 +1,15 @@
+--- exit ---
+1
+--- stdout ---
+before
+--- stderr ---
+Arity error at <ROOT>/test/golden/cases/error_arity.clj:3:0
+  Wrong number of args (1) passed to fn, expected 2
+
+  1 | (defn f [a b] (+ a b))
+  2 | (println "before")
+  3 | (f 1)
+      ^--- Wrong number of args (1) passed to fn, expected 2
+
+Trace:
+  user/f (<ROOT>/test/golden/cases/error_arity.clj:3)

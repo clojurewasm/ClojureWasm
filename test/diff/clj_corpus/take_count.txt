@@ -1,0 +1,36 @@
+;; take with a non-integer / infinite count (CLJW-TAKE-FLOAT-COUNT). clj's
+;; `take` compares the count numerically via (pos? n) / (dec n), so a float,
+;; ##Inf, or BigInt count is legal: a positive float realizes ceil(n) elements,
+;; ##Inf (or a count past i64) realizes the whole finite source, n<=0 / ##NaN
+;; realizes none. The eager leaf `-take-eager` used to reject a non-integer.
+
+(take 2.0 [1 2 3 4])
+;;=> (1 2)
+(take 2.9 [1 2 3 4])
+;;=> (1 2 3)
+(take 1.0 [1 2 3])
+;;=> (1)
+(take 0.5 [1 2 3])
+;;=> (1)
+(take 2.5 [1 2 3 4])
+;;=> (1 2 3)
+(take ##Inf (range 3))
+;;=> (0 1 2)
+(take ##NaN [1 2 3])
+;;=> ()
+(take -1.5 [1 2 3])
+;;=> ()
+(take 5N [1 2 3])
+;;=> (1 2 3)
+
+;; integer counts unchanged (regression guard)
+(take 3 [1 2 3 4 5])
+;;=> (1 2 3)
+(take 0 [1 2 3])
+;;=> ()
+(take 10 [1 2 3])
+;;=> (1 2 3)
+
+;; transducer arity already handled float (clj code path) — lock it
+(sequence (take 2.0) [1 2 3 4])
+;;=> (1 2)

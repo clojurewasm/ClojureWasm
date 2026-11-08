@@ -27,6 +27,7 @@ const gc_heap_mod = @import("../gc/gc_heap.zig");
 const mark_sweep = @import("../gc/mark_sweep.zig");
 const big_int_mod = @import("big_int.zig");
 const BigInt = big_int_mod.BigInt;
+const Managed = std.math.big.int.Managed;
 
 /// GC-managed canonical two-tier Ratio (ADR-0149). `is_small == 1` IFF the
 /// reduced numerator AND denominator both fit i64 — the CANONICAL invariant: a
@@ -62,11 +63,11 @@ pub const Ratio = extern struct {
     }
     /// Big-ratio numerator BigInt (caller guarantees `is_small == 0`).
     pub inline fn bigNum(self: *const Ratio) *BigInt {
-        return @ptrFromInt(self.a);
+        return @ptrFromInt(@as(usize, @intCast(self.a)));
     }
     /// Big-ratio denominator BigInt (caller guarantees `is_small == 0`).
     pub inline fn bigDen(self: *const Ratio) *BigInt {
-        return @ptrFromInt(self.b);
+        return @ptrFromInt(@as(usize, @intCast(self.b)));
     }
 };
 
@@ -329,10 +330,98 @@ pub fn compareValue(rt: *Runtime, a: Value, b: Value) !std.math.Order {
     return lhs.order(rhs);
 }
 
+// --- conversion to double ---
+//
+// clj `Ratio.doubleValue` is `decimalValue(MathContext.DECIMAL64).doubleValue()`:
+// the exact quotient rounded HALF_EVEN to 16 significant decimal digits, then
+// that decimal to the nearest double. The first rounding is observable, so a
+// plain f64 divide is not the same function: `-2/3` is `-0.6666666666666667`
+// and `1/7` is `0.1428571428571429`, where `n / d` in f64 gives `...666` and
+// `...285`. Every site that turns a Ratio into a double (`double`, float
+// contagion, the mixed float comparison, `.doubleValue`, JSON) calls `toF64`.
+
+/// The Ratio `v` as clj's `Ratio.doubleValue`. Allocation-free for a small
+/// ratio; a big one borrows its numerator's allocator for the scaled divide,
+/// so the only error is OutOfMemory.
+pub fn toF64(v: Value) std.mem.Allocator.Error!f64 {
+    return switch (parts(v)) {
+        .small => |s| smallToF64(s.n, s.d),
+        .big => |b| bigToF64(b.n.m, b.d.m),
+    };
+}
+
+/// Decimal digit count of `x` (1 for 0).
+fn digits10(x: u128) u32 {
+    var n: u32 = 1;
+    var y = x;
+    while (y >= 10) : (n += 1) y /= 10;
+    return n;
+}
+
+/// The exact positive quotient `q * 10^-scale` (`sticky` when the division
+/// left a remainder) rounded HALF_EVEN to 16 significant digits, then to the
+/// nearest f64. `q` carries at least 17 digits, so one is left to round on.
+fn decimal64ToF64(neg: bool, q: u128, sticky: bool, scale: i64) f64 {
+    const k = digits10(q) - 16;
+    const p = std.math.powi(u128, 10, k) catch unreachable; // k <= 7
+    var hi = q / p;
+    const lo = q % p;
+    const half = p / 2;
+    if (lo > half or (lo == half and (sticky or hi % 2 == 1))) hi += 1;
+    var buf: [64]u8 = undefined;
+    const txt = std.fmt.bufPrint(&buf, "{s}{d}e{d}", .{ if (neg) "-" else "", hi, @as(i64, k) - scale }) catch unreachable;
+    return std.fmt.parseFloat(f64, txt) catch unreachable;
+}
+
+/// Small tier: `|n|` has at most 19 digits and `d` at least 1, so scaling
+/// `|n|` by `10^(18 + digits(d) - digits(|n|))` (never negative) gives a
+/// quotient of 18 or 19 digits while the dividend stays under `10^37 < 2^128`.
+fn smallToF64(n: i64, d: i64) f64 {
+    const a: u128 = @abs(n);
+    const b: u128 = @intCast(d);
+    const s = 18 + digits10(b) - digits10(a);
+    const num = a * (std.math.powi(u128, 10, s) catch unreachable); // s <= 36
+    return decimal64ToF64(n < 0, num / b, num % b != 0, s);
+}
+
+/// `floor(bits * 0.30103)`: within one of the decimal digit count of any
+/// integer that is `bits` bits long.
+fn digitsEstimate(bits: usize) i64 {
+    return @intCast(bits * 30103 / 100000);
+}
+
+/// Big tier: the same scaled divide over Managed. The scale comes from the
+/// bit lengths, whose digit estimate is off by at most one either way, so the
+/// `20 +` margin keeps the quotient between 18 and 23 digits (a u128).
+fn bigToF64(n: *const Managed, d: *const Managed) std.mem.Allocator.Error!f64 {
+    const gpa = n.allocator;
+    const s: i64 = 20 + digitsEstimate(d.bitCountAbs()) - digitsEstimate(n.bitCountAbs());
+    var abs_n = try n.clone();
+    defer abs_n.deinit();
+    abs_n.abs();
+    var ten = try Managed.initSet(gpa, 10);
+    defer ten.deinit();
+    var p = try Managed.init(gpa);
+    defer p.deinit();
+    try p.pow(&ten, @intCast(@abs(s)));
+    // A negative scale moves the power of ten onto the denominator.
+    var scaled = try Managed.init(gpa);
+    defer scaled.deinit();
+    try scaled.mul(if (s >= 0) &abs_n else d, &p);
+    var q = try Managed.init(gpa);
+    defer q.deinit();
+    var r = try Managed.init(gpa);
+    defer r.deinit();
+    if (s >= 0) try q.divTrunc(&r, &scaled, d) else try q.divTrunc(&r, &abs_n, &scaled);
+    const qv = q.toInt(u128) catch unreachable; // at most 23 digits
+    return decimal64ToF64(!n.isPositive(), qv, !r.eqlZero(), s);
+}
+
 // Ratio arithmetic (+ - * /) over ratio / mixed operands lives in the
 // numeric dispatcher `promote.ratioArith`, which extracts each operand's
 // numerator/denominator (this module's job is construction + reduction
-// via `allocFromManagedPair`, comparison via `compareValue`, and GC).
+// via `allocFromManagedPair`, comparison via `compareValue`, conversion to
+// double via `toF64`, and GC).
 
 // --- tests ---
 
@@ -456,6 +545,27 @@ test "compareValue (1/2 vs 2/3): 1/2 < 2/3" {
     try testing.expectEqual(std.math.Order.lt, try compareValue(&fix.rt, a, b));
     try testing.expectEqual(std.math.Order.gt, try compareValue(&fix.rt, b, a));
     try testing.expectEqual(std.math.Order.eq, try compareValue(&fix.rt, a, a));
+}
+
+test "toF64 is clj Ratio.doubleValue (DECIMAL64 first, then the nearest double)" {
+    var fix = RatioFixture.init();
+    defer fix.deinit();
+
+    try testing.expectEqual(@as(f64, -0.6666666666666667), try toF64((try allocFromI64Pair(&fix.rt, -2, 3)).?));
+    try testing.expectEqual(@as(f64, 0.1428571428571429), try toF64((try allocFromI64Pair(&fix.rt, 1, 7)).?));
+    try testing.expectEqual(@as(f64, 3.142857142857143), try toF64((try allocFromI64Pair(&fix.rt, 22, 7)).?));
+    try testing.expectEqual(@as(f64, 0.5), try toF64((try allocFromI64Pair(&fix.rt, 1, 2)).?));
+    // A MIN_I64 numerator stays small after reduction (|n| is exactly 2^63).
+    try testing.expectEqual(@as(f64, -3.074457345618259e18), try toF64((try allocFromI64Pair(&fix.rt, std.math.minInt(i64), 3)).?));
+
+    // Big tier: 10^23 / 3, and its reciprocal (a negative scale on the other side).
+    var ten23 = try Managed.initSet(testing.allocator, 10);
+    defer ten23.deinit();
+    try ten23.pow(&ten23, 23);
+    var three = try Managed.initSet(testing.allocator, 3);
+    defer three.deinit();
+    try testing.expectEqual(@as(f64, 3.333333333333333e22), try toF64((try allocFromManagedPair(&fix.rt, &ten23, &three)).?));
+    try testing.expectEqual(@as(f64, 3.0e-23), try toF64((try allocFromManagedPair(&fix.rt, &three, &ten23)).?));
 }
 
 test "Runtime.deinit releases Ratio + numer/denom BigInts (no leak)" {

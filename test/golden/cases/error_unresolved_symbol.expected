@@ -1,0 +1,12 @@
+--- exit ---
+1
+--- stdout ---
+before
+--- stderr ---
+Name error at <ROOT>/test/golden/cases/error_unresolved_symbol.clj:2:1
+  Unable to resolve symbol: 'no-such-fn'
+
+  1 | (println "before")
+  2 | (no-such-fn 1 2)
+       ^--- Unable to resolve symbol: 'no-such-fn'
+  3 | (println "after")

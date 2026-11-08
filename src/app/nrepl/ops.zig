@@ -353,7 +353,7 @@ fn opLookup(ctx: *Ctx) anyerror!void {
         return;
     };
 
-    const arglists_str: ?[]const u8 = v.arglists orelse blk: {
+    const arglists_str: ?[]const u8 = blk: {
         const alv = introspect.varArglistsValue(v) orelse break :blk null;
         var aw: Writer.Allocating = .init(ctx.scratch);
         print.printResult(ctx.rt, ctx.env, &aw.writer, alv) catch break :blk null;

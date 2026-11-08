@@ -157,4 +157,33 @@ EOF
 ) || fail "read_bigint_huge: non-zero exit"
 assert_eq 'read_bigint_huge' "$(last_line "$got")" '[1 36893488147419103232N 2.5]'
 
-echo "phase9_json: 16/16 cases pass"
+
+# Malformed input is bad DATA, not an unimplemented feature: JVM data.json
+# throws a catchable exception, so a program parsing untrusted JSON can handle
+# it. Raising the uncatchable `not_implemented` instead made every such program
+# impossible to write (found on the playground, whose /api/eval answered 500 to
+# a malformed body because the handler's catch could not fire).
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.data.json])
+(prn (try (clojure.data.json/read-str "not json") (catch Throwable _ :caught)))
+EOF
+) || fail "read_malformed_catchable: non-zero exit"
+assert_eq 'read_malformed_catchable' "$(last_line "$got")" ':caught'
+
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.data.json])
+(prn (try (clojure.data.json/read-str "{\"a\": }") (catch RuntimeException _ :caught)))
+EOF
+) || fail "read_truncated_catchable: non-zero exit"
+assert_eq 'read_truncated_catchable' "$(last_line "$got")" ':caught'
+
+# write-str on a value it has no JSON encoding for is likewise bad DATA — clj
+# throws a catchable Exception ("Don't know how to write JSON of ...").
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.data.json])
+(prn (try (clojure.data.json/write-str (fn [x] x)) (catch Throwable _ :caught)))
+EOF
+) || fail "write_unencodable_catchable: non-zero exit"
+assert_eq 'write_unencodable_catchable' "$(last_line "$got")" ':caught'
+
+echo "phase9_json: 19/19 cases pass"

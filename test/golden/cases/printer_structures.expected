@@ -1,0 +1,10 @@
+--- exit ---
+0
+--- stdout ---
+#queue (1 2 3)
+{:a 1, :b 2} #{1 2 3} {2 :b, 1 :a}
+(0 1 2) (0 2 4 6 8) (0 1 2)
+#user.R{:a 1, :b 2} #user.R{:a 1, :b 2} #user.R{:a 1, :b 2, :c 3}
+#error{:message "msg" :data {:k 1}}
+#'clojure.core/prn #object[Namespace "clojure.core"]
+--- stderr ---

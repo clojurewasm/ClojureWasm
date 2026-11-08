@@ -1,1 +1,0 @@
-.:/Users/shota.508/.m2/repository/org/clojure/clojure/1.12.4/clojure-1.12.4.jar:/Users/shota.508/.gitlibs/libs/org.clojure/data.finger-tree/28b130d74aed97da72708101f44c7510c94f280b/src/main/clojure:/Users/shota.508/.m2/repository/org/clojure/core.specs.alpha/0.4.74/core.specs.alpha-0.4.74.jar:/Users/shota.508/.m2/repository/org/clojure/spec.alpha/0.5.238/spec.alpha-0.5.238.jar

@@ -95,6 +95,36 @@ pub const TraceFn = *const fn (gc: *anyopaque, header: *HeapHeader) void;
 /// (nothing to finalise).
 pub var tag_finaliser_table: [64]?*const fn (gc: *anyopaque, header: *HeapHeader) void = @splat(null);
 
+/// Per-tag OWNED-BYTES hook (D-573): the bytes a live object owns BEYOND its
+/// GC record block — the memory its finaliser would free. `sweep` adds this to
+/// `last_live_bytes` so the adaptive trigger (`threshold = max(floor,
+/// last_live)`) sees a cost-proportional live size. Without it, a heap of
+/// Strings reported only the 32-byte wrappers while the byte payloads — the
+/// memory actually held, the graph actually costing RSS — were invisible:
+/// measured 78 MB reported against 359 MB RSS, a factor of 4.6, which made the
+/// adaptive arm read as inert exactly when the collector was most loaded.
+///
+/// A `null` entry means "owns nothing beyond the record" (every persistent
+/// collection — vector/map/list nodes are pure GC records). Unhooked-but-
+/// finalised tags whose payload lives outside `gc.infra` accounting:
+/// `host_instance` (descriptor-opaque state) and the wasm handles
+/// (engine-owned bytes) — see D-573's residual note.
+pub var tag_owned_bytes_table: [64]?*const fn (header: *HeapHeader) usize = @splat(null);
+
+pub const OwnedBytesFn = *const fn (header: *HeapHeader) usize;
+
+/// Register an owned-bytes hook for `tag`. Same idempotent semantics as
+/// `registerFinaliser`.
+pub fn registerOwnedBytes(tag: HeapTag, fn_ptr: OwnedBytesFn) void {
+    const idx = @intFromEnum(tag);
+    if (tag_owned_bytes_table[idx]) |existing| {
+        const std = @import("std");
+        std.debug.assert(existing == fn_ptr);
+        return;
+    }
+    tag_owned_bytes_table[idx] = fn_ptr;
+}
+
 /// Finaliser signature — receives the *GcHeap (type-erased to break
 /// the import cycle; concrete cast at call site) so it can free
 /// owned non-GC resources back to `gc.infra` per ADR-0028 §4 + the

@@ -1,0 +1,11 @@
+--- exit ---
+1
+--- stdout ---
+before
+--- stderr ---
+Syntax error at <ROOT>/test/golden/cases/error_reader.clj:2:0
+  Unmatched delimiter; reached EOF before ')'
+
+  1 | (println "before")
+  2 | (let [x 1] (println x)
+      ^--- Unmatched delimiter; reached EOF before ')'

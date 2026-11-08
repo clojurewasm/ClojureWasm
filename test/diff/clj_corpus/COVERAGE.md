@@ -4,7 +4,7 @@ Resume-time SSOT for "what the F-011 differential sweep has covered and what
 to sweep next". Promoted to git from the gitignored running ledger
 `private/notes/phaseA26-clj-differential-oracle.md` so a clean session's
 `/continue` reaches it without depending on scratch. Run the sweep with
-`scripts/clj_diff_sweep.sh` (see `.claude/rules/clj_diff_sweep.md`); land
+`bb scripts/clj_diff_sweep.clj` (see memory `20260909234815-3490bbcd`, clj_diff_sweep); land
 confirmed exprs into a `*.txt` corpus here via `--corpus`.
 
 ## Swept & at parity (don't re-sweep wholesale)
@@ -37,6 +37,20 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   scientific/large-float), bigdec `+ - * / quot rem mod` contagion incl.
   float→f64, ratio terminating-decimal + ArithmeticException. (D-191/D-194
   discharged.)
+- **java.lang.Number instance methods (2026-09-27)**: `.intValue` /
+  `.longValue` / `.shortValue` / `.byteValue` / `.doubleValue` / `.floatValue`,
+  the class-gated `.compareTo` / `.equals` / `.hashCode`, Double `.isNaN` /
+  `.isInfinite`, on Long, Double, BigInt and Ratio. Corpus
+  `number_value_methods`. `.floatValue` is AD-004 (no f32 narrowing).
+- **Ratio to double is `Ratio.doubleValue` everywhere (2026-09-27)**: DECIMAL64
+  first, so `(double -2/3)` is -0.6666666666666667 through `double`, float
+  contagion, the mixed float comparison and JSON. Corpus `ratio_double_value`.
+- **BigDecimal is a full Number, and its double is the nearest one
+  (2026-09-27)**: `.shortValue` / `.byteValue` / `.floatValue` join
+  `.intValue` / `.longValue` / `.doubleValue` from the shared Number surface,
+  and `(double 0.3M)` is 0.3 (not 0.30000000000000004) through `double`,
+  float contagion, the mixed comparison and `.doubleValue`. Corpus
+  `bigdec_number_methods`.
 - **Integer/Long bit + Math `*Exact`** — bitCount/clz/ctz/highestOneBit/reverse;
   addExact/multiplyExact/… (D-172). Remaining low-value: see Next.
 - **Coercion tower (`quot`/`rem`/`mod` + `int`/`long`/`num`/`double`/`float`/

@@ -112,3 +112,49 @@
 ;;=> [1 2]
 (into {} (map (fn [e] [(e 0) (inc (e 1))]) {:a 1 :b 2}))
 ;;=> {:a 2, :b 3}
+(keys (seq {:a 1 :b 2}))
+;;=> (:a :b)
+(vals (seq {:a 1 :b 2}))
+;;=> (1 2)
+(keys (map identity {:a 1 :b 2}))
+;;=> (:a :b)
+(vals (map identity {:a 1 :b 2}))
+;;=> (1 2)
+(keys (cons (first {:a 1}) nil))
+;;=> (:a)
+(keys (filter (fn [e] (= :a (key e))) {:a 1 :b 2}))
+;;=> (:a)
+(keys (rest (seq {:a 1 :b 2})))
+;;=> (:b)
+(nil? (keys (list)))
+;;=> true
+(into {} (map (fn [e] [(key e) (inc (val e))]) (seq {:a 1 :b 2})))
+;;=> {:a 2, :b 3}
+;; The SORTED path yields map entries too. Every case above walks a plain hash
+;; map, which is how sorted.seq shipped 2-vectors (map-entry? false) unnoticed
+;; until `key`/`val` began requiring a real entry. All three sorted walkers —
+;; seq, rseq and subseq/rsubseq — are covered here.
+(map-entry? (first (sorted-map :a 1)))
+;;=> true
+(vector? (first (sorted-map :a 1)))
+;;=> true
+(key (first (sorted-map :a 1)))
+;;=> :a
+(val (first (sorted-map :a 1)))
+;;=> 1
+(map key (seq (sorted-map :b 2 :a 1)))
+;;=> (:a :b)
+(map val (seq (sorted-map :b 2 :a 1)))
+;;=> (1 2)
+(map-entry? (first (rseq (sorted-map :a 1 :b 2))))
+;;=> true
+(map key (rseq (sorted-map :a 1 :b 2)))
+;;=> (:b :a)
+(map-entry? (first (subseq (sorted-map 1 :a 2 :b 3 :c) >= 2)))
+;;=> true
+(map key (subseq (sorted-map 1 :a 2 :b 3 :c) >= 2))
+;;=> (2 3)
+(map key (rsubseq (sorted-map 1 :a 2 :b 3 :c) <= 2))
+;;=> (2 1)
+(into {} (map (fn [e] [(key e) (inc (val e))]) (sorted-map :a 1 :b 2)))
+;;=> {:a 2, :b 3}

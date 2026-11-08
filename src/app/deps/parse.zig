@@ -12,14 +12,20 @@
 //! like `org.clojure/clojure`), never fetched — see ADR-0101 amendment. All
 //! allocations are on the caller's allocator (an arena at the call site), so
 //! there is no per-field free.
+//! Current behavior: the resolver fetches Maven source jars and follows
+//! compile/runtime POM dependencies; this module remains parse-only.
 
 const std = @import("std");
 const reader = @import("../../eval/reader.zig");
 const form_mod = @import("../../eval/form.zig");
+/// Historical note: skip-only Maven behavior described below is superseded by
+/// `mvn_fetch.zig` (see ADR-0101 amendment in hive memory).
 const Form = form_mod.Form;
 
 /// One `:deps` entry: a library coordinate. The resolution source is a
 /// `:local/root` or `:git/url`; a `:mvn/version` coordinate has no source cljw
+// Current resolver consumes the recorded :mvn/version to extract source jars;
+// the skip-only ADR-0101 policy above documents the previous implementation.
 /// can fetch (no Maven/Clojars), so it is RECORDED (`mvn_version`) and SKIPPED
 /// at resolve — not a hard error (ADR-0101 amendment). Whether the lib is
 /// actually satisfied is decided at `require` time by namespace availability

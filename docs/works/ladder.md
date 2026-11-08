@@ -29,6 +29,7 @@ replacing corpus copies + hand-laid `-cp`. Verified end-to-end: **medley** loads
 | 4    | clojure.data.priority-map  | master        | 1           | loads      | FULLY FUNCTIONAL — `(priority-map :a 3 :b 1 :c 2)` → peek=[:b 1] (lowest), count=3, keys=(:b :c :a), vals=(1 2 3). Drove the whole deftype host-interface stack: clojure.lang.* family (D-275/D-279/D-280), java.util.Map/Iterable host_inert (D-281/ADR-0103), clojure.core.protocols (D-282), clj-name `.method` dot-calls (D-283), `(MapEntry. …)`→2-vec (D-284), keys/vals seq-derivation (D-285).                                                             |
 | 4b   | flatland.ordered (amalloy) | master        | 1           | verified   | NOW a committed verified_project (2026-06-14): ordered-map keys/vals/assoc/dissoc + ordered-set insertion-order/dedup all clj-correct. The IEditableCollection/host-interface chain that earlier blocked it (D-286b family) is cleared. History: re-probed 2026-06-07 after D-287 (Java arrays); D-286a cleared bare deftype-supertype names; D-287 the Java-array backing store.                                                                                      |
 | 5    | clojure.data.generators    | master        | 2           | loads      | FULLY FUNCTIONAL 2026-06-07 - loads + bit-for-bit seeded parity with clj: `(binding [gen/*rnd* (java.util.Random. 42)] [(gen/long)(gen/long)(gen/boolean)(gen/double)])` => [-5025562857975149833 -5843495416241995736 false 0.9420735430282128] (identical to clj). Drove D-289 (java.util.Random LCG), D-295 (Short/Byte statics), D-296 (syntax-quote machinery clojure.core-qualified). The test.check foundation is now LIVE on cljw.                             |
+| 5b   | hive-test                  | 0.3.x         | 2           | verified   | VERIFIED 2026-09-04 as a committed source-coordinate project: its `.cljc` `deftrifecta` runs golden, 100-case test.check property, and two mutation checks inside cljw (3 tests / 7 assertions). Both hive-test and test.check are full-SHA source pins; no Maven JAR is used. |
 | 6    | clojure.tools.reader       | master        | 2           | parked     | PARKED 2026-06-07 (Step-0.6 finding): cleared D-288 (mutable field), D-287 (arrays), D-291 (Closeable), D-292 (multi-protocol extend-type) - all general wins. Remaining chain is DEAD interop in cljw: extend-type on java.io.PushbackReader/Reader/InputStream (D-293) + bare `extend` map-form; cljw uses its OWN reader path so these extensions can never dispatch. Loading them is low-value. Resume if a LIVE host-target consumer appears.                     |
 | 7    | clj-commons/clj-yaml-pure  | n/a           | 2           | not-probed | (placeholder: pure EDN/string-shaped; verify a real pure-clj yaml exists)                                                                                                                                                                                                                                                                                                                                                                                              |
 | 8    | cuerdas                    | master (cljc) | 3           | partial    | D-410: java.text.BreakIterator (abbreviate; LOAD still blocked — eager static resolution) — the regex layer is cleared: \p{...} property classes + class-internal \Q/\u/non-ASCII landed 2026-06-13 (D-409)                                                                                                                                                                                                                                                          |
@@ -39,6 +40,7 @@ replacing corpus copies + hand-laid `-cp`. Verified end-to-end: **medley** loads
 | 13   | clj-time                   | n/a           | 5           | not-probed | not pure (joda-time Java dep) — out of pure ladder, kept as a boundary marker                                                                                                                                                                                                                                                                                                                                                                                         |
 | 14   | core.async                 | master        | 5           | not-probed | NEEDS-ROW: threads / executors / go-macro state machine (Campaign Stage 1.7 Phase B)                                                                                                                                                                                                                                                                                                                                                                                   |
 | 15   | next.jdbc                  | n/a           | 5           | not-probed | not pure (java.sql.* JDBC) — out of pure ladder, boundary marker                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 16   | metosin/malli              | master (cljc) | 2           | verified   | NOW a committed verified_project (2026-08-12): validate/explain over predicate, `:map`, `:vector`, `:maybe`, `:enum` and sequence-regex (`:cat`) schemas, plus `explicit-keys`. Nine sequential blockers, every fix general — see the rung note below. First SCHEMA library on the ladder, and the one that unblocks a schema-first consumer stack.                                                                                                                     |
 
 ## Notes per rung
 
@@ -48,6 +50,22 @@ replacing corpus copies + hand-laid `-cp`. Verified end-to-end: **medley** loads
   cljw's `clojure.core` surface (protocols, records, transducers, sorted
   collections, metadata, regex, reduce-kv) covers a real pure-Clojure library
   end to end.
+- **Rung 16 (malli, verified):** nine sequential blockers, discovered one per
+  re-probe. Eight were surface gaps — `LazilyPersistentVector/createOwning`,
+  `PersistentArrayMap/createWithCheck`, `Murmur3/hashLong`,
+  `java.lang.reflect.Array/newInstance`, `java.util.ArrayDeque`,
+  `java.util.concurrent.TimeUnit`, `HashMap`'s `(int, float)` ctor + `.putAll`,
+  and `AbstractList`/`Vector` as opaque classes. Two were deeper: `instance?`
+  could not resolve a protocol by the interface name `defprotocol` generates
+  (`malli.registry.Registry`), and **`valueToForm` dropped symbol metadata on
+  macro expansion's return leg** — a general fault that shed type hints,
+  `^:private` and mutable-field markers from every macro-produced form, found
+  only because malli's transitive dep `borkdude/dynaload` happens to `set!` a
+  `^:volatile-mutable` field from a macro-emitted `deftype`.
+  Two lessons worth carrying: a lib's own transitive deps (`dynaload` here) are
+  part of its blocker chain and need their coord in the project's `deps.edn`;
+  and a blocker that appears three layers from its cause is bisected by asking
+  which construct works when written literally and fails when a macro emits it.
 - **Rung 8 (cuerdas, partial → Pattern/quote landed):** loads after its
   `cuerdas.regexp` dependency is laid out, but `capitalize` (and other fns) hit
   `(java.util.regex.Pattern/quote ...)` — a static Java-class method call cljw
@@ -66,7 +84,11 @@ replacing corpus copies + hand-laid `-cp`. Verified end-to-end: **medley** loads
   explicit *where* the pure-Clojure frontier ends — they will not load without
   the underlying Java library, regardless of cljw progress.
 
-- **test.check** (probed 2026-06-07 via -cp, data.generators now FULLY FUNCTIONAL): advanced past random.clj:106 hex-literal (fixed D-297, hex>i64 -> BigInt) to random.clj:178 `(proxy [ThreadLocal] …)` -> D-298 (proxy unrecognised; JVM-class proxy = Tier D). PARKED (proxy depth vs partial benefit; seeded paths might work with proxy-recognition level (a)).
+- **test.check + hive-test** (verified 2026-09-04 via source coordinates):
+  test.check 1.1.3 loads from its official Git source and drives hive-test's
+  `.cljc` `deftrifecta` end to end in cljw. The committed proof covers golden,
+  100 generated property cases, and two caught mutants. This supersedes the
+  2026-06-07 proxy blocker: current live source executes the tested path.
 
 - **Pure deftype/algo libs probed (2026-06-07 via -cp):**
   - **clojure.data.finger-tree** — `(extend-type nil …)` (nil-punning protocol
@@ -134,7 +156,7 @@ replacing corpus copies + hand-laid `-cp`. Verified end-to-end: **medley** loads
   sizeable fresh unit; the next clean vein is the D-075 metadata layer or a
   clojure.lang.RT host surface.
 
-- **Broad re-probe (2026-06-07)** after the D-287..D-299 arc found 7 libs now LOAD: clojure.data.csv, clojure.data.codec.base64 (over D-287 byte-arrays), clojure.core.unify, potpuri.core (deep-merge bit-identical to clj), bouncer.core, qbits.ex, and **clojure.data.zip** (D-299 ns-form leniency). Deferred/parked: symbol metadata = D-075 (interned symbols, structural); test.check = D-298 (proxy/Tier-D); tools.macro = clojure.lang.Compiler (Tier-D).
+- **Broad re-probe (2026-06-07)** after the D-287..D-299 arc found 7 libs now LOAD: clojure.data.csv, clojure.data.codec.base64 (over D-287 byte-arrays), clojure.core.unify, potpuri.core (deep-merge bit-identical to clj), bouncer.core, qbits.ex, and **clojure.data.zip** (D-299 ns-form leniency). Deferred/parked at that time: symbol metadata = D-075 (interned symbols, structural); test.check = D-298 (later superseded by the 2026-09-04 native trifecta proof above); tools.macro = clojure.lang.Compiler (Tier-D).
 
 - **Symbol-metadata layer LANDED (2026-06-07, D-304 / ADR-0110)** — `with-meta`/`meta` on a symbol now work (fresh non-interned gc.alloc'd symbol; ns+name-structural identity, meta-ignored; `.symbol` GC-membrane flip + trace). This was the blocker the frontier listed as "D-075 symbol-metadata layer" for **core.cache** + **algo.generic.math-functions**. Var/atom/ns/ref metadata is the remaining sibling (D-239).
 
@@ -206,8 +228,8 @@ hits. Do not edit `debt.yaml` from this doc; the main loop creates the rows.
    **The library-incorporation campaign is now on STAY (user 2026-06-07)**; the loop
    self-selects remaining quality work. For a future re-expansion, the patterns +
    gap-taxonomy + coverage-raising know-how are in
-   **`.dev/library_incorporation_playbook.md`**. SSOT =
-   `.dev/convergence_campaign.md` Stage 1.3 item 3.
+   **memory `20260911004716-29dac88c`** (the 12 blocker classes). SSOT =
+   memory `20260911004834-0aebca5a` (the SSOT wiring audit).
 
 Cross-cutting blocker (not a single row): **no deps.edn / Maven resolver
 yet** (Campaign Stage 1.2). Every transitive dependency must be fetched and

@@ -1,0 +1,100 @@
+[6/2 (instance? Long 6/2)]
+;;=> [3 true]
+[-6/2 (instance? Long -6/2)]
+;;=> [-3 true]
+[0/5 (instance? Long 0/5)]
+;;=> [0 true]
+4/6
+;;=> 2/3
+(let [v (read-string "+6/2")] [v (instance? Long v)])
+;;=> [3 true]
+(let [v (read-string "08/2")] [v (instance? Long v)])
+;;=> [4 true]
+(read-string "01/2")
+;;=> 1/2
+[36028797018963968/2 (instance? Long 36028797018963968/2)]
+;;=> [18014398509481984 true]
+[-36028797018963968/2 (instance? Long -36028797018963968/2)]
+;;=> [-18014398509481984 true]
+(let [v (read-string "9223372036854775807/1")] [v (instance? Long v)])
+;;=> [9223372036854775807 true]
+(let [v (read-string "-9223372036854775807/1")] [v (instance? Long v)])
+;;=> [-9223372036854775807 true]
+(let [v (read-string "123456789012345678901234567890/7")] [v (instance? clojure.lang.BigInt v)])
+;;=> [17636684144620811271604938270N true]
+(let [v (read-string "-123456789012345678901234567890/7")] [v (instance? clojure.lang.BigInt v)])
+;;=> [-17636684144620811271604938270N true]
+(let [v (read-string "36893488147419103232/8")] [v (instance? clojure.lang.BigInt v)])
+;;=> [4611686018427387904N true]
+(let [v (read-string "36893488147419103232/36893488147419103232")] [v (instance? clojure.lang.BigInt v)])
+;;=> [1N true]
+(let [v (read-string "9223372036854775808/1")] [v (instance? clojure.lang.BigInt v)])
+;;=> [9223372036854775808N true]
+(let [v (read-string "-9223372036854775808/1")] [v (instance? clojure.lang.BigInt v)])
+;;=> [-9223372036854775808N true]
+(let [v (read-string "-9223372036854775808/2")] [v (instance? clojure.lang.BigInt v)])
+;;=> [-4611686018427387904N true]
+(read-string "-9223372036854775808/3")
+;;=> -9223372036854775808/3
+24691357802469135781/2
+;;=> 24691357802469135781/2
+-24691357802469135781/2
+;;=> -24691357802469135781/2
+(read-string "24691357802469135781/2")
+;;=> 24691357802469135781/2
+(read-string "-24691357802469135781/2")
+;;=> -24691357802469135781/2
+(read-string "1/24691357802469135781")
+;;=> 1/24691357802469135781
+(read-string "18446744073709551616/36893488147419103232")
+;;=> 1/2
+(ratio? (read-string "24691357802469135781/2"))
+;;=> true
+(= 24691357802469135781 (numerator 24691357802469135781/2))
+;;=> true
+(= 24691357802469135781 (denominator 1/24691357802469135781))
+;;=> true
+(* 2 24691357802469135781/2)
+;;=> 24691357802469135781N
+(+ 24691357802469135781/2 1/2)
+;;=> 12345678901234567891N
+(let [v (read-string "24691357802469135781/2")] (= v (read-string (pr-str v))))
+;;=> true
+(pr-str (read-string "-24691357802469135781/2"))
+;;=> "-24691357802469135781/2"
+(quote 24691357802469135781/2)
+;;=> 24691357802469135781/2
+(quote [36028797018963968/2 6/2 24691357802469135781/2])
+;;=> [18014398509481984 3 24691357802469135781/2]
+(clojure.edn/read-string "24691357802469135781/2")
+;;=> 24691357802469135781/2
+(let [v (clojure.edn/read-string "36028797018963968/2")] [v (instance? Long v)])
+;;=> [18014398509481984 true]
+(let [v (clojure.edn/read-string "123456789012345678901234567890/7")] [v (instance? clojure.lang.BigInt v)])
+;;=> [17636684144620811271604938270N true]
+(clojure.edn/read-string "6/2")
+;;=> 3
+(clojure.edn/read-string "[1/24691357802469135781 -6/2]")
+;;=> [1/24691357802469135781 -3]
+(eval (read-string "24691357802469135781/2"))
+;;=> 24691357802469135781/2
+(let [v (/ -9223372036854775808 1)] [v (instance? clojure.lang.BigInt v)])
+;;=> [-9223372036854775808N true]
+(let [v (/ -9223372036854775808 2)] [v (instance? clojure.lang.BigInt v)])
+;;=> [-4611686018427387904N true]
+(let [v (/ -9223372036854775808 -9223372036854775808)] [v (instance? clojure.lang.BigInt v)])
+;;=> [1N true]
+(let [v (/ -9223372036854775807 1)] [v (instance? Long v)])
+;;=> [-9223372036854775807 true]
+(/ -9223372036854775808 -1)
+;;=> 9223372036854775808N
+(/ -9223372036854775808 3)
+;;=> -9223372036854775808/3
+(= (read-string "-9223372036854775808/1") (/ -9223372036854775808 1))
+;;=> true
+(read-string "1/0")
+;;=> <clj-error> ArithmeticException
+(clojure.edn/read-string "1/0")
+;;=> <clj-error> ArithmeticException
+(read-string "24691357802469135781/0")
+;;=> <clj-error> ArithmeticException

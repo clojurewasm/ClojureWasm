@@ -1,1 +1,0 @@
-.:/Users/shota.508/.m2/repository/org/clojure/clojure/1.12.4/clojure-1.12.4.jar:/Users/shota.508/.gitlibs/libs/org.clojure/data.priority-map/d8d20c74be6391975b15029c143b8694f750f521/src/main/clojure:/Users/shota.508/.m2/repository/org/clojure/core.specs.alpha/0.4.74/core.specs.alpha-0.4.74.jar:/Users/shota.508/.m2/repository/org/clojure/spec.alpha/0.5.238/spec.alpha-0.5.238.jar

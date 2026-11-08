@@ -27,7 +27,7 @@ const std = @import("std");
 const Value = @import("value/value.zig").Value;
 const Runtime = @import("runtime.zig").Runtime;
 const Env = @import("env.zig").Env;
-const lazy_seq = @import("lazy_seq.zig");
+const seqable = @import("seqable.zig");
 const string_mod = @import("collection/string.zig");
 const symbol_mod = @import("symbol.zig");
 const keyword_mod = @import("keyword.zig");
@@ -35,8 +35,11 @@ const hash = @import("hash.zig");
 const uuid_mod = @import("uuid.zig");
 const tagged_literal_mod = @import("tagged_literal.zig");
 const vector = @import("collection/vector.zig");
+const sub_vector = @import("collection/sub_vector.zig");
 const list = @import("collection/list.zig");
 const range = @import("collection/range.zig");
+const array_seq = @import("collection/array_seq.zig");
+const string_seq = @import("collection/string_seq.zig");
 const persistent_queue = @import("collection/persistent_queue.zig");
 const map = @import("collection/map.zig");
 const map_entry_mod = @import("collection/map_entry.zig");
@@ -54,6 +57,8 @@ const duration_value_mod = @import("time/duration_value.zig");
 const local_date_time_value_mod = @import("time/local_date_time_value.zig");
 const local_date_value_mod = @import("time/local_date_value.zig");
 const local_time_value_mod = @import("time/local_time_value.zig");
+const instant_mod = @import("time/instant.zig");
+const zone_offset_mod = @import("time/zone_offset.zig");
 const dispatch_mod = @import("dispatch.zig");
 const root_set = @import("gc/root_set.zig");
 const ClojureWasmError = @import("error/info.zig").ClojureWasmError;
@@ -72,19 +77,14 @@ fn numCat(v: Value) NumCat {
 }
 
 fn isSequential(v: Value) bool {
-    const t = v.tag();
-    // A MapEntry is a 2-vector (D-209), so `(= (first {:a 1}) [:a 1])`→true.
-    // A queue is Sequential, so `(= (conj EMPTY 1 2) [1 2])`→true (ADR-0087).
-    if (t == .vector or t == .list or t == .lazy_seq or t == .range or t == .map_entry or t == .persistent_queue)
-        return true;
-    // A deftype/reify declaring clojure.lang.Sequential (e.g. data.finger-tree's
-    // double-list) compares element-wise like clj's `=` (Util.pcequiv over the
-    // sequential operand), NOT by its own (often stub) `equiv` (D-427). seqEqual
-    // realizes such an instance to a list before walking. Gated on `Sequential`
-    // specifically — a map/set deftype is NOT Sequential and stays identity/equiv.
-    if (t == .typed_instance or t == .reified_instance)
-        return td_mod.descriptorOfInstance(v).declaresProtocol("Sequential");
-    return false;
+    // `sequential?` answers from this same call, so a value `sequential?` calls
+    // true is compared element-wise and no other is. It covers a deftype/reify
+    // declaring Sequential or an interface extending it (e.g. data.finger-tree's
+    // double-list): clj's `=` walks it through Util.pcequiv over the sequential
+    // operand, NOT its own (often stub) `equiv` (D-427); seqEqual realizes such
+    // an instance to a list before walking. A map/set deftype is NOT Sequential
+    // and stays identity/equiv.
+    return class_name_mod.implementsInterface(v, "Sequential");
 }
 
 /// O(1)-countable sequentials (length short-circuit eligible). A
@@ -98,12 +98,21 @@ fn isCountable(v: Value) bool {
     // length short-circuit drops the lazy tail (`(= (cons 1 (lazy-seq [2 3]))
     // (list 1 2 3))` → wrongly false). The element walk early-outs at the first
     // length mismatch anyway. Vector / map_entry / queue counts ARE reliable.
-    return t == .vector or t == .map_entry or t == .persistent_queue;
+    // `.array_seq` IS countable: it views an IMMUTABLE vector, so its
+    // `backing count - index` is exact and no lazy tail can extend it.
+    // `.string_seq` is countable for the same reason: it views an IMMUTABLE
+    // string, so its remaining-codepoint count is exact. Unlike the vector
+    // view the count is a byte scan rather than a subtraction, but a byte
+    // scan is far cheaper than the element walk it short-circuits.
+    return t == .vector or t == .sub_vector or t == .map_entry or t == .persistent_queue or t == .array_seq or t == .string_seq;
 }
 
 fn seqLen(v: Value) u32 {
     return switch (v.tag()) {
         .vector => vector.count(v),
+        .sub_vector => sub_vector.count(v),
+        .array_seq => array_seq.countOf(v),
+        .string_seq => string_seq.countOf(v),
         .list => list.countOf(v),
         .map_entry => 2,
         .persistent_queue => @intCast(persistent_queue.count(v)),
@@ -118,6 +127,14 @@ const Cursor = union(enum) {
     /// A compact `.range` walked by index via `start + i*step` — O(1) per
     /// element, no allocation (the seq-walk would materialise chunks).
     rng: struct { v: Value, i: i64, n: i64 },
+    /// A `.array_seq` vector view walked by index through the view — O(1) per
+    /// element and rt-free, like `.vec` (the seq-walk would allocate a cell).
+    aseq: struct { v: Value, i: u32, n: u32 },
+    /// A `.string_seq` walked by BYTE cursor over the backing UTF-8 — O(1) per
+    /// element and rt-free. NOT an index walk: `string_seq.nth(i)` is O(i)
+    /// because UTF-8 has no random access, so indexing per element would be
+    /// quadratic — the exact defect the view exists to remove (D-179).
+    sseq: struct { bytes: []const u8, off: usize },
     /// A MapEntry walked as the 2-vector `[key val]` (D-209).
     ment: struct { v: Value, i: u32 },
     /// A PersistentQueue walked front-list then rear-vector (ADR-0087).
@@ -131,7 +148,12 @@ const Cursor = union(enum) {
     fn init(v: Value) Cursor {
         return switch (v.tag()) {
             .vector => .{ .vec = .{ .v = v, .i = 0, .n = vector.count(v) } },
+            // A subvec is `parent[start, end)`; the `.vec` cursor walks absolute
+            // parent indices, so it needs no new variant.
+            .sub_vector => .{ .vec = .{ .v = sub_vector.parentOf(v), .i = sub_vector.startOf(v), .n = sub_vector.endOf(v) } },
             .range => .{ .rng = .{ .v = v, .i = 0, .n = range.countOf(v) } },
+            .array_seq => .{ .aseq = .{ .v = v, .i = 0, .n = array_seq.countOf(v) } },
+            .string_seq => .{ .sseq = .{ .bytes = string_seq.remainingBytes(v), .off = 0 } },
             .map_entry => .{ .ment = .{ .v = v, .i = 0 } },
             .persistent_queue => .{ .q = .{ .front = persistent_queue.frontOf(v), .rear = persistent_queue.rearOf(v), .ri = 0 } },
             // A `.list` cons may carry a NON-list seq as its rest (a "Cons over
@@ -166,9 +188,21 @@ const Cursor = union(enum) {
             },
             .rng => |*s| {
                 if (s.i >= s.n) return null;
-                const e = range.elementAt(s.v, s.i);
+                const e = try range.elementAt(rt, s.v, s.i);
                 s.i += 1;
                 return e;
+            },
+            .aseq => |*s| {
+                if (s.i >= s.n) return null;
+                const e = try array_seq.nth(rt, s.v, s.i);
+                s.i += 1;
+                return e;
+            },
+            .sseq => |*s| {
+                if (s.off >= s.bytes.len) return null;
+                const step = string_seq.decodeAt(s.bytes, s.off);
+                s.off += step.len;
+                return Value.initChar(@intCast(step.cp));
             },
             .ment => |*s| {
                 if (s.i >= 2) return null;
@@ -190,17 +224,24 @@ const Cursor = union(enum) {
                 return null;
             },
             .lst => |*node| {
-                if (node.tag() != .list or list.countOf(node.*) == 0) return null;
+                if ((node.tag() != .list and node.tag() != .cons) or list.countOf(node.*) == 0) return null;
                 const e = list.first(node.*);
                 node.* = list.rest(node.*);
                 return e;
             },
             .lzy => |*node| {
-                const s = try lazy_seq.seq(rt, env, node.*);
-                if (s.isNil()) return null;
-                const e = try lazy_seq.first(rt, env, s);
-                node.* = try lazy_seq.rest(rt, env, s);
-                return e;
+                var roots = [_]Value{ try seqable.seq(rt, env, node.*, seqable.noloc), .nil_val };
+                if (roots[0].isNil()) return null;
+                var sp: u16 = roots.len;
+                // GC-ROOT: A13 — a custom first can return a fresh head that
+                // rest's callback collects before the outer equality frame
+                // receives it [ref: .dev/gc_rooting.md §A].
+                var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+                root_set.eval_frame_head = &frame;
+                defer root_set.eval_frame_head = frame.parent;
+                roots[1] = try seqable.first(rt, env, roots[0], seqable.noloc);
+                node.* = try seqable.rest(rt, env, roots[0], seqable.noloc);
+                return roots[1];
             },
         }
     }
@@ -268,26 +309,26 @@ fn realizeSequentialInstance(rt: *Runtime, env: *Env, start: Value) anyerror!Val
     // a Seqable-only Sequential -seq returns a native seq (folded by the tail loop).
     {
         var cs0: dispatch_mod.CallSite = .{};
-        cur = (try dispatch_mod.dispatchOrNull(rt, env, &cs0, cur, "Seqable", "-seq", &.{cur}, noloc)) orelse cur;
+        cur = (try dispatch_mod.dispatchOrNull(rt, env, &cs0, cur, seqable.SEQABLE, "-seq", &.{cur}, noloc)) orelse cur;
     }
     while (cur.tag() == .typed_instance or cur.tag() == .reified_instance) {
         cur_root[0] = cur;
         gc_frame.locals = items.items;
         var cs1: dispatch_mod.CallSite = .{};
-        const f = (try dispatch_mod.dispatchOrNull(rt, env, &cs1, cur, "ISeq", "-first", &.{cur}, noloc)) orelse break;
+        const f = (try dispatch_mod.dispatchOrNull(rt, env, &cs1, cur, seqable.ISEQ, "-first", &.{cur}, noloc)) orelse break;
         try items.append(rt.gpa, f);
         gc_frame.locals = items.items;
         var cs2: dispatch_mod.CallSite = .{};
-        cur = (try dispatch_mod.dispatchOrNull(rt, env, &cs2, cur, "ISeq", "-next", &.{cur}, noloc)) orelse .nil_val;
+        cur = (try dispatch_mod.dispatchOrNull(rt, env, &cs2, cur, seqable.ISEQ, "-next", &.{cur}, noloc)) orelse .nil_val;
     }
     // A `-next` that handed off to a native seq tail (lazy/list): fold it in.
     while (!cur.isNil()) {
         cur_root[0] = cur;
         gc_frame.locals = items.items;
-        const s = try lazy_seq.seq(rt, env, cur);
+        const s = try seqable.seq(rt, env, cur, noloc);
         if (s.isNil()) break;
-        try items.append(rt.gpa, try lazy_seq.first(rt, env, s));
-        cur = try lazy_seq.rest(rt, env, s);
+        try items.append(rt.gpa, try seqable.first(rt, env, s, noloc));
+        cur = try seqable.rest(rt, env, s, noloc);
     }
     var result: Value = .nil_val;
     var i: usize = items.items.len;
@@ -319,15 +360,15 @@ fn realizeSeqToList(rt: *Runtime, env: *Env, start: Value) anyerror!Value {
     while (true) {
         cur_root[0] = cur;
         gc_frame.locals = items.items;
-        const s = try lazy_seq.seq(rt, env, cur);
+        const s = try seqable.seq(rt, env, cur, seqable.noloc);
         if (s.isNil()) break;
         cur_root[0] = s;
         gc_frame.locals = items.items;
-        const f = try lazy_seq.first(rt, env, s);
+        const f = try seqable.first(rt, env, s, seqable.noloc);
         try items.append(rt.gpa, f);
         cur_root[0] = s;
         gc_frame.locals = items.items;
-        cur = try lazy_seq.rest(rt, env, s);
+        cur = try seqable.rest(rt, env, s, seqable.noloc);
     }
     var result: Value = .nil_val;
     var i: usize = items.items.len;
@@ -455,22 +496,35 @@ inline fn sContains(rt: *Runtime, env: *Env, v: Value, x: Value) anyerror!bool {
 
 fn mapEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     if (mCount(a) != mCount(b)) return false;
-    var ks = try mKeys(rt, a);
-    while (ks.tag() == .list and list.countOf(ks) > 0) {
-        const k = list.first(ks);
-        if (!try mContains(rt, env, b, k)) return false;
-        if (!try valueEqual(rt, env, try mGet(rt, env, a, k), try mGet(rt, env, b, k))) return false;
-        ks = list.rest(ks);
+    // Key iteration is over ISeq, not a list representation. Keep the cursor,
+    // key and fetched values live across comparator/protocol calls that collect.
+    var roots = [_]Value{ try mKeys(rt, a), .nil_val, .nil_val, .nil_val };
+    var sp: u16 = roots.len;
+    var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
+    while (!roots[0].isNil()) {
+        roots[1] = try seqable.first(rt, env, roots[0], seqable.noloc);
+        if (!try mContains(rt, env, b, roots[1])) return false;
+        roots[2] = try mGet(rt, env, a, roots[1]);
+        roots[3] = try mGet(rt, env, b, roots[1]);
+        if (!try valueEqual(rt, env, roots[2], roots[3])) return false;
+        roots[0] = try seqable.next(rt, env, roots[0], seqable.noloc);
     }
     return true;
 }
 
 fn setEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     if (sCount(a) != sCount(b)) return false;
-    var es = try sSeq(rt, a);
-    while (es.tag() == .list and list.countOf(es) > 0) {
-        if (!try sContains(rt, env, b, list.first(es))) return false;
-        es = list.rest(es);
+    var roots = [_]Value{ try sSeq(rt, a), .nil_val };
+    var sp: u16 = roots.len;
+    var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
+    while (!roots[0].isNil()) {
+        roots[1] = try seqable.first(rt, env, roots[0], seqable.noloc);
+        if (!try sContains(rt, env, b, roots[1])) return false;
+        roots[0] = try seqable.next(rt, env, roots[0], seqable.noloc);
     }
     return true;
 }
@@ -492,10 +546,7 @@ fn setEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
 /// (D-460), numerics by category (D-205). Residual identity-compared
 /// keys: lazy / range (cannot realize rt-free) and deftype instances.
 pub fn keyEqValue(a: Value, b: Value) bool {
-    // NaN is never `=` to itself (clj `equiv`), so a NaN key can never be found
-    // even when bit-identical: `(contains? #{##NaN} ##NaN)` → false. Mirrors the
-    // valueEqual identity-fastpath exception. (The `.floating => {}` arm below
-    // then also yields false for the rare `0.0`/`-0.0` non-identical case.)
+    // IEEE NaN is never equal to itself, including as a map/set key.
     if (@intFromEnum(a) == @intFromEnum(b)) {
         if (a.tag() == .float and std.math.isNan(a.asFloat())) return false;
         return true;
@@ -517,9 +568,9 @@ pub fn keyEqValue(a: Value, b: Value) bool {
             //   interchangeable. The cached stripped projection (ADR-0077 /
             //   D-205) makes this a rt-free field compare, like Ratio.
             .decimal => return decimalKeyEq(a, b),
-            // `.floating`: equal floats are bit-identical (caught by the
-            //   identity check above); `0.0`/`-0.0` is a rare residual.
-            .floating => {},
+            // IEEE equality merges signed zeros, while NaN never matches.
+            // valueHash normalizes both zeros to the same bucket.
+            .floating => return a.asFloat() == b.asFloat(),
             .none => unreachable,
         }
     }
@@ -545,9 +596,10 @@ pub fn keyEqValue(a: Value, b: Value) bool {
         if (ta == .hash_set and tb == .hash_set) return set.contentEq(a, b);
         return anySetKeyEq(a, b);
     }
-    // defrecord keys by value (partner of typedInstanceEqual): same
-    // descriptor + each field keyEqValue. deftype stays identity (a
-    // non-bit-identical pair already fell through the identity check).
+    // defrecord and Date / java.time keys by value (partner of
+    // typedInstanceEqual): same descriptor + each field keyEqValue, or the
+    // temporal_kinds row's `eq`. deftype stays identity (a non-bit-identical
+    // pair already fell through the identity check).
     if (ta == .typed_instance and tb == .typed_instance)
         return typedInstanceKeyEq(a, b);
     // UUID / TaggedLiteral keys by value (partner of the valueEqual +
@@ -571,7 +623,10 @@ pub fn keyEqValue(a: Value, b: Value) bool {
 }
 
 inline fn isSeqKeyTag(t: Value.Tag) bool {
-    return t == .vector or t == .list or t == .map_entry;
+    // `.array_seq` qualifies for the rt-FREE path because `SeqKeyCursor` walks
+    // it by index with no forcing — the reason `.lazy_seq`/`.range` are absent
+    // does not apply to a view over an immutable vector.
+    return t == .vector or t == .sub_vector or t == .list or t == .cons or t == .map_entry or t == .array_seq or t == .string_seq;
 }
 
 /// Symbol equality (ADR-0110): ns+name structural, metadata IGNORED — symbol
@@ -666,10 +721,137 @@ inline fn isAnyMapTag(t: Value.Tag) bool {
     return t == .array_map or t == .hash_map or t == .sorted_map;
 }
 
+/// One value-semantics row per native temporal type: its recognizer, its
+/// by-value `=` and its JDK `hashCode` (AD-009: hash is clj-portable for value
+/// types). `eq(a,b)` implies `hash(a) == hash(b)`; typedInstanceEqual,
+/// typedInstanceKeyEq and valueHash all read this table, so the three cannot
+/// drift. Each type has a distinct descriptor, so a Date is never `=` (nor a
+/// key-equal of) a Timestamp even when both hash alike.
+const TemporalKind = struct {
+    is: *const fn (Value) bool,
+    eq: *const fn (Value, Value) bool,
+    hash: *const fn (Value) u32,
+};
+
+const temporal_kinds = [_]TemporalKind{
+    .{ .is = date_mod.isDate, .eq = temporalEq.date, .hash = temporalHash.date },
+    .{ .is = timestamp_mod.isTimestamp, .eq = temporalEq.timestamp, .hash = temporalHash.timestamp },
+    .{ .is = instant_value_mod.isInstant, .eq = temporalEq.instant, .hash = temporalHash.instant },
+    .{ .is = duration_value_mod.isDuration, .eq = temporalEq.duration, .hash = temporalHash.duration },
+    .{ .is = local_date_time_value_mod.isLocalDateTime, .eq = temporalEq.localDateTime, .hash = temporalHash.localDateTime },
+    .{ .is = local_date_value_mod.isLocalDate, .eq = temporalEq.localDate, .hash = temporalHash.localDate },
+    .{ .is = local_time_value_mod.isLocalTime, .eq = temporalEq.localTime, .hash = temporalHash.localTime },
+    .{ .is = zone_offset_mod.isZone, .eq = temporalEq.zone, .hash = temporalHash.zone },
+};
+
+/// The `temporal_kinds` row for `v`, or null. Only a `.native` (host)
+/// descriptor qualifies: a user deftype never borrows a host type's value
+/// semantics through a shared fqcn, and deftype `=` / hash skip the fqcn scan.
+fn temporalKindOf(v: Value) ?*const TemporalKind {
+    if (v.tag() != .typed_instance) return null;
+    if (v.decodePtr(*const td_mod.TypedInstance).descriptor.kind != .native) return null;
+    for (&temporal_kinds) |*k| {
+        if (k.is(v)) return k;
+    }
+    return null;
+}
+
+const temporalEq = struct {
+    fn date(a: Value, b: Value) bool {
+        return date_mod.epochMsOf(a) == date_mod.epochMsOf(b);
+    }
+    // Epoch-ms + the full fractional-second nanos.
+    fn timestamp(a: Value, b: Value) bool {
+        return timestamp_mod.epochMsOf(a) == timestamp_mod.epochMsOf(b) and
+            timestamp_mod.nanosOf(a) == timestamp_mod.nanosOf(b);
+    }
+    // Second-aligned epoch-ms + nanos.
+    fn instant(a: Value, b: Value) bool {
+        return instant_value_mod.epochMsOf(a) == instant_value_mod.epochMsOf(b) and
+            instant_value_mod.nanosOf(a) == instant_value_mod.nanosOf(b);
+    }
+    // Normalized seconds + nanos.
+    fn duration(a: Value, b: Value) bool {
+        return duration_value_mod.secondsOf(a) == duration_value_mod.secondsOf(b) and
+            duration_value_mod.nanosOf(a) == duration_value_mod.nanosOf(b);
+    }
+    fn localDateTime(a: Value, b: Value) bool {
+        return local_date_time_value_mod.epochDayOf(a) == local_date_time_value_mod.epochDayOf(b) and
+            local_date_time_value_mod.nanoOfDayOf(a) == local_date_time_value_mod.nanoOfDayOf(b);
+    }
+    fn localDate(a: Value, b: Value) bool {
+        return local_date_value_mod.epochDayOf(a) == local_date_value_mod.epochDayOf(b);
+    }
+    fn localTime(a: Value, b: Value) bool {
+        return local_time_value_mod.nanoOfDayOf(a) == local_time_value_mod.nanoOfDayOf(b);
+    }
+    // ZoneOffset / ZoneRegion: equal by id, so the class (prefix) must match too.
+    fn zone(a: Value, b: Value) bool {
+        return std.meta.eql(zone_offset_mod.zoneOf(a), zone_offset_mod.zoneOf(b));
+    }
+};
+
+/// The JDK hashCode formulas, one per type (java.util.Date, java.sql.Timestamp,
+/// java.time.Instant / Duration / LocalDate / LocalTime / LocalDateTime).
+const temporalHash = struct {
+    /// Java `Long.hashCode`: (int)(v ^ (v >>> 32)).
+    fn long(v: i64) u32 {
+        const u: u64 = @bitCast(v);
+        return @truncate(u ^ (u >> 32));
+    }
+    /// Instant and Duration: `Long.hashCode(seconds) + 51 * nanos`.
+    fn secondsNanos(seconds: i64, nanos: i32) u32 {
+        return long(seconds) +% 51 *% @as(u32, @bitCast(nanos));
+    }
+    /// LocalDate: `(y & 0xFFFFF800) ^ ((y << 11) + (m << 6) + d)` on ints.
+    fn civilDay(epoch_day: i64) u32 {
+        const c = instant_mod.civilFromDays(epoch_day);
+        const y: u32 = @bitCast(@as(i32, @truncate(c.y)));
+        const m: u32 = @intCast(c.m);
+        const d: u32 = @intCast(c.d);
+        return (y & 0xFFFFF800) ^ ((y << 11) +% (m << 6) +% d);
+    }
+    fn date(v: Value) u32 {
+        return long(date_mod.epochMsOf(v));
+    }
+    // Timestamp inherits Date.hashCode over getTime() (whole millis).
+    fn timestamp(v: Value) u32 {
+        return long(timestamp_mod.epochMsOf(v));
+    }
+    fn instant(v: Value) u32 {
+        return secondsNanos(@divFloor(instant_value_mod.epochMsOf(v), 1000), instant_value_mod.nanosOf(v));
+    }
+    fn duration(v: Value) u32 {
+        return secondsNanos(duration_value_mod.secondsOf(v), duration_value_mod.nanosOf(v));
+    }
+    fn localDate(v: Value) u32 {
+        return civilDay(local_date_value_mod.epochDayOf(v));
+    }
+    // LocalTime: `Long.hashCode(toNanoOfDay())`.
+    fn localTime(v: Value) u32 {
+        return long(local_time_value_mod.nanoOfDayOf(v));
+    }
+    // ZoneOffset: `totalSeconds`; ZoneRegion: `String.hashCode` of its id.
+    fn zone(v: Value) u32 {
+        const z = zone_offset_mod.zoneOf(v);
+        if (!z.isRegion()) return @bitCast(z.seconds);
+        var buf: [24]u8 = undefined;
+        var h: u32 = 0;
+        for (zone_offset_mod.formatId(&buf, z)) |c| h = h *% 31 +% c;
+        return h;
+    }
+    // LocalDateTime: `date.hashCode() ^ time.hashCode()`.
+    fn localDateTime(v: Value) u32 {
+        return civilDay(local_date_time_value_mod.epochDayOf(v)) ^
+            long(local_date_time_value_mod.nanoOfDayOf(v));
+    }
+};
+
 fn typedInstanceKeyEq(a: Value, b: Value) bool {
     const ia = a.decodePtr(*const td_mod.TypedInstance);
     const ib = b.decodePtr(*const td_mod.TypedInstance);
     if (ia.descriptor != ib.descriptor) return false;
+    if (temporalKindOf(a)) |k| return k.eq(a, b);
     if (ia.descriptor.kind != .defrecord) return false;
     const fa = ia.fields();
     const fb = ib.fields();
@@ -689,7 +871,8 @@ fn typedInstanceKeyEq(a: Value, b: Value) bool {
 /// By-value branches mirror keyEqValue's by-value arms: strings hash by
 /// BYTES; sequentials (vector / list) by ordered content (one shared
 /// formula → vec≡list collide); maps / sets by order-independent content;
-/// defrecords by descriptor + fields. int/float use the numeric hash so
+/// defrecords by descriptor + fields; Date / java.time values by their JDK
+/// hashCode (the `temporal_kinds` row). int/float use the numeric hash so
 /// `{1 :a}` and `1.0` stay distinct. Everything else (immediates, interned
 /// keyword·symbol, lazy / range, deftype) is identity-compared in
 /// keyEqValue, so hashing the raw NaN-box bits is contract-consistent.
@@ -734,7 +917,7 @@ pub fn valueHash(v: Value) u32 {
         // recursive, via the SAME formula so an equal vector and list
         // collide into one bucket (Clojure's sequential =). Partner of
         // seqKeyEq (D-092).
-        .vector, .list, .map_entry, .persistent_queue => seqHash(v),
+        .vector, .sub_vector, .list, .map_entry, .persistent_queue, .array_seq, .string_seq => seqHash(v),
         // Map / set keys hash by content (order-independent), rt-free via
         // the collection module's structure walk (D-092). Partner of
         // map.contentEq / set.contentEq.
@@ -759,11 +942,13 @@ pub fn valueHash(v: Value) u32 {
             const t = tagged_literal_mod.asTaggedLiteral(v);
             break :blk 31 *% valueHash(t.tag) +% valueHash(t.form);
         },
-        // defrecord keys hash by descriptor + fields (partner of
-        // typedInstanceKeyEq); deftype keeps the identity bit-hash.
+        // defrecord keys hash by descriptor + fields and Date / java.time
+        // values by their JDK hashCode (both partners of typedInstanceKeyEq);
+        // deftype keeps the identity bit-hash.
         .typed_instance => blk: {
             const inst = v.decodePtr(*const td_mod.TypedInstance);
             if (inst.descriptor.kind == .defrecord) break :blk typedInstanceHash(inst);
+            if (temporalKindOf(v)) |k| break :blk k.hash(v);
             break :blk hash.hashLong(@bitCast(@intFromEnum(v)));
         },
         // Numeric heap types hash BY VALUE (D-205) — without these they fell
@@ -884,6 +1069,11 @@ const SeqKeyCursor = struct {
 
     const Inner = union(enum) {
         vec: struct { v: Value, i: u32, n: u32 },
+        /// A `.array_seq` vector view — rt-free index walk, same as `.vec`.
+        aseq: struct { v: Value, i: u32, n: u32 },
+        /// A `.string_seq` — rt-free BYTE walk. See the `Cursor.sseq` note on
+        /// why this is not an index walk.
+        sseq: struct { bytes: []const u8, off: usize },
         /// A MapEntry walked as the 2-vector `[key val]` (D-209) — rt-free.
         ment: struct { v: Value, i: u32 },
         /// A PersistentQueue walked front-list then rear-vector (ADR-0087).
@@ -894,6 +1084,9 @@ const SeqKeyCursor = struct {
     fn init(v: Value) SeqKeyCursor {
         return .{ .inner = switch (v.tag()) {
             .vector => .{ .vec = .{ .v = v, .i = 0, .n = vector.count(v) } },
+            .sub_vector => .{ .vec = .{ .v = sub_vector.parentOf(v), .i = sub_vector.startOf(v), .n = sub_vector.endOf(v) } },
+            .array_seq => .{ .aseq = .{ .v = v, .i = 0, .n = array_seq.countOf(v) } },
+            .string_seq => .{ .sseq = .{ .bytes = string_seq.remainingBytes(v), .off = 0 } },
             .map_entry => .{ .ment = .{ .v = v, .i = 0 } },
             .persistent_queue => .{ .q = .{ .front = persistent_queue.frontOf(v), .rear = persistent_queue.rearOf(v), .ri = 0 } },
             else => .{ .lst = v },
@@ -907,6 +1100,23 @@ const SeqKeyCursor = struct {
                 const e = vector.nth(s.v, s.i);
                 s.i += 1;
                 return e;
+            },
+            .aseq => |*s| {
+                if (s.i >= s.n) return null;
+                const e = array_seq.peekNth(s.v, s.i) orelse {
+                    // A primitive long that needs a heap box: not realizable
+                    // rt-free, so the key falls back to identity.
+                    self.truncated = true;
+                    return null;
+                };
+                s.i += 1;
+                return e;
+            },
+            .sseq => |*s| {
+                if (s.off >= s.bytes.len) return null;
+                const step = string_seq.decodeAt(s.bytes, s.off);
+                s.off += step.len;
+                return Value.initChar(@intCast(step.cp));
             },
             .ment => |*s| {
                 if (s.i >= 2) return null;
@@ -928,7 +1138,7 @@ const SeqKeyCursor = struct {
                 return null;
             },
             .lst => |*node| {
-                if (node.tag() != .list) {
+                if (node.tag() != .list and node.tag() != .cons) {
                     if (!node.isNil()) self.truncated = true;
                     return null;
                 }
@@ -999,8 +1209,8 @@ pub fn valueEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     //    interned keyword·symbol / pointer-identical heap. EXCEPTION: a NaN is
     //    never `=` to itself (IEEE / clj `equiv`: `(= ##NaN ##NaN)` → false),
     //    even bit-identical — fall through to the IEEE float compare below.
-    //    (Map/set KEY equality keeps NaN-equal via `keyEqValue`, matching clj's
-    //    equals/hash split — `(contains? #{##NaN} ##NaN)` → true.)
+    //    Map/set key equality also keeps NaN unequal: even
+    //    `(contains? #{##NaN} ##NaN)` is false on the JVM.
     if (@intFromEnum(a) == @intFromEnum(b)) {
         if (a.tag() == .float and std.math.isNan(a.asFloat())) return false;
         return true;
@@ -1117,7 +1327,7 @@ pub fn hashDispatch(rt: *Runtime, env: *Env, v: Value) ClojureWasmError!u32 {
         // A cons over a lazy tail (syntax-quote) hashes rt-free until the lazy
         // tail truncates the walk; realize + content-hash only then (D-408) so a
         // fully-realized list keeps the fast path.
-        .list => return seqHashChecked(v) orelse blk: {
+        .list, .cons => return seqHashChecked(v) orelse blk: {
             const realized = realizeSeqToList(rt, env, v) catch |e| return @errorCast(e);
             break :blk seqHash(realized);
         },
@@ -1161,7 +1371,7 @@ pub fn hashDispatch(rt: *Runtime, env: *Env, v: Value) ClojureWasmError!u32 {
 pub fn hashConsult(v: Value) ClojureWasmError!u32 {
     if (dispatch_mod.current_env) |env| {
         switch (v.tag()) {
-            .typed_instance, .reified_instance, .lazy_seq, .range, .chunked_cons, .list => return hashDispatch(env.rt, env, v),
+            .typed_instance, .reified_instance, .lazy_seq, .range, .chunked_cons, .list, .cons => return hashDispatch(env.rt, env, v),
             else => {},
         }
     }
@@ -1176,7 +1386,7 @@ pub fn hashConsult(v: Value) ClojureWasmError!u32 {
 /// `.persistent_queue => seqHash` arm — closes a hash/eq inconsistency).
 fn isSeqKeyValue(v: Value) bool {
     return switch (v.tag()) {
-        .vector, .list, .map_entry, .persistent_queue, .lazy_seq, .range, .chunked_cons => true,
+        .vector, .sub_vector, .list, .cons, .map_entry, .persistent_queue, .lazy_seq, .range, .chunked_cons, .array_seq, .string_seq => true,
         .typed_instance, .reified_instance => isSequential(v),
         else => false,
     };
@@ -1201,7 +1411,7 @@ fn isSimpleEqKey(v: Value) bool {
 /// (they already walk rt-free). Partner of `realizeKeyForCompare`'s callers.
 fn realizeKeyForCompare(rt: *Runtime, env: *Env, v: Value) anyerror!Value {
     return switch (v.tag()) {
-        .lazy_seq, .range, .chunked_cons, .list => try realizeSeqToList(rt, env, v),
+        .lazy_seq, .range, .chunked_cons, .list, .cons => try realizeSeqToList(rt, env, v),
         .typed_instance, .reified_instance => if (isSequential(v)) try realizeSequentialInstance(rt, env, v) else v,
         else => v,
     };
@@ -1276,50 +1486,11 @@ fn keyInstanceEq(rt: *Runtime, env: *Env, x: Value, other: Value) anyerror!?bool
 /// record is never `=` to a plain map: the caller's same-tag gate already
 /// excludes the map tags before this arm.
 fn typedInstanceEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
-    // Date values (D-200 / ADR-0079) compare by epoch-ms — a native
-    // typed_instance otherwise defaults to identity `=` (the arm below),
-    // which would make two equal `#inst` allocations unequal.
-    if (date_mod.isDate(a) and date_mod.isDate(b)) {
-        return date_mod.epochMsOf(a) == date_mod.epochMsOf(b);
-    }
-    // Timestamp values (D-382) compare by epoch-ms + nanos (the full
-    // fractional second), else two equal-instant Timestamps would default to
-    // identity `=`. A Timestamp is never `=` a Date here (distinct descriptor).
-    if (timestamp_mod.isTimestamp(a) and timestamp_mod.isTimestamp(b)) {
-        return timestamp_mod.epochMsOf(a) == timestamp_mod.epochMsOf(b) and
-            timestamp_mod.nanosOf(a) == timestamp_mod.nanosOf(b);
-    }
-    // Instant values (D-462) compare by second-aligned epoch-ms + nanos, else
-    // two equal-instant allocations would default to identity `=`. A distinct
-    // descriptor keeps an Instant from being `=` a Date/Timestamp here.
-    if (instant_value_mod.isInstant(a) and instant_value_mod.isInstant(b)) {
-        return instant_value_mod.epochMsOf(a) == instant_value_mod.epochMsOf(b) and
-            instant_value_mod.nanosOf(a) == instant_value_mod.nanosOf(b);
-    }
-    // Duration values (D-462) compare by NORMALIZED seconds + nanos, else two
-    // equal-span allocations would default to identity `=`. A distinct
-    // descriptor keeps a Duration from being `=` an Instant/Date/Timestamp.
-    if (duration_value_mod.isDuration(a) and duration_value_mod.isDuration(b)) {
-        return duration_value_mod.secondsOf(a) == duration_value_mod.secondsOf(b) and
-            duration_value_mod.nanosOf(a) == duration_value_mod.nanosOf(b);
-    }
-    // LocalDateTime values (D-462) compare by epoch_day + nano_of_day, else two
-    // equal-datetime allocations would default to identity `=`. A distinct
-    // descriptor keeps a LocalDateTime from being `=` an Instant/Duration/Date.
-    if (local_date_time_value_mod.isLocalDateTime(a) and local_date_time_value_mod.isLocalDateTime(b)) {
-        return local_date_time_value_mod.epochDayOf(a) == local_date_time_value_mod.epochDayOf(b) and
-            local_date_time_value_mod.nanoOfDayOf(a) == local_date_time_value_mod.nanoOfDayOf(b);
-    }
-    // LocalDate values (D-462) compare by epoch_day, else two equal-date
-    // allocations would default to identity `=`. A distinct descriptor keeps a
-    // LocalDate from being `=` a LocalDateTime/Instant/Duration/Date.
-    if (local_date_value_mod.isLocalDate(a) and local_date_value_mod.isLocalDate(b)) {
-        return local_date_value_mod.epochDayOf(a) == local_date_value_mod.epochDayOf(b);
-    }
-    // LocalTime values (D-462) compare by nano_of_day. A distinct descriptor
-    // keeps a LocalTime from being `=` any other temporal type.
-    if (local_time_value_mod.isLocalTime(a) and local_time_value_mod.isLocalTime(b)) {
-        return local_time_value_mod.nanoOfDayOf(a) == local_time_value_mod.nanoOfDayOf(b);
+    // Date / Timestamp / java.time values compare by value (D-200, D-382,
+    // D-462) via the one `temporal_kinds` table, which also supplies their
+    // hash (valueHash) and key equality (typedInstanceKeyEq).
+    if (temporalKindOf(a)) |k| {
+        if (temporalKindOf(b) == k) return k.eq(a, b);
     }
     // DayOfWeek / Month enum values are now interned host-enum singletons
     // (ADR-0161): the same constant is one canonical pointer, so the identity

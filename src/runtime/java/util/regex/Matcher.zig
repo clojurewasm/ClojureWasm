@@ -8,7 +8,7 @@
 //! Backend: impl-only
 //! Impl deps: regex
 //! Clojure peer: clojure.core/re-matcher, clojure.core/re-groups,
-//!   clojure.core/re-find (matcher 1-arity)
+//!   clojure.core/re-find (matcher 1-arity), clojure.core/nth (Indexed)
 //!
 //! state[0] = the regex Value, state[1] = the input string Value (both GC-
 //! marked via `host_trace` — the Iterator precedent), state[2] = *MutState on
@@ -49,12 +49,29 @@ const MutState = struct {
     /// Last successful match span (group 0).
     start: u32 = 0,
     end: u32 = 0,
-    /// Capture-slot snapshot of the last successful match (2 per group).
-    slots: [regex_match.MAX_SLOTS_INLINE]i32 = [_]i32{-1} ** regex_match.MAX_SLOTS_INLINE,
+    /// Capture-slot snapshot of the last successful match (2 per group,
+    /// `regex_match.slotCount` wide), owned on `gc.infra` (freed by `record`,
+    /// `reset` and the finaliser). Empty for a pattern without groups.
+    slots: []i32 = &.{},
+
+    /// Capture group `n`'s byte span of the last match, or null when it did
+    /// not participate.
+    fn groupSpan(self: *const MutState, n: usize) ?struct { start: usize, end: usize } {
+        if (2 * n + 1 >= self.slots.len) return null;
+        const s = self.slots[2 * n];
+        const e = self.slots[2 * n + 1];
+        if (s < 0 or e < 0) return null;
+        return .{ .start = @intCast(s), .end = @intCast(e) };
+    }
+
+    fn freeSlots(self: *MutState, infra: std.mem.Allocator) void {
+        if (self.slots.len > 0) infra.free(self.slots);
+        self.slots = &.{};
+    }
 };
 
 fn stateOf(recv: Value) *MutState {
-    return @ptrFromInt(host_instance.asHostInstance(recv).state[2]);
+    return @ptrFromInt(@as(usize, @intCast(host_instance.asHostInstance(recv).state[2])));
 }
 
 fn inputOf(recv: Value) []const u8 {
@@ -89,11 +106,16 @@ fn nextFindPos(input: []const u8, r: regex_match.MatchResult) u32 {
     return r.end + len;
 }
 
-fn record(ms: *MutState, input: []const u8, r: regex_match.MatchResult) void {
+/// Record a successful match into the matcher state. Consumes `r` (its
+/// capture slots, allocated on `rt.gpa`, are copied onto `gc.infra` and freed).
+fn record(rt: *Runtime, ms: *MutState, input: []const u8, r: regex_match.MatchResult) !void {
+    defer r.deinit(rt.gpa);
+    const slots: []i32 = if (r.captures.slots.len > 0) try rt.gc.infra.dupe(i32, r.captures.slots) else &.{};
+    ms.freeSlots(rt.gc.infra);
+    ms.slots = slots;
     ms.found = true;
     ms.start = r.start;
     ms.end = r.end;
-    ms.slots = r.captures.slots;
     ms.pos = nextFindPos(input, r);
 }
 
@@ -105,7 +127,7 @@ fn find(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyer
     const input = inputOf(args[0]);
     if (ms.pos <= input.len) {
         if (try regex_match.findFrom(rt.gpa, programOf(args[0]), input, ms.pos)) |r| {
-            record(ms, input, r);
+            try record(rt, ms, input, r);
             return Value.initBoolean(true);
         }
     }
@@ -125,9 +147,10 @@ fn lookingAt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     // The Pike VM returns the leftmost match; lookingAt holds iff it starts at 0.
     if (try regex_match.findFrom(rt.gpa, programOf(args[0]), input, 0)) |r| {
         if (r.start == 0) {
-            record(ms, input, r);
+            try record(rt, ms, input, r);
             return Value.initBoolean(true);
         }
+        r.deinit(rt.gpa);
     }
     ms.found = false;
     return Value.initBoolean(false);
@@ -140,7 +163,7 @@ fn matches(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     const ms = stateOf(args[0]);
     const input = inputOf(args[0]);
     if (try regex_match.matchFull(rt.gpa, programOf(args[0]), input)) |r| {
-        record(ms, input, r);
+        try record(rt, ms, input, r);
         return Value.initBoolean(true);
     }
     ms.found = false;
@@ -159,16 +182,26 @@ fn group(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anye
     const input = inputOf(args[0]);
     if (args.len == 1)
         return string_collection.alloc(rt, input[ms.start..ms.end]);
+    // `(.group m "name")` — a `(?<name>…)` group by name (Java group(String)).
+    if (args[1].tag() == .string) {
+        const want = string_collection.asString(args[1]);
+        for (programOf(args[0]).group_names) |g| {
+            if (std.mem.eql(u8, g.name, want)) {
+                const span = ms.groupSpan(g.index) orelse return Value.nil_val;
+                return string_collection.alloc(rt, input[span.start..span.end]);
+            }
+        }
+        // Java: IllegalArgumentException "No group with name <x>" — catchable.
+        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = ".group", .expected = "a declared (?<name>…) group", .actual = "an unknown group name" });
+    }
     if (args[1].tag() != .integer)
         return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = ".group", .actual = @tagName(args[1].tag()) });
     const n = args[1].asInteger();
     if (n == 0) return string_collection.alloc(rt, input[ms.start..ms.end]);
     if (n < 0 or n > programOf(args[0]).capture_count)
         return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.util.regex.Matcher/group" });
-    const s = ms.slots[@intCast(2 * n)];
-    const e = ms.slots[@intCast(2 * n + 1)];
-    if (s < 0 or e < 0) return Value.nil_val;
-    return string_collection.alloc(rt, input[@intCast(s)..@intCast(e)]);
+    const span = ms.groupSpan(@intCast(n)) orelse return Value.nil_val;
+    return string_collection.alloc(rt, input[span.start..span.end]);
 }
 
 /// `(.groupCount m)` — number of capturing groups in the pattern.
@@ -201,11 +234,29 @@ fn endIndex(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 
 /// `(.reset m)` — rewind the cursor to the input start; returns the matcher.
 fn reset(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("reset", args, 1, loc);
-    stateOf(args[0]).* = .{};
+    const ms = stateOf(args[0]);
+    ms.freeSlots(rt.gc.infra);
+    ms.* = .{};
     return args[0];
+}
+
+/// `Indexed/-nth`, clj `RT.nth` on a Matcher: capture group n of the last
+/// match (0 is the whole match). An index outside `0..groupCount` raises, or
+/// answers the not-found value in the 3-arity, which covers a NEGATIVE index
+/// too (clj's not-found arm returns early for one; the 2-arity raises).
+fn nthImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    if (args.len < 2 or args.len > 3)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "nth", .got = args.len, .min = 2, .max = 3 });
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = "nth", .actual = @tagName(args[1].tag()) });
+    const n = args[1].asInteger();
+    if (n < 0 or n > programOf(args[0]).capture_count) {
+        if (args.len == 3) return args[2];
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
+    }
+    return group(rt, env, args[0..2], loc);
 }
 
 /// GC-trace the regex (state[0]) + input string (state[1]) Values held in raw
@@ -222,11 +273,16 @@ fn traceState(gc_ptr: *anyopaque, state: *[host_instance.STATE_WORDS]u64) void {
 }
 
 fn finaliseState(infra: std.mem.Allocator, state: *[host_instance.STATE_WORDS]u64) void {
-    const ms: *MutState = @ptrFromInt(state[2]);
+    const ms: *MutState = @ptrFromInt(@as(usize, @intCast(state[2])));
+    ms.freeSlots(infra);
     infra.destroy(ms);
 }
 
-const MethodSpec = struct { name: []const u8, f: *const fn (*Runtime, *Env, []const Value, SourceLocation) anyerror!Value };
+const MethodSpec = struct {
+    name: []const u8,
+    proto: []const u8 = "",
+    f: *const fn (*Runtime, *Env, []const Value, SourceLocation) anyerror!Value,
+};
 
 const METHODS = [_]MethodSpec{
     .{ .name = "find", .f = &find },
@@ -237,6 +293,8 @@ const METHODS = [_]MethodSpec{
     .{ .name = "start", .f = &startIndex },
     .{ .name = "end", .f = &endIndex },
     .{ .name = "reset", .f = &reset },
+    // Indexed so `nth` reaches the capture groups, as clj's RT.nth does.
+    .{ .name = "-nth", .proto = "Indexed", .f = &nthImpl },
 };
 
 fn initMatcherDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
@@ -247,7 +305,7 @@ fn initMatcherDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Alloc
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, METHODS.len);
     for (METHODS, 0..) |m, i| {
         entries[i] = .{
-            .protocol_name = "",
+            .protocol_name = m.proto,
             .method_name = try gpa.dupe(u8, m.name),
             .method_val = Value.initBuiltinFn(m.f),
         };

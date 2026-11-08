@@ -12,7 +12,7 @@ fail() { echo "FAIL $1" >&2; exit 1; }
 
 # Portable bounded run: GNU `timeout`, else coreutils `gtimeout`, else
 # unbounded (hosted mac runners ship neither; same pattern as
-# scripts/check_corpus_regression.sh).
+# scripts/corpus_regression.clj).
 run_bounded() {
     local secs="$1"; shift
     if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"
@@ -36,15 +36,17 @@ done
 
 out="$("$BIN" test/e2e/fixtures/http_client_probe.clj 2>&1)" || fail "client probe exited non-zero:
 $out"
-echo "$out" | grep -q "PASS http-client-get"       || fail "client GET status/body:
+grep -q "PASS http-client-get" <<<"$out"       || fail "client GET status/body:
 $out"
-echo "$out" | grep -q "PASS http-client-query"     || fail "client query-string:
+grep -q "PASS http-client-query" <<<"$out"     || fail "client query-string:
 $out"
-echo "$out" | grep -q "PASS http-client-post-body" || fail "client POST body:
+grep -q "PASS http-client-post-body" <<<"$out" || fail "client POST body:
 $out"
-echo "$out" | grep -q "NOT-CAUGHT" && fail "a client error escaped (catch …):
+grep -q "PASS http-client-9-headers" <<<"$out" || fail "client 9-entry :headers map:
 $out"
-echo "$out" | grep -q "^DONE$"     || fail "client probe did not complete:
+grep -q "NOT-CAUGHT" <<<"$out" && fail "a client error escaped (catch …):
+$out"
+grep -q "^DONE$" <<<"$out"     || fail "client probe did not complete:
 $out"
 
 echo "OK — phase16_http_client (get/query/post + catchable error) green"

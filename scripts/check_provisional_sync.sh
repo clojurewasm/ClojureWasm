@@ -7,7 +7,7 @@
 # same commit. Additionally rejects PROVISIONAL: marker text that
 # lacks a well-formed `[refs: D-NNN, feature_deps.yaml#<key>]` block.
 #
-# Discipline source: .claude/rules/provisional_marker.md.
+# Discipline source: memory 20260909234453-094762cc (provisional_marker).
 # Deterministic enforcement layer behind the probabilistic
 # CLAUDE.md / rule prose.
 #
@@ -27,11 +27,38 @@
 #                                 vs HEAD (= what would land in the
 #                                 next commit). Used by quick local
 #                                 sanity checks.
+#   --gate                      : sweep the WORKING TREE (no git range,
+#                                 no hook payload). Every PROVISIONAL:
+#                                 marker in scope must carry a
+#                                 well-formed
+#                                 `[refs: D-NNN, feature_deps.yaml#<key>]`
+#                                 block whose D-NNN resolves to a row in
+#                                 .dev/debt.yaml and whose key resolves
+#                                 to an entry in feature_deps.yaml. This
+#                                 is the batch-suite form of the marker
+#                                 invariant — it holds regardless of what
+#                                 any commit did, so the discipline is
+#                                 checkable where hooks do not run (CI,
+#                                 the full gate). Mirrors the
+#                                 two-entry-point shape of
+#                                 scripts/check_clj_attribution.sh.
+#
+#                                 The COMMIT-COUPLING half of this hook
+#                                 (marker change => feature_deps.yaml +
+#                                 .dev/debt.yaml edited in the SAME
+#                                 commit) stays hook-only on purpose: a
+#                                 tree sweep cannot see commits, and
+#                                 asserting it from --gate would be a
+#                                 claim the check cannot make.
+#
+# The diff walk and the tree sweep share ONE marker validator
+# (`marker_refs_defect`) — a second, mode-local copy is exactly the
+# drift this hook exists to prevent.
 #
 # Exit codes:
 #   0  pass (or non-push command in default mode)
 #   1  internal error (bad input)
-#   2  hook blocked the push
+#   2  hook blocked the push / --gate found a violation
 
 set -u
 set -o pipefail
@@ -53,6 +80,10 @@ case "${1:-}" in
     MODE="test_staged"
     shift
     ;;
+  --gate)
+    MODE="gate"
+    shift
+    ;;
 esac
 
 hook_cd_project_root
@@ -65,6 +96,15 @@ if [[ "$MODE" == "hook" ]]; then
 fi
 
 # --- 3. Helpers --------------------------------------------------------------
+
+# SSOT locations. feature_deps.yaml moved under data/ (its header is the
+# schema doc); resolve it instead of hard-coding, so the hook path and the
+# --gate path can never disagree about where the SSOT lives.
+FEATURE_DEPS=""
+for _cand in data/feature_deps.yaml feature_deps.yaml .dev/feature_deps.yaml; do
+  if [[ -f "$_cand" ]]; then FEATURE_DEPS="$_cand"; break; fi
+done
+DEBT_YAML=".dev/debt.yaml"
 
 # Is this path subject to PROVISIONAL marker enforcement?
 is_marker_scope() {
@@ -82,6 +122,61 @@ is_marker_scope() {
     *)
       return 1 ;;
   esac
+}
+
+# --- 3a. Shared predicates (ONE validator, two call paths) ------------------
+#
+# The diff walk (hook / --test-*) and the working-tree sweep (--gate) must
+# agree on what a malformed marker is, so both call `marker_refs_defect`.
+
+# Marker-form predicate: does this PROVISIONAL line carry a well-formed
+# `[refs: D-NNN, feature_deps.yaml#<key>]` block? Echoes the defect
+# reason; EMPTY output means well-formed.
+marker_refs_defect() {
+  local body="$1"
+  if ! [[ "$body" == *'[refs:'* ]]; then
+    echo "missing [refs: block"
+  elif ! [[ "$body" =~ D-[0-9]+ ]]; then
+    echo "missing D-NNN"
+  elif ! [[ "$body" == *feature_deps.yaml#* ]]; then
+    echo "missing feature_deps.yaml#"
+  fi
+}
+
+# The `[refs: ...]` payload of a marker line (empty when absent).
+marker_refs_block() {
+  local body="$1"
+  if [[ "$body" =~ \[refs:([^]]*)\] ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+  fi
+}
+
+# Does `.dev/debt.yaml` define this row id? Exact match on the `- id:`
+# scalar (quoted or bare), not a substring grep: a short id must not
+# resolve via a longer one that merely shares its prefix.
+debt_id_defined() {
+  awk -v k="$1" '
+    /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ {
+      v = $0
+      sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", v)
+      gsub(/^"|"$/, "", v); gsub(/[[:space:]]+$/, "", v)
+      if (v == k) found = 1
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$DEBT_YAML"
+}
+
+# Does feature_deps.yaml define this entry name? Exact match, same reason.
+feature_key_defined() {
+  awk -v k="$1" '
+    /^[[:space:]]*-[[:space:]]*name:[[:space:]]*/ {
+      v = $0
+      sub(/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/, "", v)
+      gsub(/^"|"$/, "", v); gsub(/[[:space:]]+$/, "", v)
+      if (v == k) found = 1
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$FEATURE_DEPS"
 }
 
 # Read +PROVISIONAL: and -PROVISIONAL: line counts from a diff range.
@@ -142,15 +237,12 @@ malformed_markers() {
       "+"*)
         if [[ $in_scope -eq 1 ]] && [[ "$line" == *PROVISIONAL:* ]]; then
           # Must contain `[refs:` with at least one D-NNN AND at
-          # least one feature_deps.yaml#.
+          # least one feature_deps.yaml#. Same predicate --gate applies
+          # to every marker in the tree.
           local body="${line#+}"
-          if ! [[ "$body" == *'[refs:'* ]]; then
-            bad+=("$current_file :: $body")
-          elif ! [[ "$body" =~ D-[0-9]+ ]]; then
-            bad+=("$current_file :: missing D-NNN :: $body")
-          elif ! [[ "$body" == *feature_deps.yaml#* ]]; then
-            bad+=("$current_file :: missing feature_deps.yaml# :: $body")
-          fi
+          local defect
+          defect="$(marker_refs_defect "$body")"
+          [[ -n "$defect" ]] && bad+=("$current_file :: $defect :: $body")
         fi
         ;;
     esac
@@ -161,9 +253,13 @@ malformed_markers() {
   fi
 }
 
-# Does the range's file list include feature_deps.yaml?
+# Does the range's file list include feature_deps.yaml? Matched at the
+# resolved SSOT path ($FEATURE_DEPS, today data/feature_deps.yaml) — the
+# literal `^feature_deps\.yaml$` this used to grep for stopped matching
+# when the SSOT moved under data/, which made the sync half unsatisfiable.
 range_touches_yaml() {
-  git diff --name-only "$1" 2>/dev/null | grep -qE '^feature_deps\.yaml$'
+  [[ -n "$FEATURE_DEPS" ]] || return 1
+  git diff --name-only "$1" 2>/dev/null | grep -qxF "$FEATURE_DEPS"
 }
 
 # Does the range's file list include .dev/debt.yaml?
@@ -171,22 +267,126 @@ range_touches_debt() {
   git diff --name-only "$1" 2>/dev/null | grep -qE '^\.dev/debt\.ya?ml$'
 }
 
+# Failure report shared by both entry points. Consumes $HEADLINE and
+# $FAIL_MSGS; never returns (exits 2).
+report_failure() {
+  echo "$HEADLINE" >&2
+  cat >&2 <<'EOF'
+
+A PROVISIONAL: marker in a source-bearing file (src/**/*.zig,
+src/**/*.clj, build.zig*, test/e2e/*.sh) is malformed, cites a
+ref that does not resolve, or — in hook mode — changed without
+the matching SSOT edits in the same commit.
+
+Required canonical marker shape (see memory 20260909234453-094762cc (provisional_marker)):
+    // PROVISIONAL: <one-line why> [refs: D-NNN, feature_deps.yaml#<key>]
+    ;; PROVISIONAL: <one-line why> [refs: D-NNN, feature_deps.yaml#<key>]
+
+The `[refs: ...]` block must include at least one D-NNN reference
+AND at least one feature_deps.yaml#<key> reference, and both must
+name a live row / entry.
+
+When introducing OR discharging a PROVISIONAL marker the commit
+must also touch:
+    feature_deps.yaml  (the matching entry's provisional_markers
+                        list or new entry)
+    .dev/debt.yaml       (the matching D-NNN row or new row)
+
+To recover:
+  1. Decide whether you are introducing, moving, or discharging a
+     provisional behaviour.
+  2. Add / update the feature_deps.yaml entry (set status,
+     provisional_markers field).
+  3. Open / close the .dev/debt.yaml row.
+  4. Amend the commit (`git commit --amend`) and re-attempt push.
+
+Findings:
+EOF
+  for m in "${FAIL_MSGS[@]}"; do
+    printf '  %s\n' "$m" >&2
+  done
+
+  cat >&2 <<'EOF'
+
+(Discipline source: memory 20260909234453-094762cc (provisional_marker) +
+memory 20260901172301-1919d835, the Silent default-shift smell.)
+EOF
+  exit 2
+}
+
+# --- 3b. --gate: working-tree sweep ------------------------------------------
+#
+# No git range, no hook payload: enumerate the in-scope files ON DISK and
+# validate every PROVISIONAL marker they carry — form (the shared
+# `marker_refs_defect`) plus resolution of each cited D-NNN / feature key
+# against the two SSOTs. Conservative by design: it flags pre-existing
+# drift, not just what the current commit touched. The commit-coupling
+# half is NOT asserted here (see the header) — a tree sweep cannot see
+# commits.
+
+if [[ "$MODE" == "gate" ]]; then
+  if [[ -z "$FEATURE_DEPS" ]]; then
+    echo "internal: feature_deps.yaml not found (looked in data/, ./, .dev/) — failing closed" >&2
+    exit 1
+  fi
+  if [[ ! -f "$DEBT_YAML" ]]; then
+    echo "internal: $DEBT_YAML not found — failing closed" >&2
+    exit 1
+  fi
+
+  GATE_FILES=()
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    is_marker_scope "$f" && GATE_FILES+=("$f")
+  done < <( { find src -type f \( -name '*.zig' -o -name '*.clj' \) 2>/dev/null
+              ls -1 build.zig build.zig.zon 2>/dev/null
+              find test/e2e -type f -name '*.sh' 2>/dev/null; } | sort )
+
+  FAIL_MSGS=()
+  marker_total=0
+
+  # Guarded: `"${arr[@]}"` on an empty array is an unbound-variable error
+  # under `set -u` on the macOS-shipped bash (3.2) the gate also runs on.
+  if [[ ${#GATE_FILES[@]} -gt 0 ]]; then
+    while IFS= read -r hit; do
+      [[ -z "$hit" ]] && continue
+      file="${hit%%:*}"; rest="${hit#*:}"
+      lineno="${rest%%:*}"; body="${rest#*:}"
+      marker_total=$((marker_total + 1))
+
+      defect="$(marker_refs_defect "$body")"
+      if [[ -n "$defect" ]]; then
+        FAIL_MSGS+=("$file:$lineno: $defect :: $body")
+        continue
+      fi
+
+      refs="$(marker_refs_block "$body")"
+      for id in $(printf '%s' "$refs" | grep -oE 'D-[0-9]+' | sort -u); do
+        debt_id_defined "$id" || FAIL_MSGS+=("$file:$lineno: $id has no row in $DEBT_YAML :: $body")
+      done
+      for key in $(printf '%s' "$refs" | grep -oE 'feature_deps\.yaml#[A-Za-z0-9_./-]+' | sed 's|^feature_deps\.yaml#||' | sort -u); do
+        feature_key_defined "$key" || FAIL_MSGS+=("$file:$lineno: feature_deps.yaml#$key has no entry in $FEATURE_DEPS :: $body")
+      done
+    done < <(grep -Hn 'PROVISIONAL:' "${GATE_FILES[@]}" 2>/dev/null || true)
+  fi
+
+  if [[ ${#FAIL_MSGS[@]} -eq 0 ]]; then
+    echo "    provisional_sync: $marker_total PROVISIONAL marker(s) across ${#GATE_FILES[@]} in-scope source file(s); each carries [refs: D-NNN, feature_deps.yaml#<key>] resolving to $DEBT_YAML + $FEATURE_DEPS"
+    exit 0
+  fi
+
+  HEADLINE="✗ gate failed: scripts/check_provisional_sync.sh (working-tree sweep)"
+  report_failure
+fi
+
 # --- 4. Build the range to inspect -------------------------------------------
 
 case "$MODE" in
   hook)
-    UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo '')"
-    if [[ -n "$UPSTREAM" ]]; then
-      REV_RANGE="$UPSTREAM..HEAD"
-    else
-      # First push — every commit on HEAD
-      REV_RANGE="HEAD"
-    fi
-    REV_OUT="$(git rev-list "$REV_RANGE" 2>&1)" || {
-      echo "internal: git rev-list $REV_RANGE failed — failing closed" >&2
-      echo "$REV_OUT" >&2
-      exit 1
-    }
+    # Commits not yet on any remote branch. Replaces `@{u}..HEAD`, which
+    # re-flagged already-published commits on a cross-branch push
+    # ([CLJW-SMELLHOOK]); hook_unpushed_shas fails closed on a git error.
+    REV_OUT="$(hook_unpushed_shas)"
     RANGES=()
     while IFS= read -r sha; do
       [[ -z "$sha" ]] && continue
@@ -250,45 +450,5 @@ if [[ $FAIL -eq 0 ]]; then
   exit 0
 fi
 
-cat >&2 <<'EOF'
-✗ push blocked by scripts/check_provisional_sync.sh
-
-A commit changes one or more PROVISIONAL: markers in source-bearing
-files (src/**/*.zig, src/**/*.clj, build.zig*, test/e2e/*.sh)
-without the matching SSOT edits in the same commit, or introduces
-a malformed marker.
-
-Required canonical marker shape (see .claude/rules/provisional_marker.md):
-    // PROVISIONAL: <one-line why> [refs: D-NNN, feature_deps.yaml#<key>]
-    ;; PROVISIONAL: <one-line why> [refs: D-NNN, feature_deps.yaml#<key>]
-
-The `[refs: ...]` block must include at least one D-NNN reference
-AND at least one feature_deps.yaml#<key> reference.
-
-When introducing OR discharging a PROVISIONAL marker the commit
-must also touch:
-    feature_deps.yaml  (the matching entry's provisional_markers
-                        list or new entry)
-    .dev/debt.yaml       (the matching D-NNN row or new row)
-
-To recover:
-  1. Decide whether you are introducing, moving, or discharging a
-     provisional behaviour.
-  2. Add / update the feature_deps.yaml entry (set status,
-     provisional_markers field).
-  3. Open / close the .dev/debt.yaml row.
-  4. Amend the commit (`git commit --amend`) and re-attempt push.
-
-Findings:
-EOF
-for m in "${FAIL_MSGS[@]}"; do
-  printf '  %s\n' "$m" >&2
-done
-
-cat >&2 <<'EOF'
-
-(Discipline source: .claude/rules/provisional_marker.md +
-.dev/principle.md Silent default-shift entry.)
-EOF
-
-exit 2
+HEADLINE="✗ push blocked by scripts/check_provisional_sync.sh"
+report_failure

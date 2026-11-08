@@ -1,0 +1,80 @@
+# Layer 8 (ADR-0186) — the mutation sweep. NOT the gate.
+#
+# This workflow answers "which lines does the suite fail to constrain", produces
+# a report, and stops. It never blocks a commit: a surviving mutant is a missing
+# test, which is work to schedule rather than a reason to reject a change. It
+# also does not run `test/run_all.sh`, so it cannot re-introduce the CI-vs-local
+# tiering that ADR-0185 removed (check_gate_parity.sh inspects ci.yml and
+# ci_gate.sh; this file is neither).
+#
+# TRIGGER: manual dispatch, plus a weekly cron. Note that GitHub does not run
+# scheduled workflows in a FORKED repository — until this repo stops being a
+# fork, treat the cron as documentation of intended cadence and dispatch the
+# sweep by hand.
+#
+# Cost: one full rebuild per mutant. `budget` is the number of rebuilds you are
+# buying, so the default is small and a deep sweep is an explicit choice.
+
+name: mutation
+
+on:
+  workflow_dispatch:
+    inputs:
+      budget:
+        description: "Mutants to run (one rebuild each)"
+        required: false
+        default: "12"
+      seed:
+        description: "Sampling seed — same seed, same mutants"
+        required: false
+        default: "0"
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    name: sweep (linux-x86_64)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 340
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # The harness builds a git worktree at a revision, so it needs history.
+          fetch-depth: 0
+
+      - name: Install Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/versions.lock
+          mkdir -p ~/.local
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-0.16.0.tar.xz" -o /tmp/zig.tar.xz
+          tar -xJf /tmp/zig.tar.xz -C ~/.local
+          echo "$HOME/.local/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+
+      - name: Sweep
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/mutation/run.sh \
+            --targets-from .dev/mutation_targets.txt \
+            --budget "${{ github.event.inputs.budget || '12' }}" \
+            --seed "${{ github.event.inputs.seed || '0' }}"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mutation-report
+          path: |
+            .dev/mutation/report-*.md
+            .dev/mutation/mutants-*.jsonl
+          if-no-files-found: warn

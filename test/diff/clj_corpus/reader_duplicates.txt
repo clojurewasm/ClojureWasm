@@ -1,0 +1,66 @@
+(read-string "{:a 1 :a 2}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "#{1 1}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "{1 :a 1N :b}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "#:a{:b 1 :a/b 2}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "{:a 1 :b 2 :c 3 :d 4 :e 5 :f 6 :g 7 :h 8 :i 9 :a 10}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "[{:a 1 :a 2} #foo 1]")
+;;=> <clj-error> IllegalArgumentException
+(read-string "[#foo 1 {:a 1 :a 2}]")
+;;=> <clj-error> RuntimeException
+(read-string "{:a 1 :a 2 :b #foo 1}")
+;;=> <clj-error> RuntimeException
+(meta (read-string "^:a ^:a x"))
+;;=> {:a true}
+(meta (read-string "^:a ^{:a 2} x"))
+;;=> {:a true}
+(meta (read-string "^String ^{:tag Long} x"))
+;;=> {:tag String}
+(read-string "^{:a 1 :a 2} x")
+;;=> <clj-error> IllegalArgumentException
+(read-string "#{[1] (1)}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "{[1 2] :a (1 2) :b}")
+;;=> <clj-error> IllegalArgumentException
+(clojure.edn/read-string "{:a 1 :a 2}")
+;;=> <clj-error> IllegalArgumentException
+(clojure.edn/read-string "#{1 1}")
+;;=> <clj-error> IllegalArgumentException
+(load-string "(defn ^:private f {:private true} [] 1) (:private (meta #'f))")
+;;=> true
+(load-string "(defn- g {:private true} [] 1) (:private (meta #'g))")
+;;=> true
+(load-string "(def ^{:doc \"a\"} h \"b\" 1) (:doc (meta #'h))")
+;;=> "b"
+(load-string "(def ^{:line 99} h2 1) (:line (meta #'h2))")
+;;=> 1
+(load-string "(defmulti mm \"d\" {:doc \"e\"} identity) (:doc (meta #'mm))")
+;;=> "d"
+(load-string "(defmacro mac \"d\" {:doc \"e\"} [] 1) (:doc (meta #'mac))")
+;;=> "e"
+(load-string "(defn ^{:doc \"x\"} f3 \"y\" [] 1) (:doc (meta #'f3))")
+;;=> "y"
+(count (read-string "#{#(inc %) #(inc %)}"))
+;;=> 2
+(load-string "(count #{#(inc %) #(inc %)})")
+;;=> 2
+(load-string "(defn f5 {:arglists '([a b])} [& args]) (:arglists (meta #'f5))")
+;;=> ([a b])
+(load-string "(defn g5 \"doc1\" {:doc \"doc2\"} []) (:doc (meta #'g5))")
+;;=> "doc2"
+(load-string "(defmacro m5 [x] {:arglists '([y])} x) (:arglists (meta #'m5))")
+;;=> ([x])
+(read-string "^{:a 1 :a 2} {:b #foo 1}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "^{:t #foo 1} {:a 1 :a 2}")
+;;=> <clj-error> RuntimeException
+(read-string "(#foo 1 {:a 1 :a 2})")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string {:readers {'my/t identity}} "#my/t {:a 1 :a 2}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "#{1 2 3 4 5 6 7 8 9 10 1}")
+;;=> <clj-error> IllegalArgumentException

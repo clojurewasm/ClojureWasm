@@ -51,7 +51,15 @@ pub fn transientFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
         .array_map => try transient_array_map.fromMap(rt, coll),
         .hash_map => try transient_array_map.fromMap(rt, coll),
         .hash_set => try transient_hash_set.fromSet(rt, coll),
-        .nil => try transient_vector.fromVector(rt, coll),
+        // NOTE: there is deliberately no `.nil` arm. `(transient nil)` used to
+        // answer an empty transient vector, where clj THROWS
+        // (NullPointerException, since it calls .asTransient on nil). Returning
+        // a value there turns a typo into a silently empty accumulator. nil now
+        // falls to the mismatch arm below, so it throws as clj does; only the
+        // exception NAME differs, which is the AD-007 class. The 0-arity
+        // `(conj!)` identity still builds its empty transient by calling
+        // transient_vector.fromVector directly, so it is unaffected.
+        //
         // D-369: a user IEditableCollection deftype supplies its own
         // transient via asTransient (wired to -as-transient at load).
         .typed_instance => try dispatchBang(rt, env, coll, "IEditableCollection", "-as-transient", args, loc, "transient", "vector, array_map, or hash_map"),
@@ -143,17 +151,21 @@ pub fn conjBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 /// JVM reference: clojure.core/disj! → ITransientSet.disjoin
 /// cw v1 tier: A (Phase 8.5 cycle 3)
 pub fn disjBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("disj!", args, 2, loc);
-    const tcoll = args[0];
-    return switch (tcoll.tag()) {
-        .transient_set => try transient_hash_set.disj(rt, tcoll, args[1], loc),
-        .typed_instance => try dispatchBang(rt, env, tcoll, "ITransientSet", "-disjoin!", args, loc, "disj!", "transient_set"),
-        else => error_catalog.raise(.transient_kind_mismatch, loc, .{
-            .fn_name = "disj!",
-            .expected = "transient_set",
-            .actual = @tagName(tcoll.tag()),
-        }),
-    };
+    // clj: ([set] set) ([set k] …) ([set k & ks] …) — remove each key in turn.
+    try error_catalog.checkArityMin("disj!", args, 1, loc);
+    var tcoll = args[0];
+    for (args[1..]) |k| {
+        tcoll = switch (tcoll.tag()) {
+            .transient_set => try transient_hash_set.disj(rt, tcoll, k, loc),
+            .typed_instance => try dispatchBang(rt, env, tcoll, "ITransientSet", "-disjoin!", &.{ tcoll, k }, loc, "disj!", "transient_set"),
+            else => return error_catalog.raise(.transient_kind_mismatch, loc, .{
+                .fn_name = "disj!",
+                .expected = "transient_set",
+                .actual = @tagName(tcoll.tag()),
+            }),
+        };
+    }
+    return tcoll;
 }
 
 /// Implements clojure.core/assoc!.
@@ -161,11 +173,28 @@ pub fn disjBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 ///   (`idx == count` appends, D-199); map: arbitrary key.
 /// JVM reference: clojure.core/assoc! → ITransientAssociative.assoc
 /// cw v1 tier: A (Phase 8.5 cycle 2)
+/// The value paired with the key at `i - 1`, or nil when the caller ended on a
+/// trailing key. `assoc!` is deliberately MORE lenient than `assoc` about that;
+/// see assocBangFn.
+inline fn pairedValue(args: []const Value, i: usize) Value {
+    return if (i < args.len) args[i] else Value.nil_val;
+}
+
 pub fn assocBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    // `(assoc! tmap k v)` + `(assoc! tmap k1 v1 k2 v2 …)` — odd arg count ≥ 3
-    // (clj's `[coll key val & kvs]`). Even = a key without a value.
-    if (args.len % 2 == 0)
-        return error_catalog.raise(.map_literal_arity_odd, loc, .{});
+    // `(assoc! tcoll k v)` + `(assoc! tcoll k1 v1 k2 v2 …)`.
+    //
+    // clj's assoc! accepts a TRAILING KEY WITH NO VALUE and treats the missing
+    // value as nil, which `assoc` does not: `(assoc! (transient []) 0 1 1)` is
+    // [1 nil] and `(assoc! (transient {:a 1}) :b 2 :c)` is {:a 1 :b 2 :c nil}.
+    // The upstream suite states it outright ("on the contrary to assoc, assoc!
+    // accepts an odd number (> 1) of args and assumes missing value is nil").
+    // cljw used to reject exactly that shape with map_literal_arity_odd, i.e.
+    // assoc's rule applied to assoc!.
+    //
+    // The arity check must come FIRST. It used to sit after the even-count
+    // rejection, so `(assoc! tm :b)` reported map_literal_arity_odd where clj
+    // reports an ArityException: too few args is an arity fault, not a
+    // key-without-value one.
     if (args.len < 3)
         return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "assoc!", .got = args.len, .min = 3, .max = 3 });
     var tcoll = args[0];
@@ -173,7 +202,7 @@ pub fn assocBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
         .transient_map => {
             var i: usize = 1;
             while (i < args.len) : (i += 2) {
-                tcoll = try transient_array_map.assoc(rt, tcoll, args[i], args[i + 1], loc);
+                tcoll = try transient_array_map.assoc(rt, tcoll, args[i], pairedValue(args, i + 1), loc);
             }
         },
         // D-199: a transient vector is Associative by integer index (clj's
@@ -186,13 +215,13 @@ pub fn assocBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
                 // (clj parity, mirrors persistent `(assoc [1 2] "k" v)`). D-459.
                 if (k.tag() != .integer)
                     return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "assoc!", .expected = "an integer key for a vector", .actual = @tagName(k.tag()) });
-                tcoll = try transient_vector.assoc(rt, tcoll, k.asInteger(), args[i + 1], loc);
+                tcoll = try transient_vector.assoc(rt, tcoll, k.asInteger(), pairedValue(args, i + 1), loc);
             }
         },
         .typed_instance => {
             var i: usize = 1;
             while (i < args.len) : (i += 2) {
-                tcoll = try dispatchBang(rt, env, tcoll, "ITransientAssociative", "-assoc!", &.{ tcoll, args[i], args[i + 1] }, loc, "assoc!", "transient_map or transient_vector");
+                tcoll = try dispatchBang(rt, env, tcoll, "ITransientAssociative", "-assoc!", &.{ tcoll, args[i], pairedValue(args, i + 1) }, loc, "assoc!", "transient_map or transient_vector");
             }
         },
         else => return error_catalog.raise(.transient_kind_mismatch, loc, .{
@@ -209,17 +238,21 @@ pub fn assocBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 /// JVM reference: clojure.core/dissoc! → ITransientMap.without
 /// cw v1 tier: A (Phase 8.5 cycle 2)
 pub fn dissocBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("dissoc!", args, 2, loc);
-    const tcoll = args[0];
-    return switch (tcoll.tag()) {
-        .transient_map => try transient_array_map.dissoc(rt, tcoll, args[1], loc),
-        .typed_instance => try dispatchBang(rt, env, tcoll, "ITransientMap", "-without!", args, loc, "dissoc!", "transient_map"),
-        else => error_catalog.raise(.transient_kind_mismatch, loc, .{
-            .fn_name = "dissoc!",
-            .expected = "transient_map",
-            .actual = @tagName(tcoll.tag()),
-        }),
-    };
+    // clj: ([map key] …) ([map key & ks] …) — remove each key in turn (no 1-arg).
+    try error_catalog.checkArityMin("dissoc!", args, 2, loc);
+    var tcoll = args[0];
+    for (args[1..]) |k| {
+        tcoll = switch (tcoll.tag()) {
+            .transient_map => try transient_array_map.dissoc(rt, tcoll, k, loc),
+            .typed_instance => try dispatchBang(rt, env, tcoll, "ITransientMap", "-without!", &.{ tcoll, k }, loc, "dissoc!", "transient_map"),
+            else => return error_catalog.raise(.transient_kind_mismatch, loc, .{
+                .fn_name = "dissoc!",
+                .expected = "transient_map",
+                .actual = @tagName(tcoll.tag()),
+            }),
+        };
+    }
+    return tcoll;
 }
 
 /// Implements clojure.core/pop!.

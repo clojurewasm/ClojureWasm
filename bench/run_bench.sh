@@ -23,6 +23,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib_build_lock.sh"
 CLJW="$PROJECT_ROOT/zig-out/bin/cljw"
 
 # --- Colors ---
@@ -80,7 +81,7 @@ fi
 
 # --- Build ReleaseSafe ---
 echo -e "${CYAN}Building ClojureWasm (ReleaseSafe)...${RESET}"
-(cd "$PROJECT_ROOT" && zig build -Dwasm -Doptimize=ReleaseSafe "${ZIG_BUILD_FLAGS[@]}") || {
+(cd "$PROJECT_ROOT" && with_build_lock zig build -Dwasm -Doptimize=ReleaseSafe "${ZIG_BUILD_FLAGS[@]}") || {
   echo -e "${RED}Build failed${RESET}" >&2
   exit 1
 }
@@ -126,7 +127,7 @@ for bench_dir in "${BENCH_DIRS[@]}"; do
 
   # Correctness probe FIRST: a broken benchmark is reported and skipped, never
   # aborting the whole suite (one bad workload must not kill the run).
-  actual=$($CLJW "$bench_dir/bench.clj" 2>&1 | head -1 | tr -d '[:space:]' || true)
+  actual=$($CLJW "$bench_dir/bench.clj" 2>&1 | sed -n 1p | tr -d '[:space:]' || true)
   if [[ "$actual" != "$expected_clean" ]]; then
     echo -e "${YELLOW}SKIP${RESET} (output=$actual expected=$expected_clean)"
     skipped=$((skipped + 1))

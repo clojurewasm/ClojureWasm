@@ -3,7 +3,7 @@
 #
 # Auto-defense for the accepted-clj-divergence SSOT (.dev/accepted_divergences.yaml).
 # An "accepted divergence" is a behaviour where cljw INTENTIONALLY differs from
-# JVM Clojure (rule: .claude/rules/accepted_divergences.md). This gate makes the
+# JVM Clojure (rule: memory 20260909234822-74759eeb (accepted_divergences)). This gate makes the
 # ledger trustworthy so a divergence cannot (a) be added without a justification
 # or (b) drift out of sync with the docs / its pinning test.
 #
@@ -57,8 +57,13 @@ for id in $ids; do
   case "$pin" in
     none*|None*|NONE*) : ;;  # value-dependent / identity — exempt by design
     *)
-      # Verify each path-looking token (test/...{.txt,.sh,.zig}) exists.
-      for p in $(printf '%s\n' "$pin" | grep -oE '[A-Za-z0-9_./-]+\.(txt|sh|zig)' || true); do
+      # Verify each path-looking token (test/...{.txt,.sh,.zig,.clj}) exists.
+      # `.clj` is in the list because pins are migrating to cljw-native
+      # clojure.test suites (test/clj/suites/*.clj). Without it a repointed pin
+      # extracts ZERO paths, the loop below never runs, and the divergence
+      # silently degrades from "pinned and verified" to "pinned in prose" —
+      # a vacated check that reports success.
+      for p in $(printf '%s\n' "$pin" | grep -oE '[A-Za-z0-9_./-]+\.(txt|sh|zig|clj)' || true); do
         if [ ! -e "$p" ]; then
           echo "check_accepted_divergences: $id pin path does not exist: $p"
           bad=1

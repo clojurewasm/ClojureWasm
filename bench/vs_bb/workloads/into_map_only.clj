@@ -1,0 +1,1 @@
+(let [v (vec (range 20000)) t (System/nanoTime) r (loop [i 0 s 0] (if (< i 15) (let [m (into {} (map (fn [x] [x (* 2 x)])) v)] (recur (inc i) (+ s (count m)))) s))] (println "RESULT" r) (println "INPROC_MS" (quot (- (System/nanoTime) t) 1000000)))

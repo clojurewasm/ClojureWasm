@@ -3,9 +3,9 @@
 cljw ships as **one static binary** (no JVM, no install tree, no side files
 — ADR-0158). This page places that binary among other language runtimes and
 Wasm engines, using **measured** numbers, and states the method so the
-comparison stays honest. The internal size budget + reduction levers live in
-`.dev/decisions/0172_binary_size_budget_and_ledger.md`; this page is the
-user-facing view.
+comparison stays honest. The internal size budget + reduction levers are
+ADR-0172 (the ceiling is 8,800,000 bytes, gated by `scripts/binary_size_report.sh`);
+this page is the user-facing view.
 
 **Method.** Each ranked runtime was downloaded from its latest official
 release as of **2026-07-16**, extracted, and its executable measured with

@@ -1,0 +1,58 @@
+(let [f (fn [] [1 2])] (identical? (f) (f)))
+;;=> true
+(let [f (fn [] {:a 1})] (identical? (f) (f)))
+;;=> true
+(let [f (fn [] #{1 2})] (identical? (f) (f)))
+;;=> true
+(let [f (fn [] [])] (identical? (f) (f)))
+;;=> true
+(let [f (fn [] {})] (identical? (f) (f)))
+;;=> true
+(let [f (fn [] {1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18})] [(identical? (f) (f)) (instance? clojure.lang.PersistentHashMap (f)) (count (f))])
+;;=> [true true 9]
+(instance? clojure.lang.PersistentArrayMap ((fn [] {:a 1 :b 2})))
+;;=> true
+(instance? clojure.lang.PersistentHashSet ((fn [] #{1 2})))
+;;=> true
+(let [f (fn [] [(quote a) :k "s" \c 1.5 nil true 3N 1/2 [1 [2]] #{:x} {:y 1}])] [(identical? (f) (f)) (f)])
+;;=> [true [a :k "s" \c 1.5 nil true 3N 1/2 [1 [2]] #{:x} {:y 1}]]
+(let [f (fn [] [#inst "2020-01-01T00:00:00.000-00:00"])] (identical? (f) (f)))
+;;=> true
+(let [f (fn [x] {:a [1 2] :b x})] [(identical? (:a (f 1)) (:a (f 2))) (identical? (f 1) (f 1))])
+;;=> [true false]
+(let [f (fn [x] [[1 2] [x]])] [(identical? (first (f 1)) (first (f 2))) (f 3)])
+;;=> [true [[1 2] [3]]]
+(let [f (fn [x] [x 2])] (identical? (f 1) (f 1)))
+;;=> false
+(let [f (fn [] [1 (+ 1 1)])] [(identical? (f) (f)) (f)])
+;;=> [false [1 2]]
+(let [f (fn [] ^:m [1 2])] [(identical? (f) (f)) (meta (f))])
+;;=> [false {:m true}]
+(meta ((fn [] [1 2])))
+;;=> nil
+(meta ^{:a 1} [1 2])
+;;=> {:a 1}
+(keys ((fn [] {:z 1 :y 2 :x 3 :w 4})))
+;;=> (:z :y :x :w)
+(let [k :a] {k 1 :b 2})
+;;=> {:a 1, :b 2}
+(let [x 1] (sort #{x 2 3}))
+;;=> (1 2 3)
+(read-string "{1 2 1 3}")
+;;=> <clj-error> IllegalArgumentException
+(read-string "#{1 1}")
+;;=> <clj-error> IllegalArgumentException
+(let [f (eval (read-string (str "(fn [x] [" (apply str (interpose " " (map #(if (#{0 510 511 512 513 1023 1024 1025 1099} %) (str "(+ x " % ")") (str %)) (range 1100)))) "])")))] [(= (vec (range 1100)) (f 0)) (count (f 1)) (nth (f 1) 511) (nth (f 1) 512)])
+;;=> [true 1100 512 513]
+(let [m ((eval (read-string (str "(fn [x] {" (apply str (interpose " " (map #(str % " " (if (odd? %) "x" %)) (range 1100)))) "})"))) :v)] [(count m) (get m 511) (get m 512) (get m 1099)])
+;;=> [1100 :v 512 :v]
+(let [s ((eval (read-string (str "(fn [x] #{" (apply str (interpose " " (range 1100))) " x})"))) 5000)] [(count s) (contains? s 5000) (contains? s 1099)])
+;;=> [1101 true true]
+(let [f (eval (read-string (str "(fn [x] [0 {:v [" (apply str (repeat 1100 "x ")) "]} x])"))) r (f 9)] [(nth r 2) (count (:v (nth r 1)))])
+;;=> [9 1100]
+(count (eval (read-string (str "[" (apply str (interpose " " (range 1100))) "]"))))
+;;=> 1100
+(get (eval (read-string (str "{" (apply str (interpose " " (map #(str % " " (inc %)) (range 1100)))) "}"))) 1099)
+;;=> 1100
+(count (eval (read-string (str "#{" (apply str (interpose " " (range 1100))) "}"))))
+;;=> 1100

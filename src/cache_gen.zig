@@ -46,7 +46,7 @@ pub fn main(init: std.process.Init) !void {
     // Part B — the non-core libs no longer re-parse from source every startup).
     try bootstrap.setupCorePrefix(&rt, &env, &macro_table);
 
-    const payload = try builder.buildBootstrapEnvelope(gpa, &rt, &env, &macro_table, arena, bootstrap.FILES);
+    const payload = try builder.buildBootstrapEnvelope(gpa, &rt, &env, &macro_table, arena, bootstrap.ACTIVE_FILES);
     defer gpa.free(payload);
 
     const out = try std.Io.Dir.cwd().createFile(io, out_path, .{ .truncate = true });
@@ -64,8 +64,8 @@ pub fn main(init: std.process.Init) !void {
         var aw: std.Io.Writer.Allocating = .init(gpa);
         errdefer aw.deinit();
         const w = &aw.writer;
-        try w.writeInt(u32, @intCast(bootstrap.FILES.len), .little);
-        for (bootstrap.FILES) |file| {
+        try w.writeInt(u32, @intCast(bootstrap.ACTIVE_FILES.len), .little);
+        for (bootstrap.ACTIVE_FILES) |file| {
             const src = file.source.?;
             const packed_bytes = try serialize.flateCompress(gpa, src);
             defer gpa.free(packed_bytes);

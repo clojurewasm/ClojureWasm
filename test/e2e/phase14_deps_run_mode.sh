@@ -61,7 +61,7 @@ echo "PASS run_mode_X_fn_override -> trailing symbol exec-fn"
 
 # --- Case 6: -m on a namespace with no -main → clean ex-info message ---
 out="$(cd "$proj" && "$BIN" -m myapp.nomain 2>&1 || true)"
-printf '%s' "$out" | grep -q "has no -main fn" || {
+grep -q "has no -main fn" <<<"$out" || {
     # myapp.nomain doesn't exist → require error is also acceptable (clean,
     # not a panic); the no--main path is exercised by a real ns below.
     cat > "$proj/src/myapp/lib.clj" <<'EOF'
@@ -69,7 +69,7 @@ printf '%s' "$out" | grep -q "has no -main fn" || {
 (defn helper [] :ok)
 EOF
     out="$(cd "$proj" && "$BIN" -m myapp.lib 2>&1 || true)"
-    printf '%s' "$out" | grep -q "has no -main fn" || fail "-m no -main: got '$out'"
+    grep -q "has no -main fn" <<<"$out" || fail "-m no -main: got '$out'"
 }
 echo "PASS run_mode_no_main -> clean 'has no -main fn' error"
 

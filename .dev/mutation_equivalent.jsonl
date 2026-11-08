@@ -1,0 +1,5 @@
+# Mutants proven to have no observable effect. Format: one JSON object per line,
+# matched on file+op+before. A row here is a PROOF obligation: state why no input
+# can distinguish the mutant. run.sh reports an entry that matches nothing as STALE.
+{"file": "src/runtime/collection/vector.zig", "op": "const_bump_in_arith", "before": "const new_tail_leaf = arrayFor(old, old.count - 2);", "reason": "Reached only when the tail holds exactly one element, i.e. count = 32m+1. arrayFor selects a 32-element leaf by i >> SHIFT_BITS, and (32m-1) >> 5 == (32m-2) >> 5, so `count - 2` and `count - 3` always name the same leaf. No input distinguishes them."}
+{"file": "src/runtime/collection/vector.zig", "op": "const_bump_in_arith", "before": "const sub_index = ((new_count - 1) >> @as(u5, @intCast(level))) & MASK;", "reason": "popTail is entered only with new_count = 32m (a full-leaf boundary) and level >= SHIFT_BITS. new_count-1 and new_count-2 differ only in bit 0, which every level's >> level discards, so sub_index is identical at every level of the descent."}

@@ -32,3 +32,9 @@
 ;;=> [[1 1] [1 2] [1 3] [1 4]]
 (loop [front (list [:s []]) back () n 0] (if (or (> n 20) (nil? (first front))) n (let [[st p] (first front) nexts (for [d [1 2] :when (= d 1)] [d (conj p st)])] (recur (rest front) (into back nexts) (inc n)))))
 ;;=> 1
+(into [] (for [a (range 5) :when (> a 0) :while (odd? a)] a))
+;;=> [1]
+(into [] (for [x (range 5) :let [a (* x 2)] :while (< a 4)] [x a]))
+;;=> [[0 0] [1 2]]
+(into [] (for [x (range 4) :when (odd? x) y (range 2) :while (odd? (+ x y))] [x y]))
+;;=> [[1 0] [3 0]]

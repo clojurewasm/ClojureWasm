@@ -1,0 +1,13 @@
+package zwasm:typedtest;
+
+interface types {
+  record payload {
+    xs: list<u32>,
+    label: string,
+  }
+}
+
+world typed-test {
+  use types.{payload};
+  export process: func(input: payload) -> result<payload, string>;
+}

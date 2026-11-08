@@ -1,7 +1,5 @@
 {
   "defaultMode": "acceptEdits",
-  "outputStyle": "Japanese",
-  "model": "claude-opus-4-8",
   "permissions": {
     "allow": [
       "Agent",
@@ -63,18 +61,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "printf '=== language policy ===\\nReply to the user in Japanese (画面表示は日本語). Code, identifiers, file paths, commit messages, and English docs stay in English. See .claude/output_styles/japanese.md.\\n\\n' && printf '=== gate cadence (dev efficiency — read BEFORE the first commit) ===\\nDo NOT run the full gate per commit (it is slow and kills iteration). Per commit: bash test/run_all.sh --smoke <changed-e2e-step> (~tens of sec; ADR-0107 — the smoke tier authorizes shared-code commits too, up to 5 before a forced full gate) and do not block. Batch the full bash test/run_all.sh --serial-e2e at the ceiling / phase boundary / pre-release (backgroundable as a look-ahead). If a full gate fails on ONLY a non-code check (e.g. check_debt_id_refs), fix it + re-smoke — do NOT re-run the whole full gate. SSOT: .claude/rules/gate_cadence.md + memory smoke_first_batch_full_gate.\\n\\n' && test -f $CLAUDE_PROJECT_DIR/.dev/handover.md && printf '=== .dev/handover.md ===\\n' && cat $CLAUDE_PROJECT_DIR/.dev/handover.md && printf '\\n=== git log -3 ===\\n' && git -C $CLAUDE_PROJECT_DIR log -3 --decorate --oneline; test -f $CLAUDE_PROJECT_DIR/.dev/.perf_campaign_active && test -f $CLAUDE_PROJECT_DIR/.dev/perf_campaign_essence.md && printf '\\n=== perf-campaign essence (§9.2.S — relentless lookahead, machine-injected) ===\\n' && cat $CLAUDE_PROJECT_DIR/.dev/perf_campaign_essence.md || true"
-          }
-        ]
-      }
-    ],
-    "PostCompact": [
-      {
-        "matcher": "auto|manual",
-        "hooks": [
+            "command": "printf '=== git log -3 ===\\n' && git -C $CLAUDE_PROJECT_DIR log -3 --decorate --oneline; test -f $CLAUDE_PROJECT_DIR/.dev/.perf_campaign_active && test -f $CLAUDE_PROJECT_DIR/.dev/perf_campaign_essence.md && printf '\\n=== perf-campaign essence (\u00a79.2.S, machine-injected) ===\\n' && cat $CLAUDE_PROJECT_DIR/.dev/perf_campaign_essence.md || true"
+          },
           {
             "type": "command",
-            "command": "bash $CLAUDE_PROJECT_DIR/scripts/print_handover_brief.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/cleanup_orphans.sh\" || true"
           }
         ]
       }
@@ -127,10 +118,6 @@
           {
             "type": "command",
             "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_roadmap_amendment.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_handover_framing.sh"
           }
         ]
       }

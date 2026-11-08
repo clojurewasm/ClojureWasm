@@ -23,6 +23,7 @@ const Value = value_mod.Value;
 const map = @import("map.zig");
 const set = @import("set.zig");
 const vector = @import("vector.zig");
+const sub_vector = @import("sub_vector.zig");
 const sorted = @import("sorted.zig");
 const map_entry = @import("map_entry.zig");
 const Runtime = @import("../runtime.zig").Runtime;
@@ -33,6 +34,10 @@ const SourceLocation = @import("../error/info.zig").SourceLocation;
 const td_mod = @import("../type_descriptor.zig");
 const dispatch = @import("../dispatch.zig");
 const keyword_mod = @import("../keyword.zig");
+
+const transient_array_map = @import("transient/transient_array_map.zig");
+const transient_hash_set = @import("transient/transient_hash_set.zig");
+const transient_vector = @import("transient/transient_vector.zig");
 
 /// Look up `k` in `m` honouring an optional `default`. With no default,
 /// `map.get` already yields nil for an absent key; with a default we must
@@ -65,10 +70,23 @@ fn vectorIndex(v: Value, i_val: Value, loc: SourceLocation) !Value {
     if (idx < 0) {
         return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
     }
-    if (idx >= vector.count(v)) {
+    // A transient vector indexes here too, so the not-an-integer and
+    // out-of-range errors cannot drift from the persistent ones. clj agrees:
+    // `((transient [1 2 3]) 99)` is IndexOutOfBounds and
+    // `((transient [1 2 3]) :k)` is IllegalArgument, NOT nil.
+    const cnt = switch (v.tag()) {
+        .sub_vector => sub_vector.count(v),
+        .transient_vector => transient_vector.count(v),
+        else => vector.count(v),
+    };
+    if (idx >= cnt) {
         return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
     }
-    return vector.nth(v, @intCast(idx));
+    return switch (v.tag()) {
+        .sub_vector => sub_vector.nth(v, @intCast(idx)),
+        .transient_vector => transient_vector.nth(v, idx, Value.nil_val),
+        else => vector.nth(v, @intCast(idx)),
+    };
 }
 
 /// MapEntry index access as IFn — `(entry i)` with `nth` semantics (0→key,
@@ -172,6 +190,30 @@ pub fn invoke(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: 
             // is a native-map fast-path with no rt/env, so it cannot dispatch -lookup.
             if (args[0].tag() == .host_instance)
                 return lookupDispatch(rt, env, args[0], callee, args.len == 2, default, loc);
+            // A set is associative by membership: `(:a #{:a})` ≡ `(get #{:a} :a)`
+            // → the element if present, else default. The rt/env-free
+            // lookupWithDefault fast-path (map.get) cannot see sets, so route
+            // set receivers to the same membership test the set-as-fn arm uses.
+            if (args[0].tag() == .hash_set)
+                return (try set.get(args[0], callee)) orelse default;
+            if (args[0].tag() == .sorted_set)
+                return (try sorted.setGet(rt, env, args[0], callee, loc)) orelse default;
+            // A live transient is a first-class READ target (D-199), so the
+            // keyword-as-fn path must see one too: `(:x (transient {:x 1}))` is
+            // 1 and `(:x (transient #{:x}))` is :x in clj, where both used to be
+            // nil here. lookupWithDefault below is a native-map fast path and
+            // cannot decode a transient.
+            if (args[0].tag() == .transient_map) {
+                try transient_array_map.ensureLive(args[0], "keyword lookup", loc);
+                return if (try transient_array_map.contains(args[0], callee))
+                    try transient_array_map.get(args[0], callee)
+                else
+                    default;
+            }
+            if (args[0].tag() == .transient_set) {
+                try transient_hash_set.ensureLive(args[0], "keyword lookup", loc);
+                return (try transient_hash_set.get(args[0], callee)) orelse default;
+            }
             return lookupWithDefault(args[0], callee, args.len == 2, default);
         },
         .array_map, .hash_map => {
@@ -186,15 +228,49 @@ pub fn invoke(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: 
             if (try sorted.contains(rt, env, callee, args[0], loc)) return try sorted.get(rt, env, callee, args[0], loc);
             return if (args.len == 2) args[1] else Value.nil_val;
         },
+        // A set as fn answers its STORED element, like `get`: `(#{0.0} -0.0)`
+        // is 0.0 and `(#{1N} 1)` is 1N (clj PersistentHashSet.invoke → get).
         .hash_set => {
             if (args.len != 1) return arityError("set", args.len, 1, 1, loc);
-            return if (try set.contains(callee, args[0])) args[0] else Value.nil_val;
+            return (try set.get(callee, args[0])) orelse Value.nil_val;
         },
         .sorted_set => {
             if (args.len != 1) return arityError("sorted-set", args.len, 1, 1, loc);
-            return if (try sorted.setContains(rt, env, callee, args[0], loc)) args[0] else Value.nil_val;
+            return (try sorted.setGet(rt, env, callee, args[0], loc)) orelse Value.nil_val;
         },
-        .vector => {
+        // A live transient is callable exactly like the persistent collection it
+        // will become (the D-199 read-only surface, which `get`/`contains?`/
+        // `count` already had while the CALL path did not, so these raised
+        // ClassCastException). The arities are clj's, and they are NOT uniform:
+        // a transient map and a transient SET both take an optional not-found
+        // (ATransientSet implements the 2-arity invoke, unlike a persistent set,
+        // which is 1-arity only), while a transient vector is 1-arity and throws
+        // on a bad index rather than returning nil. Each spelling below was
+        // checked against the oracle rather than assumed from its persistent
+        // sibling.
+        .transient_map => {
+            if (args.len < 1 or args.len > 2) return arityError("transient map", args.len, 1, 2, loc);
+            try transient_array_map.ensureLive(callee, "transient map", loc);
+            const default = if (args.len == 2) args[1] else Value.nil_val;
+            return if (try transient_array_map.contains(callee, args[0]))
+                try transient_array_map.get(callee, args[0])
+            else
+                default;
+        },
+        .transient_set => {
+            if (args.len < 1 or args.len > 2) return arityError("transient set", args.len, 1, 2, loc);
+            try transient_hash_set.ensureLive(callee, "transient set", loc);
+            const default = if (args.len == 2) args[1] else Value.nil_val;
+            return (try transient_hash_set.get(callee, args[0])) orelse default;
+        },
+        .transient_vector => {
+            if (args.len != 1) return arityError("transient vector", args.len, 1, 1, loc);
+            try transient_vector.ensureLive(callee, "transient vector", loc);
+            // Shares vectorIndex with the persistent vector, so the
+            // not-an-integer and out-of-range errors cannot drift apart.
+            return vectorIndex(callee, args[0], loc);
+        },
+        .vector, .sub_vector => {
             if (args.len != 1) return arityError("vector", args.len, 1, 1, loc);
             return vectorIndex(callee, args[0], loc);
         },

@@ -33,6 +33,12 @@ assert_eq 'bigint_ne_bigintgr' "$(last_line "$("$BIN" -e '(= (type (bigint 5)) j
 assert_eq 'inst_integer_false'  "$(last_line "$("$BIN" -e '(instance? Integer 5)' 2>&1)")" 'false'
 assert_eq 'inst_bigintgr_false' "$(last_line "$("$BIN" -e '(instance? java.math.BigInteger (bigint 5))' 2>&1)")" 'false'
 assert_eq 'inst_short_false'    "$(last_line "$("$BIN" -e '(instance? Short 5)' 2>&1)")" 'false'
+# ADR-0194: tools.reader names three JVM inner seq implementation classes.
+# cljw has no values of these exact types, so their class values resolve but
+# remain uniformly false and their extensions are dead-by-construction.
+assert_eq 'inner_vector_seq_resolves' "$(last_line "$("$BIN" -e 'clojure.lang.PersistentVector$ChunkedSeq' 2>&1)")" 'clojure.lang.PersistentVector$ChunkedSeq'
+assert_eq 'inner_array_map_seq_false' "$(last_line "$("$BIN" -e '(instance? clojure.lang.PersistentArrayMap$Seq (seq {:a 1}))' 2>&1)")" 'false'
+assert_eq 'inner_hash_map_seq_false'  "$(last_line "$("$BIN" -e '(instance? clojure.lang.PersistentHashMap$NodeSeq (seq (hash-map :a 1)))' 2>&1)")" 'false'
 # cljw-native types still match instance? (unchanged)
 assert_eq 'inst_long_true'     "$(last_line "$("$BIN" -e '(instance? Long 5)' 2>&1)")" 'true'
 assert_eq 'inst_string_true'   "$(last_line "$("$BIN" -e '(instance? String "x")' 2>&1)")" 'true'
@@ -40,14 +46,24 @@ assert_eq 'inst_string_true'   "$(last_line "$("$BIN" -e '(instance? String "x")
 # extension on the same protocol still dispatches — the Integer impl is dead in
 # BOTH cljw and clj (verified: (m 5) → :long, not :int)
 assert_eq 'extend_opaque_noop_dispatch' "$(last_line "$("$BIN" -e '(do (defprotocol P (m [x])) (extend-type Integer P (m [_] :int)) (extend-type Long P (m [_] :long)) (m 5))' 2>&1)")" ':long'
+assert_eq 'extend_inner_seq_noop' "$(last_line "$("$BIN" -e '(do (defprotocol InnerP (inner-m [x])) (extend-type clojure.lang.PersistentVector$ChunkedSeq InnerP (inner-m [_] :inner)) (extend-type Object InnerP (inner-m [_] :object)) (inner-m [1 2]))' 2>&1)")" ':object'
 # ADR-0109: java.lang.Object is the UNIVERSAL supertype (resolves as a value;
 # (isa? <any> Object)→true; (instance? Object x)→true for non-nil; nil→false).
-# Unblocks algo.generic's `(derive Object root-type)`.
+# Explicit `(derive h Object root-type)` remains valid on the JVM.
 assert_eq 'isa_long_object'    "$(last_line "$("$BIN" -e '(isa? Long Object)' 2>&1)")" 'true'
 assert_eq 'isa_string_object'  "$(last_line "$("$BIN" -e '(isa? String Object)' 2>&1)")" 'true'
 assert_eq 'inst_object_nonnil' "$(last_line "$("$BIN" -e '(instance? Object 5)' 2>&1)")" 'true'
 assert_eq 'inst_object_nil'    "$(last_line "$("$BIN" -e '(instance? Object nil)' 2>&1)")" 'false'
-assert_eq 'derive_object'      "$(last_line "$("$BIN" -e '(do (derive (quote ::x) Object) (isa? (quote ::x) Object))' 2>&1)")" 'true'
+# JVM rejects Class as the global derive parent; explicit hierarchies accept
+# a Class child and a Named parent.
+assert_eq 'derive_object_named_parent' "$(last_line "$("$BIN" -e '(isa? (derive (make-hierarchy) Object (quote root-type)) Object (quote root-type))' 2>&1)")" 'true'
+assert_eq 'string_parents' "$(last_line "$("$BIN" -e '(and (contains? (parents String) Object) (= 6 (count (parents String))) (contains? (parents (make-hierarchy) String) Object))' 2>&1)")" 'true'
+assert_eq 'string_ancestors' "$(last_line "$("$BIN" -e '(and (= 6 (count (ancestors String))) (contains? (ancestors (make-hierarchy) String) Object) (contains? (ancestors (derive (make-hierarchy) String (quote custom)) String) (quote custom)))' 2>&1)")" 'true'
+assert_eq 'object_no_ancestors' "$(last_line "$("$BIN" -e '(ancestors Object)' 2>&1)")" 'nil'
+for expr in '(derive (quote probe/x) String)' '(derive (make-hierarchy) (quote probe/x) String)' '(derive (make-hierarchy) (quote probe/x) Object)'; do
+    if out=$($BIN -e "$expr" 2>&1); then fail "derive_class_parent: unexpectedly accepted $expr ($out)"; fi
+    echo 'PASS derive_class_parent -> error'
+done
 
 # D-416: (Object.) constructs a fresh identity-unique value — the Clojure
 # unique-sentinel idiom `(def notfound (Object.))` (data.finger-tree:556). The

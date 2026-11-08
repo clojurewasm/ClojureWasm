@@ -22,3 +22,12 @@
 ;;=> 4.0M
 (= (BigDecimal/valueOf 5) 5M)
 ;;=> true
+;; Scientific doubles and large significands must parse without narrowing to i64.
+(bigdec 1.0e20)
+;;=> 1.0E+20M
+(bigdec 1.0e-20)
+;;=> 1.0E-20M
+(bigdec 1.2345678901234567e30)
+;;=> 1.2345678901234567E+30M
+(bigdec "123456789012345678901234567890.5")
+;;=> 123456789012345678901234567890.5M

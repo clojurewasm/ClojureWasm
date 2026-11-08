@@ -64,33 +64,18 @@
 ;; Pure-Clojure compositions over `str` + `subs` + the existing
 ;; case-fold leaves.
 
-;; capitalize: upper-case first codepoint + lower-case rest.
-;; JVM: (str (Character/toUpperCase (.charAt s 0)) (-lower-case (subs s 1)))
-;; cw v1: upper-case the 1-codepoint prefix to handle non-ASCII
-;; uniformly with the existing Zig case-fold (which is ASCII-only —
-;; D-057 tracks the Unicode lift).
-(def capitalize
-  (fn* [s]
-    (if (< (count s) 2)
-      (-upper-case s)
-      (str (-upper-case (subs s 0 1))
-           (-lower-case (subs s 1))))))
+;; capitalize: upper-case first codepoint + lower-case rest. Delegates to the
+;; `-capitalize` leaf, which already does exactly this over codepoints.
+(def capitalize (fn* [s] (-capitalize s)))
 
-;; join: 1-arity (coll) = (apply str coll); 2-arity (sep coll) interposes the
-;; separator and builds the result in one `apply str`. Variadic via `[& args]`
-;; + count discrimination since cw v1 lacks multi-arity `fn*` (D-070).
+;; join: 1-arity (coll) = (apply str coll); 2-arity (sep coll) puts `(str sep)`
+;; between the `str` of each element of `(seq coll)`. Both arities are the
+;; `-join` leaf: one native walk + one buffer, no interpose seq.
 ;; (join sep) transducer arity is deferred (D-070 + ADR-0033 D6a).
-;;
-;; PERF: the old 2-arity `(reduce (fn [acc x] (str acc sep x)) nil coll)` copied
-;; the growing accumulator string on EVERY element → O(n²) in total length. The
-;; JVM idiom `(apply str (interpose sep coll))` walks once and builds the result
-;; in a single `str` pass (O(n) — `apply str` is the native variadic builder).
-;; [refs: O-012]
+;; [refs: O-012, O-070]
 (def join
-  (fn* [& args]
-    (if (= 1 (count args))
-      (apply str (first args))
-      (apply str (interpose (first args) (first (rest args)))))))
+  (fn* ([coll] (-join coll))
+       ([separator coll] (-join separator coll))))
 
 ;; ----------------------------------------------------------------
 ;; Row 7.12 cycle 3 (D-078): `replace` / `replace-first` Pattern A

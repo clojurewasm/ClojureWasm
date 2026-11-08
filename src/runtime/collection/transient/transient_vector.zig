@@ -96,6 +96,7 @@ pub fn fromVector(rt: *Runtime, source: Value) !Value {
 
     const buf = try rt.gc.infra.alloc(Value, initial_cap);
     errdefer rt.gc.infra.free(buf);
+    rt.gc.noteOwnedAlloc(buf.len * @sizeOf(Value));
     var i: u32 = 0;
     while (i < src_count) : (i += 1) {
         buf[i] = vector.nth(source, i);
@@ -220,7 +221,14 @@ pub fn traceTransientVector(gc_ptr: *anyopaque, header: *HeapHeader) void {
 /// Register both the trace fn and the finaliser into the per-tag
 /// tables. Idempotent at the same fn pointers; `Runtime.init` calls
 /// this once before any allocation lands.
+/// D-573: the items buffer (capacity, not count — that is what is held).
+fn ownedBytes(header: *HeapHeader) usize {
+    const tv: *TransientVector = @ptrCast(@alignCast(header));
+    return if (tv.items_ptr != null) tv.capacity * @sizeOf(Value) else 0;
+}
+
 pub fn registerGcHooks() void {
+    tag_ops.registerOwnedBytes(.transient_vector, &ownedBytes);
     tag_ops.registerTrace(.transient_vector, &traceTransientVector);
     tag_ops.registerFinaliser(.transient_vector, &finaliseGc);
 }
@@ -266,7 +274,7 @@ fn ensureCapacity(rt: *Runtime, tv: *TransientVector, needed: u32) !void {
     // OOM-kills the process before `persistent!` (gc.alloc) would trip the cap
     // (the D-361 Linux symptom). Refuse here so the cap surfaces as the
     // catchable/uncatchable eval_heap_exceeded during the build, on every host.
-    try rt.gc.checkInfraCap(new_cap * @sizeOf(Value));
+    try rt.gc.chargeInfraBytes(new_cap * @sizeOf(Value));
     const new_buf = try rt.gc.infra.realloc(old_buf, new_cap);
     tv.items_ptr = new_buf.ptr;
     tv.capacity = new_cap;

@@ -55,8 +55,6 @@ cd "${CLAUDE_PROJECT_DIR:-$(pwd)}"
 is_source_path() {
   case "$1" in
     src/*.zig|build.zig|build.zig.zon)        return 0 ;;
-    .dev/decisions/0000_*.md)                  return 1 ;;
-    .dev/decisions/[0-9][0-9][0-9][0-9]_*.md) return 0 ;;
     *)                                         return 1 ;;
   esac
 }
@@ -93,7 +91,7 @@ if [ $this_has_doc -eq 1 ] && [ $this_has_source -eq 1 ]; then
 ✗ commit blocked by scripts/check_learning_doc.sh (Rule 1)
 
 A learning-doc commit must NOT also contain source-bearing files
-(src/*.zig, build.zig, build.zig.zon, .dev/decisions/NNNN_*.md).
+(src/*.zig, build.zig, build.zig.zon).
 Split into two commits:
 
     git commit -m "feat(...): ..."   # source only (any number)
@@ -126,8 +124,6 @@ def commit_files(sha):
 def is_source(f):
     if re.match(r"^src/.+\.zig$", f):       return True
     if f in ("build.zig", "build.zig.zon"): return True
-    if re.match(r"^\.dev/decisions/0000_.+\.md$", f): return False
-    if re.match(r"^\.dev/decisions/[0-9]{4}_.+\.md$", f): return True
     return False
 
 def added_doc(sha):

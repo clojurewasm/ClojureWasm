@@ -1,0 +1,5 @@
+{:paths ["."]
+ :deps {org.clojure/test.check
+        {:git/url "https://github.com/clojure/test.check.git"
+         :git/sha "5ba3a25b60cf66ff531db8f44d89145abfacfa5c"}}
+ :aliases {:verify {:main-opts ["-m" "verify"]}}}

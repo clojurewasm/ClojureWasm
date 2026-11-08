@@ -74,7 +74,11 @@ got_err=$("$BIN" -e '(.println System/err "e2")' 2>&1 >/dev/null)
 [[ "$got_out" == "nil" && "$got_err" == "e2" ]] || fail "err_channel: out='$got_out' err='$got_err'"
 echo "PASS err_channel"
 # System/in reads piped bytes ("h"=104, "i"=105), then EOF -1
-got=$(echo "hi" | "$BIN" -e '(prn [(.read System/in) (.read System/in) (.read System/in) (.read System/in) (.read System/in)])' 2>&1 | head -1)
+# `sed -n 1p`, NOT `head -1`: head exits after line 1 and closes the pipe, so
+# cljw's later write (the -e nil echo / final flush) can hit EPIPE on a loaded
+# host → cljw exits non-zero → under `set -eo pipefail` the assignment dies
+# WITHOUT printing FAIL (the 2026-07-29 CI-runner flake). sed reads to EOF.
+got=$(echo "hi" | "$BIN" -e '(prn [(.read System/in) (.read System/in) (.read System/in) (.read System/in) (.read System/in)])' 2>&1 | sed -n '1p')
 [[ "$got" == '[104 105 10 -1 -1]' ]] || fail "in_read: got '$got'"
 echo "PASS in_read"
 

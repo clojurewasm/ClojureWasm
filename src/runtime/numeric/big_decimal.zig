@@ -125,7 +125,7 @@ pub fn allocFromManagedScale(
 
 /// Parse a plain/scientific decimal string (`"-1.50"`, `"1.0E10"`) into a
 /// BigDecimal, or `null` when the text is not a finite decimal numeral
-/// (empty, double dot, non-digit, pathologically wide, or |scale| > i32).
+/// (empty, double dot, non-digit, or |scale| > i32).
 /// The scale is `frac_digits - exponent`. Shared by `clojure.core/bigdec`
 /// (string + float arms) and `BigDecimal/valueOf` (the float arm formats
 /// via `printFloat` first). Lives here — with the BigDecimal representation
@@ -149,7 +149,9 @@ pub fn allocFromDecimalString(rt: *Runtime, s: []const u8) !?Value {
     if (mant.len == 0) return null;
 
     // Collect mantissa digits (drop the dot); count fractional digits.
-    var digits: [512]u8 = undefined;
+    // Sized to the mantissa, so the significand has no width ceiling.
+    const digits = try rt.gc.infra.alloc(u8, mant.len);
+    defer rt.gc.infra.free(digits);
     var dlen: usize = 0;
     var frac: i64 = 0;
     var seen_dot = false;
@@ -161,7 +163,6 @@ pub fn allocFromDecimalString(rt: *Runtime, s: []const u8) !?Value {
             continue;
         }
         if (c < '0' or c > '9') return null;
-        if (dlen >= digits.len) return null; // pathologically wide — defer
         digits[dlen] = c;
         dlen += 1;
         any_digit = true;
@@ -520,13 +521,32 @@ pub fn asScale(v: Value) i32 {
     return v.decodePtr(*const BigDecimal).scale;
 }
 
-/// Convert to the nearest f64 (`unscaled * 10^-scale`). Shared by the numeric
-/// `double`/`float` coercion (math.zig) and `format`'s %f/%e/%g conversions
-/// (F-011 DRY). Lossy beyond f64 range/precision, matching JVM
-/// `BigDecimal.doubleValue`.
-pub fn toFloat(v: Value) f64 {
-    const unscaled = asUnscaled(v).m.toFloat(f64, .nearest_even)[0];
-    return unscaled * std.math.pow(f64, 10.0, -@as(f64, @floatFromInt(asScale(v))));
+/// The f64 nearest `unscaled * 10^-scale`, JVM `BigDecimal.doubleValue`.
+/// The exact decimal `<unscaled>e<-scale>` goes through `parseFloat`, which
+/// rounds once and correctly. Converting the unscaled value and then
+/// multiplying by a power of ten rounds twice: that made `0.3M`
+/// 0.30000000000000004, and a 400-digit unscaled times 10^-400 an infinity
+/// times zero, NaN. A small unscaled value renders into a stack buffer; a
+/// big one borrows its own allocator, so the only error is OutOfMemory.
+/// Every BigDecimal to double path calls this (`promote.toF64`, `format`'s
+/// %f/%e/%g).
+pub fn toFloat(v: Value) std.mem.Allocator.Error!f64 {
+    const m = asUnscaled(v).m;
+    const exp: i64 = -@as(i64, asScale(v));
+    if (m.toConst().toInt(i128)) |small| {
+        var buf: [64]u8 = undefined; // 40 digits + "e" + 11 exponent chars
+        const txt = std.fmt.bufPrint(&buf, "{d}e{d}", .{ small, exp }) catch unreachable;
+        return std.fmt.parseFloat(f64, txt) catch unreachable;
+    } else |_| {}
+    const gpa = m.allocator;
+    const digits = m.toString(gpa, 10, .lower) catch |e| switch (e) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.InvalidBase => unreachable, // base 10
+    };
+    defer gpa.free(digits);
+    const txt = try std.fmt.allocPrint(gpa, "{s}e{d}", .{ digits, exp });
+    defer gpa.free(txt);
+    return std.fmt.parseFloat(f64, txt) catch unreachable;
 }
 
 /// The stripped-trailing-zeros unscaled significand (ADR-0077): the
@@ -688,6 +708,17 @@ pub fn setScale(rt: *Runtime, v: Value, new_scale: i32, mode: i64) !Value {
     try q.divTrunc(&r, &unscaled, &divisor); // q toward zero; sign(r) = sign(unscaled)
     try applyRounding(infra, &q, &r, &divisor, mode);
     return allocFromManagedScale(rt, &q, new_scale);
+}
+
+/// JVM `BigDecimal.ROUND_DOWN`, the `ROUND_*` ordinal that truncates toward zero.
+pub const round_down: i64 = 1;
+
+/// The integer part of `v`, truncated toward zero, as a scale-0 BigDecimal
+/// whose unscaled value IS that integer (JVM `toBigInteger()`; DOWN never
+/// needs rounding). Shared by `.toBigInteger` and the Number narrowings
+/// (`.intValue` / `.longValue` / `.shortValue` / `.byteValue`).
+pub fn truncate(rt: *Runtime, v: Value) !Value {
+    return setScale(rt, v, 0, round_down);
 }
 
 /// Adjust the truncated quotient `q` (toward zero) by one ULP per `mode`, given
@@ -1088,6 +1119,26 @@ test "normalized projection of zero is (0, 0) regardless of scale" {
     const z2 = try allocFromI64Scale(&fix.rt, 0, 2); // 0.00
     try testing.expectEqual(@as(i32, 0), asNormScale(z2));
     try testing.expectEqual(@as(i64, 0), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, @constCast(asNormUnscaled(z2)))).toInt(i64));
+}
+
+test "toFloat is the double nearest the exact decimal (one rounding)" {
+    var fix = BdFixture.init();
+    defer fix.deinit();
+
+    // 3 * 0.1 in f64 is 0.30000000000000004; the decimal 0.3 is 0.3.
+    try testing.expectEqual(@as(f64, 0.3), try toFloat(try allocFromI64Scale(&fix.rt, 3, 1)));
+    try testing.expectEqual(@as(f64, -0.7), try toFloat(try allocFromI64Scale(&fix.rt, -7, 1)));
+    try testing.expectEqual(@as(f64, 9.95), try toFloat(try allocFromI64Scale(&fix.rt, 995, 2)));
+    try testing.expect(std.math.isPositiveInf(try toFloat(try allocFromI64Scale(&fix.rt, 1, -400))));
+    try testing.expectEqual(@as(f64, 0.0), try toFloat(try allocFromI64Scale(&fix.rt, 1, 400)));
+
+    // Big tier: 10^400 at scale 400 is exactly 1 (an f64 path gives inf * 0).
+    var ten = try std.math.big.int.Managed.initSet(testing.allocator, 10);
+    defer ten.deinit();
+    var big = try std.math.big.int.Managed.init(testing.allocator);
+    defer big.deinit();
+    try big.pow(&ten, 400);
+    try testing.expectEqual(@as(f64, 1.0), try toFloat(try allocFromManagedScale(&fix.rt, &big, 400)));
 }
 
 test "Runtime.deinit releases BigDecimal + unscaled BigInt (no leak)" {

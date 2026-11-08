@@ -58,4 +58,20 @@
 ;; Real SIMD arithmetic on the JIT: i32x4.mul (1,2,3,4)*(5,6,7,8) = (5,12,21,32),
 ;; horizontal sum = 70 (not just a const lane extract). JIT-only (interp traps).
 (println "simd-dot-jit:" (wasm/call (wasm/load "test/e2e/fixtures/wasm/simd_dot.wasm" {:engine :jit}) "simd_dot"))
+
+;; ADR-0196: engine truth at the surface. `wasm/engine` reports the selection a
+;; handle was loaded with, and a trap names the export, its signature, the
+;; engine and the remedy when the shape is a known gap. `gpr4_void` is the D-585
+;; discriminator: a zero-result arity-4 export the JIT cannot dispatch, so it
+;; traps on the default and runs on :interp.
+(println "engine-jit:" (wasm/engine jit))
+(println "engine-interp:" (wasm/engine interp))
+(println "engine-default:" (wasm/engine (wasm/load w)))
+(def va "test/e2e/fixtures/wasm/void_arity.wasm")
+(println "void4-default:"
+  (try (wasm/call (wasm/load va) "gpr4_void" 1 2 3 4) "RAN"
+    (catch Throwable e (ex-message e))))
+(println "void4-interp:"
+  (try (wasm/call (wasm/load va {:engine :interp}) "gpr4_void" 1 2 3 4) "RAN"
+    (catch Throwable e (ex-message e))))
 (println "DONE")

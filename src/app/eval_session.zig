@@ -21,10 +21,8 @@ const env_mod = @import("../runtime/env.zig");
 const Value = @import("../runtime/value/value.zig").Value;
 const GcHeap = @import("../runtime/gc/gc_heap.zig").GcHeap;
 const Reader = @import("../eval/reader.zig").Reader;
-const analyzeForm = @import("../eval/analyzer/analyzer.zig").analyze;
 const macro_dispatch = @import("../eval/macro_dispatch.zig");
 const driver = @import("../eval/driver.zig");
-const root_set = @import("../runtime/gc/root_set.zig");
 const print = @import("../runtime/print.zig");
 const text_io = @import("../runtime/io/text_io.zig");
 const dispatch = @import("../runtime/dispatch.zig");
@@ -156,19 +154,11 @@ pub fn evalSource(
         };
         const form = form_opt orelse break;
 
-        // D-430: per-form analysis bracket (roots literals through eval).
-        var af: root_set.AnalysisFrame = undefined;
-        root_set.beginAnalysis(&af, rt.gc.infra);
-        defer root_set.endAnalysisPersist(&af, &rt.gc);
-
-        const node = analyzeForm(arena, rt, env, null, form, macro_table) catch |err| {
-            try flushCaptured(out_var, err_var, sink);
-            try handleEvalError(rt, opts, ve, err, scratch, sink);
-            ok = false;
-            break;
-        };
         var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
-        const result = driver.evalForm(rt, env, &locals, arena, node) catch |err| {
+        // D-374 via evalTopLevelForm: a top-level `(do …)` is unrolled so an
+        // earlier child's effect is visible to a later child's ANALYSIS. It
+        // brackets analysis per leaf (D-430) rather than per source form.
+        const result = driver.evalTopLevelForm(rt, env, &locals, arena, form, macro_table) catch |err| {
             try flushCaptured(out_var, err_var, sink);
             try handleEvalError(rt, opts, ve, err, scratch, sink);
             ok = false;

@@ -67,9 +67,12 @@ pub const Extension = struct {
 const java_surfaces = [_]type{
     @import("io/File.zig"),
     @import("io/StringWriter.zig"),
+    @import("io/StringReader.zig"),
+    @import("io/PushbackReader.zig"),
     @import("lang/Boolean.zig"),
     @import("lang/Character.zig"),
     @import("lang/Double.zig"),
+    @import("lang/Float.zig"), // D-295 sibling — Tier A "no surface" row backfilled
     @import("lang/Integer.zig"),
     @import("lang/Long.zig"),
     @import("lang/Short.zig"), // D-295 — MIN_VALUE/MAX_VALUE static fields
@@ -105,10 +108,16 @@ const java_surfaces = [_]type{
     @import("time/LocalDateTime.zig"),
     @import("time/LocalTime.zig"),
     @import("time/Duration.zig"),
+    @import("time/ZoneId.zig"), // fixed-offset zones only (no tz database)
+    @import("time/ZoneOffset.zig"),
+    @import("time/temporal/ChronoField.zig"), // host-enum (ADR-0161 registry)
+    @import("time/format/DateTimeFormatter.zig"),
+    @import("time/format/DateTimeFormatterBuilder.zig"),
     // ZonedDateTime backing impl under runtime/time/ is unbuilt
     // (method_table empty) — D-105.
     @import("time/ZonedDateTime.zig"),
     @import("util/ArrayList.zig"),
+    @import("util/ArrayDeque.zig"),
     @import("util/HashMap.zig"),
     @import("util/HashSet.zig"),
     @import("util/TreeSet.zig"),
@@ -124,6 +133,18 @@ const java_surfaces = [_]type{
     // Matcher's backing impl is shipped by Pattern's regex/match.zig.
     @import("util/regex/Matcher.zig"),
     @import("util/regex/Pattern.zig"),
+    @import("util/concurrent/TimeUnit.zig"),
+    @import("util/concurrent/Semaphore.zig"),
+    @import("util/concurrent/TimeoutException.zig"),
+    @import("util/concurrent/LinkedBlockingQueue.zig"),
+    @import("util/concurrent/ThreadPoolExecutor_CallerRunsPolicy.zig"),
+    @import("util/concurrent/ThreadPoolExecutor_AbortPolicy.zig"),
+    @import("util/concurrent/ThreadPoolExecutor.zig"),
+    @import("util/concurrent/Executors.zig"),
+    @import("util/concurrent/atomic/AtomicLong.zig"),
+    @import("util/concurrent/atomic/AtomicInteger.zig"),
+    @import("util/concurrent/atomic/AtomicBoolean.zig"),
+    @import("lang/reflect/Array.zig"),
 };
 
 /// The third surface tree (ADR-0108): `clojure.lang.*` runtime internals that
@@ -140,6 +161,11 @@ const clojure_surfaces = [_]type{
     @import("../clojure/lang/APersistentMap.zig"),
     @import("../clojure/lang/APersistentSet.zig"),
     @import("../clojure/lang/Murmur3.zig"),
+    @import("../clojure/lang/LazilyPersistentVector.zig"),
+    @import("../clojure/lang/PersistentArrayMap.zig"),
+    @import("../clojure/lang/PersistentList.zig"),
+    // core.logic mints lvar ids with `(. clojure.lang.RT (nextID))`.
+    @import("../clojure/lang/RT.zig"),
 };
 
 /// Walk every enumerated surface's `___HOST_EXTENSION` declaration,

@@ -13,7 +13,7 @@
 #   "campaign" once chased Debug ghosts: `(count (vec (range 1e6)))`
 #   read **121s in Debug** but **0.01s in ReleaseFast**; startup read
 #   0.48s in Debug but ~ms in ReleaseFast (matching cw v0's ~4ms).
-#   See `.claude/rules/perf_measure_release.md`.
+#   See `memory 20260909234455-390c5332 (perf_measure_release)`.
 #
 # RULE: measure runtime speed ONLY through this script (or the
 # ReleaseFast `bench/`). NEVER `time zig-out/bin/cljw` — that is Debug.
@@ -25,6 +25,7 @@
 #   CLJW_PERF_MODE=ReleaseSafe bash scripts/perf.sh '...'  # match cw-v0's mode
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source "$(dirname "$0")/lib_build_lock.sh"
 
 MODE="${CLJW_PERF_MODE:-ReleaseFast}"
 N=3
@@ -40,7 +41,7 @@ done
 
 PREFIX="${TMPDIR:-/tmp}/cljw-perf"
 echo "[perf] building $MODE into $PREFIX (dev zig-out/bin/cljw untouched)…" >&2
-zig build -Dwasm -Doptimize="$MODE" -p "$PREFIX" >/dev/null
+with_build_lock zig build -Dwasm -Doptimize="$MODE" -p "$PREFIX" >/dev/null
 BIN="$PREFIX/bin/cljw"
 [ -x "$BIN" ] || { echo "perf.sh: build produced no $BIN" >&2; exit 1; }
 echo "[perf] $MODE binary ready; timing $N run(s):" >&2

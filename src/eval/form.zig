@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Form — the AST emitted by the Reader and consumed by the Analyzer.
 //!
 //! Each Form carries syntactic shape (`FormData`) plus a `SourceLocation`
@@ -214,6 +215,14 @@ pub const Form = struct {
         try self.formatPrStr(&aw.writer);
         return aw.toOwnedSlice();
     }
+
+    /// pr-str into `buf`, truncated to fit: the printed form an error
+    /// message carries (`Duplicate key: <form>`).
+    pub fn prStrBounded(self: Form, buf: []u8) []const u8 {
+        var w: Writer = .fixed(buf);
+        self.formatPrStr(&w) catch {};
+        return w.buffered();
+    }
 };
 
 // --- formatting helpers ---
@@ -254,6 +263,219 @@ fn formatMapEntries(w: *Writer, items: []const Form) Writer.Error!void {
         }
     }
     try w.writeByte('}');
+}
+
+// --- literal equality (ADR-0200) ---
+
+/// Whether `a` and `b` certainly read as `=` values, decided from the syntax
+/// alone. It answers false whenever equality needs evaluation (a tagged
+/// literal, a regex, a syntax-quote holding an auto-gensym `x#`) or numeric
+/// promotion (`1` against `1N`, `2` against `4/2`), so false means "not
+/// known equal", never "known distinct": a caller can miss a duplicate but
+/// never invent one. Metadata is ignored, as `=` ignores it. Floats compare
+/// by IEEE `==`, so `0.0` equals `-0.0`, and `##NaN` equals `##NaN`: clj's
+/// reader rejects `{0.0 1 -0.0 2}` and `{##NaN 1 ##NaN 2}` alike. `~x` and a
+/// gensym-free `` `x `` read as fixed lists, equal when their forms are.
+pub fn literalEql(a: Form, b: Form) bool {
+    return switch (a.data) {
+        .nil => b.data == .nil,
+        .boolean => |x| b.data == .boolean and b.data.boolean == x,
+        .integer => |x| b.data == .integer and b.data.integer == x,
+        .float => |x| b.data == .float and (b.data.float == x or (std.math.isNan(x) and std.math.isNan(b.data.float))),
+        .char => |x| b.data == .char and b.data.char == x,
+        .string => |x| b.data == .string and std.mem.eql(u8, x, b.data.string),
+        .big_int_literal => |x| b.data == .big_int_literal and std.mem.eql(u8, x, b.data.big_int_literal),
+        .big_decimal_literal => |x| b.data == .big_decimal_literal and std.mem.eql(u8, x, b.data.big_decimal_literal),
+        .ratio_literal => |x| b.data == .ratio_literal and std.mem.eql(u8, x, b.data.ratio_literal),
+        .symbol => |x| b.data == .symbol and symbolRefEql(x, b.data.symbol),
+        .keyword => |x| b.data == .keyword and symbolRefEql(x, b.data.keyword),
+        // A list and a vector with equal elements are `=` (sequential).
+        .list, .vector => |xs| switch (b.data) {
+            .list, .vector => |ys| sequentialEql(xs, ys),
+            else => false,
+        },
+        .map => |xs| b.data == .map and unorderedEql(xs, b.data.map, 2),
+        .set => |xs| b.data == .set and unorderedEql(xs, b.data.set, 1),
+        .unquote => |x| b.data == .unquote and literalEql(x.*, b.data.unquote.*),
+        .unquote_splicing => |x| b.data == .unquote_splicing and literalEql(x.*, b.data.unquote_splicing.*),
+        // Each syntax-quote mints its own `x#` names, so only a gensym-free
+        // template reads the same twice.
+        .syntax_quote => |x| b.data == .syntax_quote and !hasAutoGensym(x.*) and literalEql(x.*, b.data.syntax_quote.*),
+        .regex_literal, .tagged => false,
+    };
+}
+
+/// A hash consistent with `literalEql`, or null for a Form `literalEql`
+/// equates with nothing (itself included), which a hashed lookup must skip.
+pub fn literalHash(f: Form) ?u64 {
+    const seed: u64 = switch (f.data) {
+        .list, .vector => 0x5e9, // one family, as in literalEql
+        else => @intFromEnum(std.meta.activeTag(f.data)),
+    };
+    return switch (f.data) {
+        .nil => seed,
+        .boolean => |x| mixHash(seed, @intFromBool(x)),
+        .integer => |x| mixHash(seed, @bitCast(x)),
+        // One hash for every NaN and for both zeros, as literalEql equates them.
+        .float => |x| mixHash(seed, if (std.math.isNan(x)) 0x7ff8000000000000 else @as(u64, @bitCast(if (x == 0) 0.0 else x))),
+        .char => |x| mixHash(seed, x),
+        .string, .big_int_literal, .big_decimal_literal, .ratio_literal => |s| mixHash(seed, std.hash.Wyhash.hash(0, s)),
+        .symbol, .keyword => |r| mixHash(
+            mixHash(seed, std.hash.Wyhash.hash(0, r.ns orelse "")),
+            std.hash.Wyhash.hash(@intFromBool(r.auto_resolve), r.name),
+        ),
+        .list, .vector => |xs| blk: {
+            var acc = seed;
+            for (xs) |x| acc = mixHash(acc, literalHash(x) orelse return null);
+            break :blk acc;
+        },
+        // Order-insensitive: a wrapping sum of per-entry hashes.
+        .map => |xs| blk: {
+            var acc = seed;
+            var i: usize = 0;
+            while (i + 1 < xs.len) : (i += 2)
+                acc +%= mixHash(literalHash(xs[i]) orelse return null, literalHash(xs[i + 1]) orelse return null);
+            break :blk acc;
+        },
+        .set => |xs| blk: {
+            var acc = seed;
+            for (xs) |x| acc +%= literalHash(x) orelse return null;
+            break :blk acc;
+        },
+        .unquote, .unquote_splicing => |x| mixHash(seed, literalHash(x.*) orelse return null),
+        .syntax_quote => |x| if (hasAutoGensym(x.*)) null else mixHash(seed, literalHash(x.*) orelse return null),
+        .regex_literal, .tagged => null,
+    };
+}
+
+/// Whether `f` holds an auto-gensym symbol (`x#`), which a syntax-quote
+/// expands to a fresh name each time it is read.
+fn hasAutoGensym(f: Form) bool {
+    return switch (f.data) {
+        .symbol => |s| s.ns == null and s.name.len > 1 and s.name[s.name.len - 1] == '#',
+        .list, .vector, .map, .set => |xs| for (xs) |x| {
+            if (hasAutoGensym(x)) break true;
+        } else false,
+        .syntax_quote, .unquote, .unquote_splicing => |x| hasAutoGensym(x.*),
+        .tagged => |t| hasAutoGensym(t.form.*),
+        else => false,
+    };
+}
+
+/// The first of `items`' every-`stride`th element (a map's keys with stride
+/// 2, a set's elements with stride 1) that `literalEql`s an earlier one, or
+/// null. Pairwise for a small literal, hashed above `pairwise_max` elements
+/// so a large one stays linear.
+pub fn firstDuplicate(allocator: std.mem.Allocator, items: []const Form, stride: usize) error{OutOfMemory}!?Form {
+    const pairwise_max = 8;
+    if (items.len / stride <= pairwise_max) {
+        var i: usize = stride;
+        while (i < items.len) : (i += stride) {
+            var j: usize = 0;
+            while (j < i) : (j += stride) {
+                if (literalEql(items[j], items[i])) return items[i];
+            }
+        }
+        return null;
+    }
+    var seen: std.HashMapUnmanaged(Form, void, LiteralContext, std.hash_map.default_max_load_percentage) = .empty;
+    defer seen.deinit(allocator);
+    var i: usize = 0;
+    while (i < items.len) : (i += stride) {
+        if (literalHash(items[i]) == null) continue;
+        const gop = try seen.getOrPut(allocator, items[i]);
+        if (gop.found_existing) return items[i];
+    }
+    return null;
+}
+
+/// Builds a map Form's flat k/v entries by MERGING maps, as clj's `merge`
+/// does, instead of concatenating them. Concatenation leaned on a map
+/// literal's last-key-wins, which the duplicate-key check (ADR-0200) now
+/// rejects; every internal metadata merge goes through here.
+pub const MapBuilder = struct {
+    entries: std.ArrayList(Form) = .empty,
+
+    /// Merge the flat k/v `map_entries` over the built entries: a built
+    /// entry whose key `literalEql`s a new key is dropped, then the new
+    /// entries are appended as given. A key repeated INSIDE one merged map
+    /// survives, so the duplicate-key check still reports it.
+    pub fn merge(self: *MapBuilder, allocator: std.mem.Allocator, map_entries: []const Form) error{OutOfMemory}!void {
+        const items = self.entries.items;
+        var kept: usize = 0;
+        var r: usize = 0;
+        while (r + 1 < items.len) : (r += 2) {
+            if (containsKey(map_entries, items[r])) continue;
+            items[kept] = items[r];
+            items[kept + 1] = items[r + 1];
+            kept += 2;
+        }
+        self.entries.shrinkRetainingCapacity(kept);
+        try self.entries.appendSlice(allocator, map_entries);
+    }
+
+    /// `merge` a single entry.
+    pub fn put(self: *MapBuilder, allocator: std.mem.Allocator, key: Form, val: Form) error{OutOfMemory}!void {
+        try self.merge(allocator, &.{ key, val });
+    }
+
+    pub fn toForm(self: *MapBuilder, allocator: std.mem.Allocator, location: SourceLocation) error{OutOfMemory}!Form {
+        return .{ .data = .{ .map = try self.entries.toOwnedSlice(allocator) }, .location = location };
+    }
+};
+
+const LiteralContext = struct {
+    pub fn hash(_: LiteralContext, f: Form) u64 {
+        return literalHash(f).?;
+    }
+    pub fn eql(_: LiteralContext, a: Form, b: Form) bool {
+        return literalEql(a, b);
+    }
+};
+
+fn mixHash(a: u64, b: u64) u64 {
+    return std.hash.Wyhash.hash(a, std.mem.asBytes(&b));
+}
+
+fn symbolRefEql(a: SymbolRef, b: SymbolRef) bool {
+    if (a.auto_resolve != b.auto_resolve) return false;
+    if (!std.mem.eql(u8, a.name, b.name)) return false;
+    if (a.ns == null or b.ns == null) return a.ns == null and b.ns == null;
+    return std.mem.eql(u8, a.ns.?, b.ns.?);
+}
+
+fn sequentialEql(xs: []const Form, ys: []const Form) bool {
+    if (xs.len != ys.len) return false;
+    for (xs, ys) |x, y| if (!literalEql(x, y)) return false;
+    return true;
+}
+
+/// Equal as unordered collections of `stride`-sized groups (map entries or
+/// set elements): the same group count, and every group of `xs` matched by
+/// one of `ys`.
+fn unorderedEql(xs: []const Form, ys: []const Form, stride: usize) bool {
+    if (xs.len != ys.len) return false;
+    var i: usize = 0;
+    while (i < xs.len) : (i += stride) {
+        var found = false;
+        var j: usize = 0;
+        while (j < ys.len) : (j += stride) {
+            if (sequentialEql(xs[i .. i + stride], ys[j .. j + stride])) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) return false;
+    }
+    return true;
+}
+
+fn containsKey(map_entries: []const Form, key: Form) bool {
+    var i: usize = 0;
+    while (i < map_entries.len) : (i += 2) {
+        if (literalEql(map_entries[i], key)) return true;
+    }
+    return false;
 }
 
 // --- tests ---
@@ -372,4 +594,85 @@ test "toString allocates the expected output" {
     const s = try f.toString(testing.allocator);
     defer testing.allocator.free(s);
     try testing.expectEqualStrings("(+ 1 2)", s);
+}
+
+test "literalEql: equal literals, sequential list/vector, unordered map; hash agrees" {
+    const kw_a = Form{ .data = .{ .keyword = .{ .name = "a" } } };
+    const kw_a_elsewhere = Form{ .data = .{ .keyword = .{ .name = "a" } }, .location = .{ .line = 9 } };
+    try testing.expect(literalEql(kw_a, kw_a_elsewhere));
+    const auto_a = Form{ .data = .{ .keyword = .{ .name = "a", .auto_resolve = true } } };
+    try testing.expect(!literalEql(kw_a, auto_a));
+    const one = Form{ .data = .{ .integer = 1 } };
+    const one_n = Form{ .data = .{ .big_int_literal = "1" } };
+    try testing.expect(!literalEql(one, one_n));
+    const zero = Form{ .data = .{ .float = 0.0 } };
+    const neg_zero = Form{ .data = .{ .float = -0.0 } };
+    try testing.expect(literalEql(zero, neg_zero));
+    const nan = Form{ .data = .{ .float = std.math.nan(f64) } };
+    try testing.expect(literalEql(nan, nan));
+    try testing.expectEqual(literalHash(nan), literalHash(.{ .data = .{ .float = -std.math.nan(f64) } }));
+
+    const x_sym = Form{ .data = .{ .symbol = .{ .name = "x" } } };
+    const gensym = Form{ .data = .{ .symbol = .{ .name = "x#" } } };
+    try testing.expect(literalEql(.{ .data = .{ .unquote = &x_sym } }, .{ .data = .{ .unquote = &x_sym } }));
+    try testing.expect(literalEql(.{ .data = .{ .syntax_quote = &x_sym } }, .{ .data = .{ .syntax_quote = &x_sym } }));
+    try testing.expect(!literalEql(.{ .data = .{ .syntax_quote = &gensym } }, .{ .data = .{ .syntax_quote = &gensym } }));
+    try testing.expect(literalHash(.{ .data = .{ .syntax_quote = &gensym } }) == null);
+    try testing.expectEqual(literalHash(zero), literalHash(neg_zero));
+
+    const xs = [_]Form{ one, kw_a };
+    const as_list = Form{ .data = .{ .list = &xs } };
+    const as_vec = Form{ .data = .{ .vector = &xs } };
+    try testing.expect(literalEql(as_list, as_vec));
+    try testing.expectEqual(literalHash(as_list), literalHash(as_vec));
+    const m1 = [_]Form{ kw_a, one, one, kw_a };
+    const m2 = [_]Form{ one, kw_a, kw_a, one };
+    const map1 = Form{ .data = .{ .map = &m1 } };
+    const map2 = Form{ .data = .{ .map = &m2 } };
+    try testing.expect(literalEql(map1, map2));
+    try testing.expectEqual(literalHash(map1), literalHash(map2));
+
+    const inner = Form{ .data = .{ .integer = 5 } };
+    const tagged = Form{ .data = .{ .tagged = .{ .tag = .{ .name = "foo" }, .form = &inner } } };
+    try testing.expect(!literalEql(tagged, tagged));
+    try testing.expect(literalHash(tagged) == null);
+}
+
+test "firstDuplicate: the pairwise and hashed paths report the repeated element" {
+    var entries: [24]Form = undefined;
+    for (0..12) |i| {
+        entries[2 * i] = .{ .data = .{ .integer = @intCast(i) } };
+        entries[2 * i + 1] = .{ .data = .nil };
+    }
+    try testing.expect((try firstDuplicate(testing.allocator, &entries, 2)) == null);
+    entries[22] = .{ .data = .{ .integer = 3 }, .location = .{ .line = 7 } };
+    const dup = (try firstDuplicate(testing.allocator, &entries, 2)).?;
+    try testing.expectEqual(@as(u32, 7), dup.location.line);
+
+    const small_set = [_]Form{ entries[2], entries[4], entries[2] };
+    try testing.expect((try firstDuplicate(testing.allocator, &small_set, 1)) != null);
+
+    const inner = Form{ .data = .{ .integer = 5 } };
+    const tagged = Form{ .data = .{ .tagged = .{ .tag = .{ .name = "foo" }, .form = &inner } } };
+    const tags = [_]Form{ tagged, tagged };
+    try testing.expect((try firstDuplicate(testing.allocator, &tags, 1)) == null);
+}
+
+test "MapBuilder.merge: a later map wins; a key repeated inside one map survives" {
+    const a = Form{ .data = .{ .keyword = .{ .name = "a" } } };
+    const b = Form{ .data = .{ .keyword = .{ .name = "b" } } };
+    const one = Form{ .data = .{ .integer = 1 } };
+    const two = Form{ .data = .{ .integer = 2 } };
+    var mb: MapBuilder = .{};
+    defer mb.entries.deinit(testing.allocator);
+    try mb.merge(testing.allocator, &.{ a, one, b, one });
+    try mb.put(testing.allocator, a, two);
+    try expectPr(.{ .data = .{ .map = mb.entries.items } }, "{:b 1, :a 2}");
+    try mb.merge(testing.allocator, &.{ b, one, b, two });
+    try expectPr(.{ .data = .{ .map = mb.entries.items } }, "{:a 2, :b 1, :b 2}");
+}
+
+test "prStrBounded truncates to the buffer" {
+    var buf: [4]u8 = undefined;
+    try testing.expectEqualStrings(":abc", (Form{ .data = .{ .keyword = .{ .name = "abcdef" } } }).prStrBounded(&buf));
 }

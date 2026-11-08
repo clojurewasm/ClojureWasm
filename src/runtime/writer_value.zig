@@ -32,7 +32,8 @@ const SourceLocation = @import("error/info.zig").SourceLocation;
 
 const Writer = std.Io.Writer;
 
-/// `state[0]` = `@intFromPtr(*std.Io.Writer)`; `state[1]` = liveness (1 live, 0 stale).
+/// `state[0]` = `@intFromPtr(*std.Io.Writer)`; `state[1]` = liveness (1 live, 0 stale);
+/// `state[2]` = the printer's `consult` flag (1 = consult `print-method` per value).
 fn writerPtr(recv: Value) ?*Writer {
     const inst = host_instance.asHostInstance(recv);
     if (inst.state[1] == 0) return null;
@@ -103,8 +104,17 @@ pub fn initWriterType() void {
 
 /// Mint a single-print-scoped writer handle around `w`. Pair every `mint` with an
 /// `invalidate` (typically `defer`) so a retained handle cannot read a dangling ptr.
-pub fn mint(rt: *Runtime, w: *Writer) !Value {
-    return host_instance.alloc(rt, &writer_descriptor, .{ @intFromPtr(w), 1, 0, 0 });
+pub fn mint(rt: *Runtime, w: *Writer, consult: bool) !Value {
+    return host_instance.alloc(rt, &writer_descriptor, .{ @intFromPtr(w), 1, @intFromBool(consult), 0 });
+}
+
+/// The printer's `consult` flag as it was when this handle was minted. The
+/// handle is the only value that crosses into a user `print-method` body and
+/// back into the `:default` implementation, so it is what carries the flag
+/// across that boundary. False for a stale handle.
+pub fn consultOf(v: Value) bool {
+    if (!isWriter(v)) return false;
+    return host_instance.asHostInstance(v).state[2] == 1;
 }
 
 /// Mark a minted handle stale (its wrapped `*Writer` is about to leave scope).

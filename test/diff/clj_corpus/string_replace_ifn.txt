@@ -1,0 +1,17 @@
+;; clojure.string/replace + replace-first with a NON-fn IFn replacement on a
+;; regex match (CLJW-COMPLIANCE B4). clj treats any non-string replacement as a
+;; function called with the match; a map/keyword/set/vector is IFn too, so a map
+;; is looked up by the match. cljw's -str-replace-pattern rejected non-fn tags.
+
+(clojure.string/replace "aXbXc" #"X" {"X" "-"})
+;;=> "a-b-c"
+(clojure.string/replace "aXbYc" #"[XY]" {"X" "-" "Y" "+"})
+;;=> "a-b+c"
+(clojure.string/replace-first "aXbX" #"X" {"X" "-"})
+;;=> "a-bX"
+
+;; regressions — string and fn replacements still hold
+(clojure.string/replace "hello world" #"\w+" clojure.string/upper-case)
+;;=> "HELLO WORLD"
+(clojure.string/replace "aXb" #"X" "Y")
+;;=> "aYb"

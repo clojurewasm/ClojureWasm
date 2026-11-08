@@ -26,6 +26,7 @@
 //! REPL chart is exercised here.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Writer = std.Io.Writer;
 
 const Reader = @import("../eval/reader.zig").Reader;
@@ -147,14 +148,22 @@ pub fn run(
     var stars = eval_session.StarState.init(&rt.gc);
     defer stars.release();
 
-    const interactive = if (std.posix.tcgetattr(std.Io.File.stdin().handle)) |_| true else |_| false;
-    if (interactive) {
-        var editor = LineEditor.init(gpa, io, stdout, &env);
-        defer editor.deinit();
-        try runInteractive(&rt, &env, &macro_table, arena, stdout, stderr, &editor, &stars);
-    } else {
+    if (comptime builtin.os.tag == .wasi) {
         try runPiped(io, &rt, &env, &macro_table, arena, stdout, stderr, &stars);
+    } else {
+        const interactive = if (std.posix.tcgetattr(std.Io.File.stdin().handle)) |_| true else |_| false;
+        if (interactive) {
+            var editor = LineEditor.init(gpa, io, stdout, &env);
+            defer editor.deinit();
+            try runInteractive(&rt, &env, &macro_table, arena, stdout, stderr, &editor, &stars);
+        } else {
+            try runPiped(io, &rt, &env, &macro_table, arena, stdout, stderr, &stars);
+        }
     }
+    // Exit barrier (ADR-0176): join non-daemon Threads + hard-exit if any
+    // worker (future/agent/Thread epilogue) is still live — the defers below
+    // would free the heap under it (the D-548(a) teardown race).
+    @import("../runtime/thread.zig").exitBarrier(&rt);
 }
 
 /// Interactive loop driven by the raw-mode line editor.

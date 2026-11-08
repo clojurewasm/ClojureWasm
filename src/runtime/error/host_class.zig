@@ -72,6 +72,10 @@ pub const ENTRIES = [_]Entry{
 
     .{ .name = "Error", .parent = "Throwable" },
     .{ .name = "OutOfMemoryError", .parent = "Error" },
+    // java.lang.ThreadDeath ⊂ Error. cljw is single-threaded and never throws
+    // it; recognised only so a `(catch java.lang.ThreadDeath t (throw t))` guard
+    // ANALYSES (test.check.properties re-throws it to not swallow thread-death).
+    .{ .name = "ThreadDeath", .parent = "Error" },
     // `(assert …)` throws an AssertionError (under Error, NOT Exception) — D-192.
     .{ .name = "AssertionError", .parent = "Error" },
     // Stack overflow: JVM StackOverflowError ⊂ VirtualMachineError ⊂ Error; cw
@@ -89,6 +93,15 @@ pub const ENTRIES = [_]Entry{
     // clojure.math.numeric-tower's `(catch ClassNotFoundException _ …)`.
     .{ .name = "ReflectiveOperationException", .parent = "Exception" },
     .{ .name = "ClassNotFoundException", .parent = "ReflectiveOperationException" },
+    // Caught by libs probing an optional JDK method via `.getMethod`, e.g.
+    // hive-weave.pool's virtual-thread feature check.
+    .{ .name = "NoSuchMethodException", .parent = "ReflectiveOperationException" },
+
+    // Checked concurrency family: caught (never thrown — cljw has no interrupts)
+    // by portable code guarding a bounded wait.
+    .{ .name = "InterruptedException", .parent = "Exception" },
+    .{ .name = "TimeoutException", .parent = "Exception" },
+    .{ .name = "ExecutionException", .parent = "Exception" },
 
     .{ .name = "RuntimeException", .parent = "Exception" },
     .{ .name = "ArithmeticException", .parent = "RuntimeException" },
@@ -99,9 +112,18 @@ pub const ENTRIES = [_]Entry{
     .{ .name = "IllegalStateException", .parent = "RuntimeException" },
     // java.util.concurrent.CancellationException ⊂ IllegalStateException (D-442).
     .{ .name = "CancellationException", .parent = "IllegalStateException" },
+    // java.util.concurrent.RejectedExecutionException ⊂ RuntimeException — what a
+    // saturated or shut-down pool throws on submit. Caught (never thrown yet) by
+    // portable code that falls back to running the work on the caller thread;
+    // hive-weave.pool guards its `.submit` with it.
+    .{ .name = "RejectedExecutionException", .parent = "RuntimeException" },
     .{ .name = "IndexOutOfBoundsException", .parent = "RuntimeException" },
     .{ .name = "NullPointerException", .parent = "RuntimeException" },
     .{ .name = "UnsupportedOperationException", .parent = "RuntimeException" },
+    // java.time: DateTimeException and its two thrown subclasses.
+    .{ .name = "DateTimeException", .parent = "RuntimeException" },
+    .{ .name = "DateTimeParseException", .parent = "DateTimeException" },
+    .{ .name = "UnsupportedTemporalTypeException", .parent = "DateTimeException" },
     .{ .name = "ExceptionInfo", .parent = "RuntimeException" },
 };
 
@@ -113,6 +135,7 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "java.lang.Throwable", "Throwable" },
     .{ "java.lang.Error", "Error" },
     .{ "java.lang.OutOfMemoryError", "OutOfMemoryError" },
+    .{ "java.lang.ThreadDeath", "ThreadDeath" },
     // `(assert …)` throws AssertionError; clj catches it by simple OR FQCN name
     // (D-398, surfaced by clojure.tools.trace `extend-type java.lang.AssertionError`).
     .{ "java.lang.AssertionError", "AssertionError" },
@@ -125,6 +148,10 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "java.lang.NumberFormatException", "NumberFormatException" },
     .{ "java.lang.IllegalStateException", "IllegalStateException" },
     .{ "java.util.concurrent.CancellationException", "CancellationException" },
+    .{ "java.util.concurrent.RejectedExecutionException", "RejectedExecutionException" },
+    .{ "java.lang.InterruptedException", "InterruptedException" },
+    .{ "java.util.concurrent.TimeoutException", "TimeoutException" },
+    .{ "java.util.concurrent.ExecutionException", "ExecutionException" },
     .{ "java.lang.IndexOutOfBoundsException", "IndexOutOfBoundsException" },
     .{ "java.lang.NullPointerException", "NullPointerException" },
     .{ "java.lang.UnsupportedOperationException", "UnsupportedOperationException" },
@@ -134,6 +161,10 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     // Reflective family (D-301): caught by FQCN by libs probing optional classes.
     .{ "java.lang.ReflectiveOperationException", "ReflectiveOperationException" },
     .{ "java.lang.ClassNotFoundException", "ClassNotFoundException" },
+    .{ "java.lang.NoSuchMethodException", "NoSuchMethodException" },
+    .{ "java.time.DateTimeException", "DateTimeException" },
+    .{ "java.time.format.DateTimeParseException", "DateTimeParseException" },
+    .{ "java.time.temporal.UnsupportedTemporalTypeException", "UnsupportedTemporalTypeException" },
     .{ "clojure.lang.ExceptionInfo", "ExceptionInfo" },
 });
 
@@ -163,6 +194,21 @@ pub fn isKnownException(class_name: []const u8) bool {
 /// false (clj-faithful: a cljw int IS a Long, not an Integer) and lets libs that
 /// branch on these JVM classes load with the JVM-class branch correctly dead.
 /// `Character`/`Boolean` are NOT here — cljw models those as real types.
+///
+/// The java.util entries are the same shape for a different reason: concrete JVM
+/// collection classes cljw has no values of. A surface class that IS one of their
+/// subtypes still matches through its `host_supertypes` (java.util.ArrayList
+/// declares java.util.AbstractList), so membership stays JVM-faithful.
+///
+/// The three `$` seq classes are JVM implementation classes; cljw's seq views
+/// use different native tags, so no cljw value has one of those exact types.
+/// Keep their full dotted names: splitting on the last `.` preserves the `$`
+/// suffix and cannot derive a usable simple class name (ADR-0194).
+///
+/// `LineNumberingPushbackReader` is a JVM reader type; cljw's readers are not
+/// instances of it, so `instance?` is uniformly false and an `extend` on it
+/// registers a branch nothing dispatches to. Listed under the bare name too,
+/// since clj auto-imports `clojure.lang.*` into every namespace.
 const OPAQUE_CLASSES = std.StaticStringMap(void).initComptime(.{
     .{"java.math.BigInteger"},
     .{"Integer"},
@@ -173,6 +219,13 @@ const OPAQUE_CLASSES = std.StaticStringMap(void).initComptime(.{
     .{"java.lang.Byte"},
     .{"Float"},
     .{"java.lang.Float"},
+    .{"java.util.AbstractList"},
+    .{"java.util.Vector"},
+    .{"LineNumberingPushbackReader"},
+    .{"clojure.lang.LineNumberingPushbackReader"},
+    .{"clojure.lang.PersistentVector$ChunkedSeq"},
+    .{"clojure.lang.PersistentArrayMap$Seq"},
+    .{"clojure.lang.PersistentHashMap$NodeSeq"},
 });
 
 /// True iff `class_name` is a recognised OPAQUE host class (ADR-0109). Such a
@@ -180,6 +233,14 @@ const OPAQUE_CLASSES = std.StaticStringMap(void).initComptime(.{
 /// `instance?` is uniformly false and `extend-type` on it is a load-only no-op.
 pub fn isKnownOpaqueClass(class_name: []const u8) bool {
     return OPAQUE_CLASSES.has(class_name);
+}
+
+test "JVM inner seq implementation classes are opaque (ADR-0194)" {
+    try std.testing.expect(isKnownOpaqueClass("clojure.lang.PersistentVector$ChunkedSeq"));
+    try std.testing.expect(isKnownOpaqueClass("clojure.lang.PersistentArrayMap$Seq"));
+    try std.testing.expect(isKnownOpaqueClass("clojure.lang.PersistentHashMap$NodeSeq"));
+    try std.testing.expect(!isKnownOpaqueClass("clojure.lang.LazySeq"));
+    try std.testing.expect(!isKnownOpaqueClass("clojure.lang.Cons"));
 }
 
 /// True iff `class_name` is `java.lang.Object` — the UNIVERSAL supertype
@@ -278,6 +339,10 @@ pub fn kindToHostClass(kind: Kind) ?[]const u8 {
         .value_error => "IllegalArgumentException",
         .state_error => "IllegalStateException",
         .cancellation_error => "CancellationException",
+        .rejected_execution_error => "RejectedExecutionException",
+        .date_time_error => "DateTimeException",
+        .date_time_parse_error => "DateTimeParseException",
+        .unsupported_temporal_error => "UnsupportedTemporalTypeException",
         .arity_error => "ArityException",
         .number_error => "NumberFormatException",
         .name_error, .syntax_error, .string_error => "RuntimeException",
@@ -390,6 +455,14 @@ test "normalizeClassName: unknown FQCN passes through unchanged (caller decides)
     try testing.expectEqualStrings("", normalizeClassName(""));
 }
 
+test "java.time exception family: both leaves ⊂ DateTimeException ⊂ RuntimeException" {
+    try testing.expect(isSubclassOf("java.time.format.DateTimeParseException", "java.time.DateTimeException"));
+    try testing.expect(isSubclassOf("UnsupportedTemporalTypeException", "DateTimeException"));
+    try testing.expect(isSubclassOf("DateTimeException", "RuntimeException"));
+    try testing.expect(!isSubclassOf("DateTimeException", "IllegalArgumentException"));
+    try testing.expectEqualStrings("DateTimeParseException", kindToHostClass(.date_time_parse_error).?);
+}
+
 test "CancellationException hierarchy (D-442): ⊂ IllegalStateException ⊂ RuntimeException, ≠ IllegalArgumentException" {
     try testing.expect(isKnownException("CancellationException"));
     try testing.expect(isKnownException("java.util.concurrent.CancellationException"));
@@ -400,6 +473,16 @@ test "CancellationException hierarchy (D-442): ⊂ IllegalStateException ⊂ Run
     // Sibling, not a subtype: an IllegalArgumentException catch must NOT match.
     try testing.expect(!isSubclassOf("CancellationException", "IllegalArgumentException"));
     try testing.expectEqualStrings("CancellationException", kindToHostClass(.cancellation_error).?);
+}
+
+test "ThreadDeath (blocker 3): ⊂ Error ⊂ Throwable, NOT under Exception" {
+    try testing.expect(isKnownException("ThreadDeath"));
+    try testing.expect(isKnownException("java.lang.ThreadDeath"));
+    try testing.expectEqualStrings("ThreadDeath", normalizeClassName("java.lang.ThreadDeath"));
+    try testing.expect(isSubclassOf("ThreadDeath", "Error"));
+    try testing.expect(isSubclassOf("ThreadDeath", "Throwable"));
+    // Under Error, so a `(catch Exception …)` must NOT swallow it (clj parity).
+    try testing.expect(!isSubclassOf("ThreadDeath", "Exception"));
 }
 
 test "kindToHostClass: file_not_found maps to the leaf FileNotFoundException (D-321)" {

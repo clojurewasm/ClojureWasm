@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Analyzer — Form → Node (semantic analysis).
 //!
 //! Reads the Form tree the Reader produced and emits a typed Node
@@ -52,23 +53,30 @@ const Env = env_mod.Env;
 const Var = env_mod.Var;
 const keyword = @import("../../runtime/keyword.zig");
 const symbol_mod = @import("../../runtime/symbol.zig");
+const meta_mod = @import("../../runtime/meta.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const list_collection = @import("../../runtime/collection/list.zig");
-const lazy_seq_mod = @import("../../runtime/lazy_seq.zig");
+const seqable = @import("../../runtime/seqable.zig");
 const root_set = @import("../../runtime/gc/root_set.zig");
 const vector_collection = @import("../../runtime/collection/vector.zig");
+const sub_vector_collection = @import("../../runtime/collection/sub_vector.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
 const set_collection = @import("../../runtime/collection/set.zig");
+const literal = @import("../../runtime/collection/literal.zig");
 const big_int = @import("../../runtime/numeric/big_int.zig");
+const decimal_text = @import("../../runtime/numeric/decimal_text.zig");
+const promote = @import("../../runtime/numeric/promote.zig");
 const big_decimal = @import("../../runtime/numeric/big_decimal.zig");
 const ratio_mod = @import("../../runtime/numeric/ratio.zig");
 const print_mod = @import("../../runtime/print.zig");
 const regex_value = @import("../../runtime/regex/value.zig");
+const uuid_mod = @import("../../runtime/uuid.zig");
 const class_name = @import("../../runtime/class_name.zig");
 const host_class = @import("../../runtime/error/host_class.zig");
 const host_interface = @import("../../runtime/host_interface.zig");
 const host_class_resolve = @import("../../runtime/host_class_resolve.zig");
 const type_descriptor = @import("../../runtime/type_descriptor.zig");
+const class_form = @import("class_form.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
@@ -83,7 +91,7 @@ const syntax_quote = @import("syntax_quote.zig");
 /// namespace / catch-class, unsupported-feature, and reader-tag
 /// codes. See the equivalent comment in `eval/reader.zig` for the
 /// design rationale.
-pub const AnalyzeError = error_mod.ClojureWasmError;
+pub const AnalyzeError = error_mod.ClojureWasmError || error{ThrownValue};
 
 // --- Scope (local-binding chain consulted during analysis) ---
 
@@ -271,6 +279,15 @@ const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
     .{ "__mut-fields*", .mut_fields },
 });
 
+/// The SPECIAL_FORMS entries that are clojure.core macros on the JVM, so a
+/// `clojure.core/`-qualified head (common in macro output and in code that
+/// guards against a local `defmacro`) must reach the same analyzer arm.
+const QUALIFIABLE_CORE_SPECIALS = std.StaticStringMap(SpecialFormKind).initComptime(.{
+    .{ "defmacro", .defmacro_form },
+    .{ "binding", .binding_form },
+    .{ "ns", .ns_form },
+});
+
 // --- Top-level entry ---
 
 /// Resolve a `::name` / `::alias/name` auto-resolved keyword (D-195). `::name`
@@ -331,28 +348,28 @@ pub fn analyze(
             const v = try string_collection.alloc(rt, s);
             return try makeConstant(arena, v, form);
         },
-        // Vector literal in expression position — analyze each child
-        // form, emit VectorLiteralNode (Phase 6.9 cycle 4). A reader
-        // `^meta` (D-186) lowers to `(with-meta <literal> <meta>)`.
+        // Collection literals in expression position: a constant when every
+        // element is one, else a literal Node (analyzeCollLiteral). A reader
+        // `^meta` (D-186) lowers to `(with-meta <literal> <meta>)`, which is
+        // rebuilt per evaluation, as in clj.
         .vector => |items| if (form.meta) |mf|
             try analyzeMetaColl(arena, rt, env, scope, form, mf, macro_table)
         else
-            try analyzeVectorLiteral(arena, rt, env, scope, items, form, macro_table),
-        // `{...}` and `#{...}` literals (Phase 6.16.b-2 closes D-059
-        // + D-061). Each emits its own LiteralNode shape; eval walks
-        // the children and folds into an empty ArrayMap / HashSet.
+            try analyzeCollLiteral(arena, rt, env, scope, items, form, macro_table, .vector),
         .map => |items| if (form.meta) |mf|
             try analyzeMetaColl(arena, rt, env, scope, form, mf, macro_table)
         else
-            try analyzeMapLiteral(arena, rt, env, scope, items, form, macro_table),
+            try analyzeCollLiteral(arena, rt, env, scope, items, form, macro_table, .map),
         .set => |items| if (form.meta) |mf|
             try analyzeMetaColl(arena, rt, env, scope, form, mf, macro_table)
         else
-            try analyzeSetLiteral(arena, rt, env, scope, items, form, macro_table),
+            try analyzeCollLiteral(arena, rt, env, scope, items, form, macro_table, .set),
         // `#tag form` in expression position (ADR-0073): apply the data
         // reader at analyze time (data is data) and emit the result as a
-        // constant. Reuses the `formToValue` lift path.
-        .tagged => |t| try makeConstant(arena, try liftTagged(rt, env, t, form.location), form),
+        // constant. The whole literal is data, so it takes the strict lift:
+        // a `^meta` on it attaches, or raises when the value cannot carry
+        // meta, as clj's reader does (ADR-0200).
+        .tagged => try makeConstant(arena, try lift(rt, env, form, .strict), form),
         // `` `form `` (ADR-0082): expand the syntax-quote tree to its template
         // form, then analyze that (the analyzer has env.current_ns for the
         // future qualification pass; stage 1 is non-qualifying).
@@ -419,9 +436,13 @@ fn staticFieldValue(rt: *Runtime, sf: *const @import("../../runtime/type_descrip
             .time_local_date_epoch => @import("../../runtime/time/local_date_value.zig").make(rt, 0) catch |e| return coerceConstErr(e),
             .time_local_date_time_min => @import("../../runtime/time/local_date_time_value.zig").make(rt, MIN_EPOCH_DAY, 0) catch |e| return coerceConstErr(e),
             .time_local_date_time_max => @import("../../runtime/time/local_date_time_value.zig").make(rt, MAX_EPOCH_DAY, 86_399_999_999_999) catch |e| return coerceConstErr(e),
+            .time_zone_offset_utc => @import("../../runtime/time/zone_offset.zig").make(rt, .{ .seconds = 0 }) catch |e| return coerceConstErr(e),
+            .time_zone_offset_min => @import("../../runtime/time/zone_offset.zig").make(rt, .{ .seconds = -18 * 3600 }) catch |e| return coerceConstErr(e),
+            .time_zone_offset_max => @import("../../runtime/time/zone_offset.zig").make(rt, .{ .seconds = 18 * 3600 }) catch |e| return coerceConstErr(e),
         },
         .host_enum => |he| try @import("../../runtime/host_enum.zig").singleton(rt, @enumFromInt(he.enum_idx), he.ordinal),
         .math_context => |which| try @import("../../runtime/math_context.zig").singleton(rt, which),
+        .date_time_formatter => |idx| @import("../../runtime/time/date_time_formatter_value.zig").isoConstant(rt, idx) catch |e| return coerceConstErr(e),
         // BigDecimal ZERO/ONE/TWO/TEN (ADR-0174 D7): a scale-0 BigDecimal
         // lifted via the constructor at analyze time.
         .big_decimal => |i| @import("../../runtime/numeric/big_decimal.zig").allocFromI64Scale(rt, i, 0) catch |e| return coerceConstErr(e),
@@ -480,7 +501,7 @@ fn buildCompilerSpecials(rt: *Runtime) AnalyzeError!Value {
 /// Used by both the atom-analyzer path and the quote-lift path.
 pub fn parseBigIntLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
     var m = big_int.parseBase10(rt, digits) catch
-        return error_catalog.raise(.integer_literal_invalid, loc, .{ .text = digits });
+        return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits });
     defer m.deinit();
     // `5N` and a past-i64 no-`N` literal both reach here — both are genuine
     // BigInts (clj: `5N`→BigInt, `99999999999999999999`→BigInt `…N`). D-165.
@@ -491,10 +512,23 @@ pub fn parseBigIntLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.Sourc
 /// integer is the input with the decimal point removed; the scale is
 /// the number of digits after the dot.
 pub fn parseBigDecimalLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
-    // Locate the decimal point if any. JVM accepts `1M`, `1.5M`, and
-    // exponent `1.5e3M` — the latter is left as a debt row.
+    // JVM accepts `1M`, `1.5M`, and exponent `1.5e3M`. The exponent is not a
+    // separate representation — a BigDecimal is (unscaled, scale), and
+    // `× 10^exp` is exactly `scale -= exp`. Split it off first so the
+    // mantissa below is the plain `[-]ddd[.ddd]` shape.
+    var mantissa = digits;
+    var exponent: i32 = 0;
+    if (std.mem.findAny(u8, digits, "eE")) |e_pos| {
+        mantissa = digits[0..e_pos];
+        const exp_txt = digits[e_pos + 1 ..];
+        if (exp_txt.len == 0) return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits });
+        exponent = std.fmt.parseInt(i32, exp_txt, 10) catch
+            return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits });
+    }
+
+    // Locate the decimal point if any.
     var dot_pos: ?usize = null;
-    for (digits, 0..) |c, idx| {
+    for (mantissa, 0..) |c, idx| {
         if (c == '.') {
             dot_pos = idx;
             break;
@@ -507,48 +541,57 @@ pub fn parseBigDecimalLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.S
     var buf_len: usize = 0;
     var scale: i32 = 0;
     if (dot_pos) |p| {
-        const pre = digits[0..p];
-        const post = digits[p + 1 ..];
+        const pre = mantissa[0..p];
+        const post = mantissa[p + 1 ..];
         if (pre.len + post.len > buf.len) {
-            return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+            return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits });
         }
         std.mem.copyForwards(u8, buf[0..pre.len], pre);
         std.mem.copyForwards(u8, buf[pre.len .. pre.len + post.len], post);
         buf_len = pre.len + post.len;
         scale = @intCast(post.len);
     } else {
-        if (digits.len > buf.len) {
-            return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+        if (mantissa.len > buf.len) {
+            return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits });
         }
-        std.mem.copyForwards(u8, buf[0..digits.len], digits);
-        buf_len = digits.len;
+        std.mem.copyForwards(u8, buf[0..mantissa.len], mantissa);
+        buf_len = mantissa.len;
     }
+    // `× 10^exponent` on a (unscaled, scale) pair is a scale shift, so a
+    // literal exponent never touches the digits.
+    scale = std.math.sub(i32, scale, exponent) catch
+        return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits });
 
     var unscaled = big_int.parseBase10(rt, buf[0..buf_len]) catch
-        return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+        return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits });
     defer unscaled.deinit();
 
     return try big_decimal.allocFromManagedScale(rt, &unscaled, scale);
 }
 
-/// Parse `1/3`-shape Ratio literal into a Value. Reads numerator and
-/// denominator as i64 (Phase 14 row 14.4 gap (b) — wider numerators
-/// fall to the same overflow path as gap (a) D-014a tracks). Collapse
-/// to integer when the reduced denominator is 1 (the orelse branch
-/// covers e.g. `6/2` → 3).
+/// Parse an `n/d` Ratio literal into a Value, as clj's reader does: each side
+/// is an exact integer of any width, a Long when it fits i64 and a BigInt
+/// otherwise, and the value is `promote.divideIntegers` of the two, which is
+/// what `/` answers on the same operands (`6/2` is 3, `24691357802469135781/2`
+/// a Ratio, `123456789012345678901234567890/7` a BigInt).
 pub fn parseRatioLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
     const slash = std.mem.findScalar(u8, digits, '/') orelse
-        return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
-    const num = std.fmt.parseInt(i64, digits[0..slash], 10) catch
-        return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
-    const den = std.fmt.parseInt(i64, digits[slash + 1 ..], 10) catch
-        return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
-    const r = ratio_mod.allocFromI64Pair(rt, num, den) catch |err| switch (err) {
-        error.DivideByZero => return error_catalog.raise(.divide_by_zero, loc, .{}),
+        return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits });
+    var num = big_int.parseBase10(rt, digits[0..slash]) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
+        else => return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits }),
     };
-    // Reduced denom == 1: the ratio collapses to a plain integer.
-    return r orelse Value.initInteger(@divTrunc(num, den));
+    defer num.deinit();
+    var den = big_int.parseBase10(rt, digits[slash + 1 ..]) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error_catalog.raise(.number_literal_invalid, loc, .{ .text = digits }),
+    };
+    defer den.deinit();
+    const bigint_operand = !num.fits(i64) or !den.fits(i64);
+    return promote.divideIntegers(rt, &num, &den, bigint_operand) catch |err| switch (err) {
+        error.DivideByZero => return error_catalog.raise(.divide_by_zero, loc, .{}),
+        else => |e| return e,
+    };
 }
 
 /// Compile a `#"..."` reader-literal body into a regex Value via
@@ -563,9 +606,7 @@ pub fn parseRatioLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.Source
 pub fn parseRegexLiteral(rt: *Runtime, body: []const u8, loc: error_mod.SourceLocation) AnalyzeError!Value {
     return regex_value.alloc(rt, body, .{}) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
-        else => return error_catalog.raise(.feature_not_supported, loc, .{
-            .name = "regex literal (unsupported syntax in cycle 1)",
-        }),
+        else => return regex_value.raiseCompileError(err, loc),
     };
 }
 
@@ -709,11 +750,61 @@ pub fn resolveClassValue(rt: *Runtime, env: *Env, sym_ns: ?[]const u8, sym_name:
     // host classes are already resolved above, so by here a qualified miss is a
     // user-deftype reference (D-428/D-391). Consistent with cljw's simple-name
     // deftype model: `a.b.T` and bare `T` are the same type.
+    // ADR-0198 inverted this fallback. User types are now keyed by
+    // `<defining_ns>.<Name>`, so a QUALIFIED reference (`instaparse.gll.Failure`,
+    // D-428/D-391) hits the exact-key probe above and never reaches here. What
+    // still needs promoting is the opposite case: a BARE name referring to a
+    // type defined in the current namespace, which used to hit the exact-key
+    // probe when keys were simple and no longer does.
+    if (sym_ns == null and std.mem.findScalar(u8, cname, '.') == null) {
+        if (env.current_ns) |cur_ns| {
+            var qbuf: [512]u8 = undefined;
+            if (std.fmt.bufPrint(&qbuf, "{s}.{s}", .{ cur_ns.name, cname })) |qualified| {
+                if (rt.types.get(qualified)) |td| return try type_descriptor.makeTypeDescriptorRef(rt, td);
+            } else |_| {
+                // Namespace + name longer than the buffer: no registered key
+                // could match it either, so fall through to the steps below.
+            }
+        }
+    }
+    // A qualified spelling of a user type whose namespace is not its defining
+    // one, plus the null-`defining_ns` registrations whose key IS the simple
+    // name. ADR-0198 keeps this as a last resort behind both the exact key and
+    // the current-ns qualification above.
     const simple = if (std.mem.findScalarLast(u8, cname, '.')) |dot| cname[dot + 1 ..] else sym_name;
     if (!std.mem.eql(u8, simple, cname)) {
         if (rt.types.get(simple)) |td| return try type_descriptor.makeTypeDescriptorRef(rt, td);
+        if (rt.types_by_simple.get(simple)) |td| return try type_descriptor.makeTypeDescriptorRef(rt, td);
+    }
+    if (rt.types_by_simple.get(cname)) |td| return try type_descriptor.makeTypeDescriptorRef(rt, td);
+    // A protocol under its clj interface name: `(defprotocol P)` in ns `a.b` is
+    // referenced as `a.b.P`.
+    if (std.mem.findScalarLast(u8, cname, '.')) |dot| {
+        if (protocolByInterfaceName(env, cname[0..dot], cname[dot + 1 ..])) |pv| return pv;
     }
     return null;
+}
+
+/// The protocol value `pname` names in namespace `ns_name`, retried with `_`
+/// read back as `-` (clj munges the package segment). Null when the namespace
+/// or the Var is absent, or the Var holds a non-protocol.
+fn protocolByInterfaceName(env: *Env, ns_name: []const u8, pname: []const u8) ?Value {
+    if (protocolVarIn(env, ns_name, pname)) |v| return v;
+    if (std.mem.findScalar(u8, ns_name, '_') == null) return null;
+    var buf: [256]u8 = undefined;
+    if (ns_name.len > buf.len) return null;
+    @memcpy(buf[0..ns_name.len], ns_name);
+    for (buf[0..ns_name.len]) |*c| {
+        if (c.* == '_') c.* = '-';
+    }
+    return protocolVarIn(env, buf[0..ns_name.len], pname);
+}
+
+fn protocolVarIn(env: *Env, ns_name: []const u8, pname: []const u8) ?Value {
+    const ns = env.findNs(ns_name) orelse return null;
+    const v = ns.resolve(pname) orelse return null;
+    const val = v.deref();
+    return if (val.tag() == .protocol) val else null;
 }
 
 // --- Symbol resolution ---
@@ -917,6 +1008,19 @@ fn analyzeList(
                 return try special_forms.analyzeInstanceMember(arena, rt, env, scope, head.name[1..], items[1], items[2..], form, macro_table, false);
             }
         }
+        // `(clojure.core/defmacro …)` (or via a `clojure.core` alias): the
+        // names cljw implements as analyzer special forms but mainline ships
+        // as clojure.core MACROS stay special when qualified. Their marker
+        // Vars have a nil root, so the macro path below would fail with
+        // "root binding is not callable". True JVM specials (`if`, `let*` …)
+        // are not clojure.core Vars and keep failing when qualified.
+        if (head.ns) |ns_head| {
+            if (QUALIFIABLE_CORE_SPECIALS.get(head.name)) |kind| {
+                const core = env.findNs("clojure.core");
+                if (core != null and env.findNsOrAlias(ns_head) == core)
+                    return analyzeSpecial(arena, rt, env, scope, kind, items, form, macro_table);
+            }
+        }
         // D-121 + ADR-0050: qualified head `(Class/method args...)` —
         // resolve the namespace head against `rt.types` and, if a method
         // of the given name exists in the descriptor's method_table, build
@@ -973,6 +1077,14 @@ fn analyzeList(
             // shadowed by a local: not a macro
         } else {
             if (resolveMaybe(env, head)) |v_ptr| {
+                // *unchecked-math*: rewrite a pristine core +/-/*/inc/dec to
+                // nested wrapping unchecked-* ops while the flag is truthy
+                // (CLJW-UNCHECKED-MATH). Before macro dispatch (these are not
+                // macros) so the wrapping form is what gets analyzed.
+                if (uncheckedArithOp(rt, env, v_ptr, head)) |uop| {
+                    if (try uncheckedArithRewrite(arena, uop, items[1..], form.location)) |rewritten|
+                        return analyze(arena, rt, env, scope, rewritten, macro_table);
+                }
                 // instance?'s class name is a lexical class reference (like the
                 // (Class. …) / Class/method branches above): resolve an imported
                 // simple name to its FQCN here, at analyze time, so a fn closing
@@ -1015,7 +1127,7 @@ fn analyzeList(
 /// the deferral cannot mask a user alias typo (the discriminator the
 /// Devil's-advocate fork required). `java.*` is intentionally EXCLUDED: those
 /// may be real host surfaces cljw should implement, so they stay loud.
-fn isDeferredHostNs(ns: []const u8) bool {
+pub fn isDeferredHostNs(ns: []const u8) bool {
     return std.mem.startsWith(u8, ns, "clojure.lang.") or
         std.mem.startsWith(u8, ns, "clojure.asm.");
 }
@@ -1036,6 +1148,80 @@ fn resolveMaybe(env: *Env, sym: SymbolRef) ?*Var {
     }
     const ns = env.current_ns orelse return null;
     return ns.resolve(sym.name);
+}
+
+// --- *unchecked-math* honoring (CLJW-UNCHECKED-MATH) ------------------------
+// cljw's checked +/-/*/inc/dec AUTO-PROMOTE i64 overflow to BigInt; JVM Clojure
+// instead WRAPS when `*unchecked-math*` is truthy at COMPILE time. We reproduce
+// that here at analyze time: while the flag is truthy, a call to a pristine core
+// arith op is rewritten to nested wrapping unchecked-* ops (which cljw already
+// has). Analyze-time only — no runtime cost when the flag is off, and the rare
+// flag-on read happens once per form (compile), not per execution.
+
+/// True iff `*unchecked-math*` is currently bound truthy (`true` or the
+/// `:warn-on-boxed` keyword, both truthy). Reads the live value so a
+/// `(set! *unchecked-math* …)` earlier in the same load scopes the rewrite.
+fn uncheckedMathActive(rt: *Runtime) bool {
+    const p = rt.unchecked_math_var orelse return false;
+    const v: *const Var = @ptrCast(@alignCast(p));
+    return v.deref().isTruthy();
+}
+
+/// If `*unchecked-math*` is active and `head` names the canonical `clojure.core`
+/// +/-/*/inc/dec (not a user redef; for the intrinsic ops the arith cache must
+/// be pristine so an `alter-var-root` deopt is honoured), return the op name;
+/// else null.
+fn uncheckedArithOp(rt: *Runtime, env: *Env, v_ptr: *const Var, head: SymbolRef) ?[]const u8 {
+    if (!uncheckedMathActive(rt)) return null;
+    const core = env.findNs("clojure.core") orelse return null;
+    const names = [_][]const u8{ "+", "-", "*", "inc", "dec" };
+    for (names) |nm| {
+        if (!std.mem.eql(u8, head.name, nm)) continue;
+        const canon = core.resolve(nm) orelse return null;
+        if (canon != v_ptr) return null;
+        const is_intrinsic = std.mem.eql(u8, nm, "+") or std.mem.eql(u8, nm, "-") or std.mem.eql(u8, nm, "*");
+        if (is_intrinsic and !rt.core_arith_pristine) return null;
+        return nm;
+    }
+    return null;
+}
+
+/// `(clojure.core/<name> args...)` — a hygienic qualified-head call Form.
+fn coreCallForm(arena: std.mem.Allocator, name: []const u8, call_args: []const Form, loc: SourceLocation) !Form {
+    const items = try arena.alloc(Form, 1 + call_args.len);
+    items[0] = .{ .data = .{ .symbol = .{ .ns = "clojure.core", .name = name } }, .location = loc };
+    @memcpy(items[1..], call_args);
+    return .{ .data = .{ .list = items }, .location = loc };
+}
+
+/// Rewrite `(op args…)` into nested WRAPPING unchecked-* ops (JVM's unchecked
+/// compile mode). Emitted heads are clojure.core-qualified and are NOT remapped,
+/// so re-analysis cannot loop. Returns null for an arity the binary/unary
+/// unchecked builtins cannot express (`(-)`, `(inc a b)`), leaving the checked
+/// path to run and raise its own arity error.
+fn uncheckedArithRewrite(arena: std.mem.Allocator, op: []const u8, args: []const Form, loc: SourceLocation) !?Form {
+    const eq = std.mem.eql;
+    if (eq(u8, op, "+") or eq(u8, op, "*")) {
+        const bin: []const u8 = if (eq(u8, op, "+")) "unchecked-add" else "unchecked-multiply";
+        if (args.len == 0) {
+            const ident: i64 = if (eq(u8, op, "+")) 0 else 1;
+            return Form{ .data = .{ .integer = ident }, .location = loc };
+        }
+        if (args.len == 1) return args[0];
+        var acc = try coreCallForm(arena, bin, args[0..2], loc);
+        for (args[2..]) |a| acc = try coreCallForm(arena, bin, &.{ acc, a }, loc);
+        return acc;
+    }
+    if (eq(u8, op, "-")) {
+        if (args.len == 0) return null;
+        if (args.len == 1) return try coreCallForm(arena, "unchecked-negate", args[0..1], loc);
+        var acc = try coreCallForm(arena, "unchecked-subtract", args[0..2], loc);
+        for (args[2..]) |a| acc = try coreCallForm(arena, "unchecked-subtract", &.{ acc, a }, loc);
+        return acc;
+    }
+    if (eq(u8, op, "inc")) return if (args.len == 1) try coreCallForm(arena, "unchecked-inc", args[0..1], loc) else null;
+    if (eq(u8, op, "dec")) return if (args.len == 1) try coreCallForm(arena, "unchecked-dec", args[0..1], loc) else null;
+    return null;
 }
 
 fn analyzeCall(
@@ -1074,7 +1260,6 @@ fn analyzeCall(
     return n;
 }
 
-/// `[expr1 expr2 ...]` lift — analyze each element with the full
 /// D-186: a collection literal carrying reader `^meta` lowers to
 /// `(with-meta <bare-literal> <meta-map>)` and re-analyzes — reusing the
 /// `with-meta` primitive on the shared call path, so BOTH backends attach
@@ -1101,8 +1286,17 @@ fn analyzeMetaColl(
     return analyze(arena, rt, env, scope, call_form, macro_table);
 }
 
-/// special-form / call-form pipeline, package into VectorLiteralNode.
-fn analyzeVectorLiteral(
+/// `[e ...]`, `{k v ...}` and `#{e ...}` in expression position: analyze each
+/// element with the full special-form / call-form pipeline.
+///
+/// When every element analyzed to a constant, the literal IS a constant, built
+/// here once (clj `ConstantExpr`, D-346): both backends yield the identical
+/// collection on every evaluation, and no operand stack is involved at any
+/// size. Otherwise the elements package into the literal Node (a map's flat
+/// k0 v0 k1 v1 ..., even by the reader's guarantee), which each backend
+/// builds per evaluation, a map keeping a repeated key's last value and a set
+/// collapsing duplicates.
+fn analyzeCollLiteral(
     arena: std.mem.Allocator,
     rt: *Runtime,
     env: *Env,
@@ -1110,59 +1304,42 @@ fn analyzeVectorLiteral(
     items: []const Form,
     form: Form,
     macro_table: *const macro_dispatch.Table,
+    comptime kind: literal.Kind,
 ) AnalyzeError!*const Node {
     const elt_nodes = try arena.alloc(Node, items.len);
-    for (items, 0..) |elt_form, i| {
-        const elt = try analyze(arena, rt, env, scope, elt_form, macro_table);
-        elt_nodes[i] = elt.*;
+    var all_constant = true;
+    for (items, elt_nodes) |elt_form, *slot| {
+        slot.* = (try analyze(arena, rt, env, scope, elt_form, macro_table)).*;
+        if (constantValue(slot.*) == null) all_constant = false;
     }
+    if (all_constant) return makeConstant(arena, try foldConstantLiteral(arena, rt, elt_nodes, kind), form);
     const n = try arena.create(Node);
-    n.* = .{ .vector_literal_node = .{ .elements = elt_nodes, .loc = form.location } };
+    n.* = switch (kind) {
+        .vector => .{ .vector_literal_node = .{ .elements = elt_nodes, .loc = form.location } },
+        .map => .{ .map_literal_node = .{ .elements = elt_nodes, .loc = form.location } },
+        .set => .{ .set_literal_node = .{ .elements = elt_nodes, .loc = form.location } },
+    };
     return n;
 }
 
-/// `{k1 v1 k2 v2 ...}` lift — analyze each k/v form, package into
-/// MapLiteralNode (k0, v0, k1, v1, ...). Reader guarantees the
-/// flat pair count is even.
-fn analyzeMapLiteral(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    items: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    const elt_nodes = try arena.alloc(Node, items.len);
-    for (items, 0..) |elt_form, i| {
-        const elt = try analyze(arena, rt, env, scope, elt_form, macro_table);
-        elt_nodes[i] = elt.*;
-    }
-    const n = try arena.create(Node);
-    n.* = .{ .map_literal_node = .{ .elements = elt_nodes, .loc = form.location } };
-    return n;
+/// The value an element contributes to a constant literal, or null when it
+/// must be evaluated. A quoted form is a constant, as in clj.
+fn constantValue(n: Node) ?Value {
+    return switch (n) {
+        .constant => |c| c.value,
+        .quote_node => |q| q.quoted,
+        else => null,
+    };
 }
 
-/// `#{e1 e2 ...}` lift — analyze each element, package into
-/// SetLiteralNode. Eval conj-folds duplicates into a single entry
-/// (set semantics).
-fn analyzeSetLiteral(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    items: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    const elt_nodes = try arena.alloc(Node, items.len);
-    for (items, 0..) |elt_form, i| {
-        const elt = try analyze(arena, rt, env, scope, elt_form, macro_table);
-        elt_nodes[i] = elt.*;
-    }
-    const n = try arena.create(Node);
-    n.* = .{ .set_literal_node = .{ .elements = elt_nodes, .loc = form.location } };
-    return n;
+/// Build an all-constant literal's collection with the construction the VM
+/// uses per evaluation (`literal.build`), so the folded value equals the one a
+/// backend would build. The element values stay analysis-rooted by the
+/// constant Nodes that hold them.
+fn foldConstantLiteral(arena: std.mem.Allocator, rt: *Runtime, elt_nodes: []const Node, comptime kind: literal.Kind) AnalyzeError!Value {
+    const values = try arena.alloc(Value, elt_nodes.len);
+    for (elt_nodes, values) |n, *v| v.* = constantValue(n).?;
+    return literal.build(rt, kind, values);
 }
 
 // --- Special forms ---
@@ -1251,13 +1428,79 @@ const bindings = @import("bindings.zig");
 const recur = @import("recur.zig");
 const try_form = @import("try_form.zig");
 
+/// Whether a Form→Value lift also checks for duplicate map keys and set
+/// elements by value (ADR-0200), and in which order it lifts. A DATA read
+/// (`read-string`) and a tagged literal in code are `.strict`: their values
+/// skipped the reader's Form-level check, and they lift in source order so
+/// the first error in the text is the one raised. Every other lift (quote,
+/// macro arguments, metadata) is `.lenient`: code was already checked as it
+/// was read.
+/// `.edn` is `.strict` for `clojure.edn` reads (ADR-0200 Layer B): a
+/// `#ns.Record{...}` tag is NOT a record constructor there, clj's EdnReader
+/// resolves every tag through `:readers` / `:default` only.
+const LiftChecks = enum {
+    lenient,
+    strict,
+    edn,
+
+    fn checksDuplicates(self: LiftChecks) bool {
+        return self != .lenient;
+    }
+};
+
 /// Form atom → Value lift. Handles nil / bool / int / float / char /
 /// string / keyword / symbol and the collection literals, interning
 /// or heap-allocating as needed. **pub** so
 /// `analyzer/special_forms.zig::analyzeQuote` can call back into it
 /// (cyclic-import contract).
 pub fn formToValue(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
-    const base: Value = switch (form.data) {
+    return lift(rt, env, form, .lenient);
+}
+
+/// `formToValue` for a DATA read (`read-string`, `clojure.edn/read-string`):
+/// it also raises on a duplicate map key or set element, in source order.
+pub fn formToValueStrict(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
+    return lift(rt, env, form, .strict);
+}
+
+/// `formToValueStrict` for a `clojure.edn` read: additionally, a
+/// `#ns.Name{...}` tag is resolved only through `*data-readers*` /
+/// `*default-data-reader-fn*`, never as a record literal (clj EdnReader).
+pub fn formToValueEdn(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
+    return lift(rt, env, form, .edn);
+}
+
+/// D-186: honour a reader `^meta` map on a literal. The reader (readMeta)
+/// parks normalised meta on `Form.meta`; lift it and attach it as clj's
+/// MetaReader does (`meta_mod.readerAttachOrNull`: reset on a reference,
+/// merge onto an IObj's existing meta). A target that cannot carry metadata
+/// (a tagged literal read to a number, a string or a Date) is clj's
+/// IllegalArgumentException in every lift (ADR-0200); the reader already
+/// rejected the syntactic cases in code. The meta is lifted BEFORE its
+/// target, as clj reads it, so a strict lift raises the meta's own error
+/// first.
+fn lift(rt: *Runtime, env: *Env, form: Form, checks: LiftChecks) AnalyzeError!Value {
+    const meta_form = form.meta orelse return liftBase(rt, env, form, checks);
+    // GC-ROOT: C — the lifted meta lives in a Zig local across the target's
+    // lift, and `base` across the attach (a big literal can trigger a
+    // collect that would sweep either). [ref: .dev/gc_rooting.md §C]
+    var roots = [_]Value{ .nil_val, .nil_val };
+    var sp: u16 = 2;
+    var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
+    const m = try lift(rt, env, meta_form.*, checks);
+    roots[1] = m;
+    const base = try liftBase(rt, env, form, checks);
+    roots[0] = base;
+    const attached = meta_mod.readerAttachOrNull(rt, env, base, m, form.location) catch |e|
+        return macro_dispatch.narrowCallFnError(e, form.location);
+    return attached orelse error_catalog.raise(.metadata_target_not_imeta, meta_form.location, .{});
+}
+
+/// The value of `form` itself, ignoring its `^meta`.
+fn liftBase(rt: *Runtime, env: *Env, form: Form, checks: LiftChecks) AnalyzeError!Value {
+    return switch (form.data) {
         .nil => .nil_val,
         .boolean => |b| if (b) .true_val else .false_val,
         .integer => |i| try integerLiteralToValue(rt, i),
@@ -1276,12 +1519,12 @@ pub fn formToValue(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
         else
             try keyword.intern(rt, sym.ns, sym.name),
         .string => |s| try string_collection.alloc(rt, s),
-        .list => |items| try listFormToValue(rt, env, items),
+        .list => |items| try listFormToValue(rt, env, items, checks),
         .symbol => |sym| try symbol_mod.intern(rt, sym.ns, sym.name),
-        .vector => |items| try vectorFormToValue(rt, env, items),
-        .map => |entries| try mapFormToValue(rt, env, entries, form.location),
-        .set => |items| try setFormToValue(rt, env, items),
-        .tagged => |t| return try liftTagged(rt, env, t, form.location),
+        .vector => |items| try vectorFormToValue(rt, env, items, checks),
+        .map => |entries| try mapFormToValue(rt, env, entries, form.location, checks),
+        .set => |items| try setFormToValue(rt, env, items, checks),
+        .tagged => |t| try liftTagged(rt, env, t, form.location, checks),
         // `` `form `` as DATA (read-string / quoted): expand to the template,
         // then lift the template as data (clj `` '`(a ~b) `` → the
         // `(seq (concat …))` form). ADR-0082.
@@ -1289,43 +1532,20 @@ pub fn formToValue(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
             var sq_arena = std.heap.ArenaAllocator.init(rt.gpa);
             defer sq_arena.deinit();
             const template = try syntax_quote.expand(sq_arena.allocator(), rt, env, inner.*, form.location);
-            break :blk try formToValue(rt, env, template);
+            break :blk try lift(rt, env, template, checks);
         },
-        .unquote, .unquote_splicing => return error_catalog.raise(.token_invalid, form.location, .{ .token = "~ / ~@ outside a syntax-quote" }),
+        // `~x` / `~@x` outside a syntax-quote is DATA to the reader: clj reads
+        // it as `(clojure.core/unquote x)` / `(clojure.core/unquote-splicing
+        // x)`, so read-string and quote lift that list rather than raising.
+        .unquote => |inner| try wrappedToValue(rt, env, "unquote", inner.*, form.location, checks),
+        .unquote_splicing => |inner| try wrappedToValue(rt, env, "unquote-splicing", inner.*, form.location, checks),
     };
-    // D-186: honour a reader `^meta` map on a literal. The reader (readMeta)
-    // parks normalised meta on `Form.meta`; lift + attach it to an IObj value:
-    // collections (vector/map/set/list) AND symbols (ADR-0110 — a symbol carries
-    // value-metadata, e.g. `^String x` → `{:tag String}`; `^:dyn x` → `{:dyn true}`).
-    // Non-IObj values (numbers, keywords, strings, …) cannot carry metadata in
-    // cljw — matching JVM — so the meta is dropped there rather than erroring.
-    if (form.meta) |meta_form| {
-        // GC-ROOT: C — `base` lives in a Zig local across the meta lift's
-        // allocs (a big literal's meta map can trigger a collect that would
-        // sweep the freshly-built base). [ref: .dev/gc_rooting.md §C]
-        var roots = [_]Value{ base, .nil_val };
-        var sp: u16 = 2;
-        var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
-        root_set.eval_frame_head = &frame;
-        defer root_set.eval_frame_head = frame.parent;
-        const m = try formToValue(rt, env, meta_form.*);
-        roots[1] = m;
-        return switch (base.tag()) {
-            .vector => try vector_collection.withMeta(rt, base, m),
-            .array_map, .hash_map => try map_collection.withMeta(rt, base, m),
-            .hash_set => try set_collection.withMeta(rt, base, m),
-            .list => try list_collection.withMeta(rt, base, m),
-            .symbol => try symbol_mod.withMeta(rt, base, m),
-            else => base,
-        };
-    }
-    return base;
 }
 
 /// Build a persistent vector Value by recursively lifting each form
 /// element. §9.11 row 9.2: powers `clojure.edn/read-string "[1 2 3]"`
 /// + JVM-parity `(quote [1 2 3])` round-trip.
-fn vectorFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!Value {
+fn vectorFormToValue(rt: *Runtime, env: *Env, items: []const Form, checks: LiftChecks) AnalyzeError!Value {
     var out = vector_collection.empty();
     // GC-ROOT: C — `out` + the current element live in Zig locals across the
     // per-element formToValue/conj allocs (each can auto-collect / alloc-
@@ -1339,7 +1559,7 @@ fn vectorFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!
     root_set.eval_frame_head = &frame;
     defer root_set.eval_frame_head = frame.parent;
     for (items) |item| {
-        const v = try formToValue(rt, env, item);
+        const v = try lift(rt, env, item, checks);
         roots[1] = v;
         out = try vector_collection.conj(rt, out, v);
         roots[0] = out;
@@ -1353,21 +1573,20 @@ fn vectorFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!
 /// A miss consults `*default-data-reader-fn*` (invoked with the tag symbol +
 /// lifted value); still nothing → raise `reader_tag_unknown` (clj parity —
 /// `read-string` with no reader for a tag throws, NOT a placeholder value).
-fn liftTagged(rt: *Runtime, env: *Env, t: TaggedForm, loc: SourceLocation) AnalyzeError!Value {
-    const inner = try formToValue(rt, env, t.form.*);
+fn liftTagged(rt: *Runtime, env: *Env, t: TaggedForm, loc: SourceLocation, checks: LiftChecks) AnalyzeError!Value {
+    const inner = try lift(rt, env, t.form.*, checks);
 
     // clj reads `#ns.Name{…}` as a RECORD constructor (the qualified
-    // record print form round-trips through the reader). A dotted tag is
-    // resolved against rt.types by its simple name; the descriptor must
-    // be a defrecord whose defining ns matches the tag's prefix.
-    if (t.tag.ns == null) {
-        if (std.mem.findScalarLast(u8, t.tag.name, '.')) |dot| {
-            const simple = t.tag.name[dot + 1 ..];
-            if (rt.types.get(simple)) |td| {
-                const matches_ns = td.defining_ns != null and
-                    std.mem.eql(u8, td.defining_ns.?, t.tag.name[0..dot]);
+    // record print form round-trips through the reader). ADR-0198: the tag
+    // IS the registry key now, so this is a direct lookup. It used to probe
+    // by simple name and then re-check `defining_ns`, which silently
+    // rejected a legitimate `#aaa.Point{…}` as soon as some other namespace
+    // defined a record also called `Point` and displaced the entry.
+    if (t.tag.ns == null and checks != .edn) {
+        if (std.mem.findScalar(u8, t.tag.name, '.') != null) {
+            if (rt.types.get(t.tag.name)) |td| {
                 const map_arg = inner.tag() == .array_map or inner.tag() == .hash_map;
-                if (td.kind == .defrecord and matches_ns and map_arg) {
+                if (td.kind == .defrecord and map_arg) {
                     return type_descriptor.recordFromMap(rt, td, inner) catch |e| switch (e) {
                         error.OutOfMemory => error.OutOfMemory,
                         else => error_catalog.raise(.reader_tag_unknown, loc, .{ .tag = symFullName(t.tag) }),
@@ -1413,8 +1632,27 @@ fn invokeReaderFn(rt: *Runtime, env: *Env, f: Value, args: []const Value, loc: S
     return vt.callFn(rt, env, f, args, loc) catch |e| return macro_dispatch.narrowCallFnError(e, loc);
 }
 
+/// JVM ##NaN is one shared boxed reader constant: strict literal duplicate
+/// detection sees its identity, although runtime key equality never matches
+/// NaN. Check Forms, not lifted (unboxed) Values. `stride` is 2 for map
+/// keys and 1 for set elements.
+fn repeatedReaderConstantNan(prior: []const Form, candidate: Form, stride: usize) bool {
+    if (candidate.data != .float or !std.math.isNan(candidate.data.float)) return false;
+    var i: usize = 0;
+    while (i < prior.len) : (i += stride) {
+        const form = prior[i];
+        if (form.data == .float and std.math.isNan(form.data.float)) return true;
+    }
+    return false;
+}
+
 /// Build a persistent map Value by recursively lifting key/value pairs.
-fn mapFormToValue(rt: *Runtime, env: *Env, entries: []const Form, loc: SourceLocation) AnalyzeError!Value {
+/// ADR-0200: a strict lift raises "Duplicate key" on an equal key twice,
+/// decided by the map's own key equality (an assoc that does not grow the
+/// map). The raise waits until every entry is lifted, because clj reads the
+/// whole map before building it: in `{:a 1 :a 2 :b #foo 1}` the missing tag
+/// reader fails first.
+fn mapFormToValue(rt: *Runtime, env: *Env, entries: []const Form, loc: SourceLocation, checks: LiftChecks) AnalyzeError!Value {
     if (entries.len % 2 != 0) {
         return error_catalog.raise(.map_literal_arity_odd, loc, .{});
     }
@@ -1426,12 +1664,14 @@ fn mapFormToValue(rt: *Runtime, env: *Env, entries: []const Form, loc: SourceLoc
     var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
     root_set.eval_frame_head = &frame;
     defer root_set.eval_frame_head = frame.parent;
+    var duplicate: ?Form = null;
     var i: usize = 0;
     while (i < entries.len) : (i += 2) {
-        const k = try formToValue(rt, env, entries[i]);
+        const k = try lift(rt, env, entries[i], checks);
         roots[1] = k;
-        const val = try formToValue(rt, env, entries[i + 1]);
+        const val = try lift(rt, env, entries[i + 1], checks);
         roots[2] = val;
+        const before = map_collection.count(out);
         out = map_collection.assoc(rt, out, k, val) catch |err| switch (err) {
             // Hash-colliding literal keys land in the D-155 collision bucket
             // inside assoc — no analyzer-level error remains.
@@ -1439,12 +1679,22 @@ fn mapFormToValue(rt: *Runtime, env: *Env, entries: []const Form, loc: SourceLoc
             else => |e| return e,
         };
         roots[0] = out;
+        if (checks.checksDuplicates() and duplicate == null) {
+            if (map_collection.count(out) == before) {
+                duplicate = entries[i];
+            } else if (repeatedReaderConstantNan(entries[0..i], entries[i], 2)) {
+                duplicate = entries[i];
+            }
+        }
     }
+    if (duplicate) |d| return raiseDuplicate(d);
     return out;
 }
 
-/// Build a persistent set Value by recursively lifting elements.
-fn setFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!Value {
+/// Build a persistent set Value by recursively lifting elements. A strict
+/// lift raises on an equal element twice, after the whole set is lifted,
+/// as in `mapFormToValue`.
+fn setFormToValue(rt: *Runtime, env: *Env, items: []const Form, checks: LiftChecks) AnalyzeError!Value {
     var out = set_collection.empty();
     // GC-ROOT: C — `out` + the current element across per-element allocs
     // (see vectorFormToValue's note). [ref: .dev/gc_rooting.md §C]
@@ -1453,39 +1703,69 @@ fn setFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!Val
     var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
     root_set.eval_frame_head = &frame;
     defer root_set.eval_frame_head = frame.parent;
-    for (items) |item| {
-        const v = try formToValue(rt, env, item);
+    var duplicate: ?Form = null;
+    for (items, 0..) |item, idx| {
+        const v = try lift(rt, env, item, checks);
         roots[1] = v;
+        const before = set_collection.count(out);
         out = set_collection.conj(rt, out, v) catch |err| switch (err) {
             // Hash-colliding elements land in the D-155 collision bucket.
             error.AssocOnNonMap => unreachable, // out always starts at .hash_set
             else => |e| return e,
         };
         roots[0] = out;
+        if (checks.checksDuplicates() and duplicate == null) {
+            if (set_collection.count(out) == before) {
+                duplicate = item;
+            } else if (repeatedReaderConstantNan(items[0..idx], item, 1)) {
+                duplicate = item;
+            }
+        }
     }
+    if (duplicate) |d| return raiseDuplicate(d);
     return out;
+}
+
+fn raiseDuplicate(f: Form) AnalyzeError {
+    var buf: [128]u8 = undefined;
+    return error_catalog.raise(.literal_key_duplicate, f.location, .{ .key = f.prStrBounded(&buf) });
+}
+
+/// `(clojure.core/<name> inner)` as data: the value of a reader wrapper
+/// (`~x`, `~@x`) read outside a syntax-quote.
+fn wrappedToValue(rt: *Runtime, env: *Env, name: []const u8, inner: Form, loc: SourceLocation, checks: LiftChecks) AnalyzeError!Value {
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = "clojure.core", .name = name } }, .location = loc },
+        inner,
+    };
+    return listFormToValue(rt, env, &items, checks);
 }
 
 /// Build a heap List Value by recursively lifting each element to a
 /// Value. Empty list → nil (matches Clojure's `(quote ())` → `()` /
 /// `()` is `nil`-equivalent on `rest`/`first`). Used by `quote`.
-fn listFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!Value {
+fn listFormToValue(rt: *Runtime, env: *Env, items: []const Form, checks: LiftChecks) AnalyzeError!Value {
     // Quoted `'()` lifts to the interned empty list, not nil (D-164).
     if (items.len == 0) return try list_collection.emptyList(rt);
     var i = items.len;
     var acc: Value = .nil_val;
-    // GC-ROOT: C — `acc` + the current head across per-element allocs.
-    // consHeap's own fabrication region only brackets each single cell; the
-    // partial chain between iterations lives in a Zig local (see
-    // vectorFormToValue's note). [ref: .dev/gc_rooting.md §C]
-    var roots = [_]Value{ .nil_val, .nil_val };
-    var sp: u16 = 2;
+    // GC-ROOT: C — `acc` + the current head across per-element allocs, and
+    // a strict lift's element vector. consHeap's own fabrication region only
+    // brackets each single cell; the partial chain between iterations lives
+    // in a Zig local (see vectorFormToValue's note). [ref: .dev/gc_rooting.md §C]
+    var roots = [_]Value{ .nil_val, .nil_val, .nil_val };
+    var sp: u16 = 3;
     var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
     root_set.eval_frame_head = &frame;
     defer root_set.eval_frame_head = frame.parent;
+    // The chain is consed from the end. A strict (data) lift must still
+    // LIFT left to right, so the first error in the text is the one raised,
+    // as clj reads it: it lifts into a vector first.
+    const lifted: ?Value = if (checks.checksDuplicates()) try vectorFormToValue(rt, env, items, checks) else null;
+    if (lifted) |v| roots[2] = v;
     while (i > 0) {
         i -= 1;
-        const head = try formToValue(rt, env, items[i]);
+        const head = if (lifted) |v| vector_collection.nth(v, @intCast(i)) else try lift(rt, env, items[i], checks);
         roots[1] = head;
         acc = try list_collection.consHeap(rt, head, acc);
         roots[0] = acc;
@@ -1518,7 +1798,18 @@ pub fn valueToForm(
         .float => .{ .data = .{ .float = v.asFloat() }, .location = call_loc },
         .symbol => blk: {
             const sym = symbol_mod.asSymbol(v);
-            break :blk .{ .data = .{ .symbol = .{ .ns = sym.ns, .name = sym.name } }, .location = call_loc };
+            var form: Form = .{ .data = .{ .symbol = .{ .ns = sym.ns, .name = sym.name } }, .location = call_loc };
+            // The Form→Value direction attaches a symbol's `^meta` (ADR-0110);
+            // carry it back so a macro that passes a metadata-bearing symbol
+            // through — a type hint, `^:private`, a deftype field's
+            // `^:volatile-mutable` — does not silently shed it.
+            const m = symbol_mod.metaOf(v);
+            if (m != .nil_val) {
+                const meta_form = try arena.create(Form);
+                meta_form.* = try valueToForm(arena, rt, env, m, call_loc);
+                form.meta = meta_form;
+            }
+            break :blk form;
         },
         .keyword => blk: {
             const kw = keyword.asKeyword(v);
@@ -1532,11 +1823,19 @@ pub fn valueToForm(
         .ratio => blk: {
             const lit = switch (ratio_mod.parts(v)) {
                 .small => |s| try std.fmt.allocPrint(arena, "{d}/{d}", .{ s.n, s.d }),
-                .big => |b| try std.fmt.allocPrint(arena, "{f}/{f}", .{ b.n.m, b.d.m }),
+                .big => |b| try decimal_text.fractionAlloc(arena, b.n.m, b.d.m),
             };
             break :blk .{ .data = .{ .ratio_literal = lit }, .location = call_loc };
         },
-        .big_int => .{ .data = .{ .big_int_literal = try std.fmt.allocPrint(arena, "{f}", .{big_int.asManaged(v)}) }, .location = call_loc },
+        // A heap-boxed Long (origin .long, D-165) must round-trip as a Long, not
+        // a BigInt: valueToForm feeds macroexpansion, and a macro returning a
+        // large-magnitude i64 (e.g. test.check's `longify`) would otherwise come
+        // back as a BigInt literal and break downstream i64-only ops
+        // (unsigned-bit-shift-right et al.).
+        .big_int => if (big_int.originOf(v) == .long) blk: {
+            const n = promote.exactI64(v) catch break :blk Form{ .data = .{ .big_int_literal = try decimal_text.decimalAlloc(arena, big_int.asManaged(v)) }, .location = call_loc };
+            break :blk Form{ .data = .{ .integer = n }, .location = call_loc };
+        } else .{ .data = .{ .big_int_literal = try decimal_text.decimalAlloc(arena, big_int.asManaged(v)) }, .location = call_loc },
         .big_decimal => blk: {
             var aw: std.Io.Writer.Allocating = .init(arena);
             print_mod.writeBigDecimalDigits(&aw.writer, v) catch return error.OutOfMemory;
@@ -1545,22 +1844,102 @@ pub fn valueToForm(
         // A regex in a macro expansion (e.g. `(is (thrown-with-msg? E #"…" …))`)
         // round-trips through its reader-literal source.
         .regex => .{ .data = .{ .regex_literal = regex_value.asRegex(v).source() }, .location = call_loc },
+        // A uuid has no literal Form of its own, but it round-trips exactly
+        // through the `#uuid "…"` tagged literal that produced it —
+        // `formToValue` applies the `uuid` data-reader to rebuild the value.
+        // A macro whose argument or expansion contains a `#uuid` literal
+        // reaches here, which is any `(when-var-exists uuid? …)`-shaped body.
+        .uuid => blk: {
+            const canonical = uuid_mod.canonicalOf(v);
+            const inner = try arena.create(Form);
+            inner.* = .{ .data = .{ .string = try arena.dupe(u8, &canonical) }, .location = call_loc };
+            break :blk .{
+                .data = .{ .tagged = .{ .tag = .{ .name = "uuid" }, .form = inner } },
+                .location = call_loc,
+            };
+        },
+        // `#inst "…"` — same round-trip as `.uuid`, via the descriptor's
+        // reader tag. `readerTagParts` is the printer's own rule, shared so a
+        // value cannot print as one literal and re-analyse as another. A
+        // typed_instance with no reader tag (a deftype / defrecord instance,
+        // or a bare-toString time value) has no literal to return to and
+        // falls through to the error below.
+        .typed_instance => blk: {
+            var buf: [48]u8 = undefined;
+            const parts = print_mod.readerTagParts(v, &buf) orelse
+                return error_catalog.raise(.macro_return_not_data, call_loc, .{ .tag = @tagName(v.tag()) });
+            const inner = try arena.create(Form);
+            inner.* = .{ .data = .{ .string = try arena.dupe(u8, parts.body) }, .location = call_loc };
+            break :blk .{
+                .data = .{ .tagged = .{ .tag = .{ .name = parts.tag }, .form = inner } },
+                .location = call_loc,
+            };
+        },
         // Any seq tag — FORCE lazy layers so a macro's `(seq (concat …))`
         // syntax-quote expansion (and its lazy tail) realizes into a concrete
         // list Form. A plain `list_collection.rest` would not force the lazy
         // tail → dropped/`nil` elements (ADR-0082).
-        .list, .cons, .lazy_seq, .chunked_cons, .range => try valueSeqToForm(arena, rt, env, v, call_loc),
-        .vector => try valueVectorToForm(arena, rt, env, v, call_loc),
-        .array_map, .hash_map => try valueMapToForm(arena, rt, env, v, call_loc),
-        .hash_set => try valueSetToForm(arena, rt, env, v, call_loc),
+        .list, .cons, .lazy_seq, .chunked_cons, .range => try withValueMeta(arena, rt, env, v, try valueSeqToForm(arena, rt, env, v, call_loc), call_loc),
+        .vector, .sub_vector => try withValueMeta(arena, rt, env, v, try valueVectorToForm(arena, rt, env, v, call_loc), call_loc),
+        .array_map, .hash_map => try withValueMeta(arena, rt, env, v, try valueMapToForm(arena, rt, env, v, call_loc), call_loc),
+        .hash_set => try withValueMeta(arena, rt, env, v, try valueSetToForm(arena, rt, env, v, call_loc), call_loc),
+        // A class object (`(defmacro m [] [String])`, `` `(f ~Keyword) ``):
+        // re-form it as the class-name symbol that resolves back to it.
+        .type_descriptor => try class_form.classValueToForm(arena, rt, env, v, call_loc),
         else => error_catalog.raise(.macro_return_not_data, call_loc, .{ .tag = @tagName(v.tag()) }),
     };
+}
+
+/// Carry a COLLECTION Value's metadata onto the Form it converted to.
+///
+/// The `.symbol` arm of `valueToForm` already does this inline for ADR-0110
+/// symbol meta, with the same reasoning: a macro that passes a
+/// metadata-bearing value through must not silently shed it. Collections were
+/// missed, so `(defmacro m [& body] `(do ~@body))` around a `^:a []` literal
+/// returned it stripped, while the un-macroed form kept its meta and clj kept
+/// it in both cases. Every `clojure.test` assertion lives inside a
+/// `deftest`/`testing` body, so this made correct fns fail their own suite
+/// (`clojure.core-test.group-by`, whose expressions all pass outside the
+/// harness).
+///
+/// Attaching `Form.meta` is all that is needed: D-186 already lowers a
+/// meta-bearing collection literal to `(with-meta <bare> <meta-map>)` and
+/// re-analyzes, so both backends attach it on the shared `with-meta` path.
+///
+/// `meta_mod.metaOf` is the SSOT meta-read switch and answers `nil` for any
+/// tag without meta, so an arm that cannot carry meta (`.chunked_cons`,
+/// `.range`) costs one comparison and is left untouched.
+fn withValueMeta(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    v: Value,
+    form_in: Form,
+    call_loc: SourceLocation,
+) anyerror!Form {
+    var form = form_in;
+    // GC-ROOT: the recursive valueToForm below re-enters the VM to convert the
+    // meta MAP, so a collect there would otherwise sweep `v` (still the only
+    // reference to the source collection) and `m` [ref: .dev/gc_rooting.md §C].
+    var mroots: [2]Value = .{ v, Value.nil_val };
+    var msp: u16 = 2;
+    var mframe: root_set.EvalFrame = .{ .stack = &mroots, .sp = &msp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &mframe;
+    defer root_set.eval_frame_head = mframe.parent;
+    const m = try meta_mod.metaOf(rt, env, v, call_loc);
+    if (m != .nil_val) {
+        mroots[1] = m;
+        const meta_form = try arena.create(Form);
+        meta_form.* = try valueToForm(arena, rt, env, m, call_loc);
+        form.meta = meta_form;
+    }
+    return form;
 }
 
 fn valueSeqToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, seq_val: Value, call_loc: SourceLocation) anyerror!Form {
     var items: std.ArrayList(Form) = .empty;
     defer items.deinit(arena);
-    var cur = try lazy_seq_mod.seq(rt, env, seq_val);
+    var cur = try seqable.seq(rt, env, seq_val, call_loc);
     // GC-ROOT: D-253 — the seq cursor lives in a Zig local across seq/first/rest
     // (force lazy layers) + the recursive `valueToForm` (nested seqs re-enter),
     // all re-entering the VM. A torture collect during a macro-expansion's
@@ -1575,16 +1954,17 @@ fn valueSeqToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, seq_val: Va
     defer root_set.eval_frame_head = seq_frame.parent;
     while (!cur.isNil()) {
         seq_roots[1] = cur;
-        const head = try lazy_seq_mod.first(rt, env, cur);
+        const head = try seqable.first(rt, env, cur, call_loc);
         try items.append(arena, try valueToForm(arena, rt, env, head, call_loc));
-        cur = try lazy_seq_mod.seq(rt, env, try lazy_seq_mod.rest(rt, env, cur));
+        cur = try seqable.next(rt, env, cur, call_loc);
     }
     const owned = try arena.dupe(Form, items.items);
     return .{ .data = .{ .list = owned }, .location = call_loc };
 }
 
 fn valueVectorToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, vec_val: Value, call_loc: SourceLocation) anyerror!Form {
-    const n = vector_collection.count(vec_val);
+    const is_sub = vec_val.tag() == .sub_vector;
+    const n = if (is_sub) sub_vector_collection.count(vec_val) else vector_collection.count(vec_val);
     var items = try arena.alloc(Form, n);
     // GC-ROOT: D-253 — root the source across the recursive valueToForm (a nested
     // seq/map element re-enters the VM) [ref: .dev/gc_rooting.md §C].
@@ -1595,7 +1975,7 @@ fn valueVectorToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, vec_val:
     defer root_set.eval_frame_head = vframe.parent;
     var i: u32 = 0;
     while (i < n) : (i += 1) {
-        items[i] = try valueToForm(arena, rt, env, vector_collection.nth(vec_val, i), call_loc);
+        items[i] = try valueToForm(arena, rt, env, if (is_sub) sub_vector_collection.nth(vec_val, i) else vector_collection.nth(vec_val, i), call_loc);
     }
     return .{ .data = .{ .vector = items }, .location = call_loc };
 }
@@ -1634,23 +2014,37 @@ fn valueMapToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, map_val: Va
     return .{ .data = .{ .map = entries }, .location = call_loc };
 }
 
+/// `set.forEachElem` accumulator: each element is re-formed via valueToForm.
+const SetToFormCtx = struct {
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    items: []Form,
+    i: usize,
+    loc: SourceLocation,
+    fn cb(ctx: *SetToFormCtx, e: Value) anyerror!void {
+        ctx.items[ctx.i] = try valueToForm(ctx.arena, ctx.rt, ctx.env, e, ctx.loc);
+        ctx.i += 1;
+    }
+};
+
 fn valueSetToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, set_val: Value, call_loc: SourceLocation) anyerror!Form {
-    // PersistentHashSet wraps an ArrayMap-backed Value at its `map`
-    // field; iterate the map's keys, ignore the sentinel values.
-    // GC-ROOT: D-253 — root `set_val` (the raw `am` aliases its backing map)
-    // across the recursive valueToForm re-entries [ref: .dev/gc_rooting.md §C].
+    // Iterate via the generic `forEachElem` so a set whose backing map has
+    // promoted past the ArrayMap ceiling is handled too — decoding the backing
+    // map as an ArrayMap unconditionally read a HashMap's fields as `count` /
+    // `entries` and indexed off the end. Same fix, and the same reason, as
+    // `valueMapToForm` above.
+    // GC-ROOT: D-253 — root `set_val` across the recursive valueToForm
+    // re-entries [ref: .dev/gc_rooting.md §C].
     var sroots: [1]Value = .{set_val};
     var ssp: u16 = 1;
     var sframe: root_set.EvalFrame = .{ .stack = &sroots, .sp = &ssp, .locals = &.{}, .parent = root_set.eval_frame_head };
     root_set.eval_frame_head = &sframe;
     defer root_set.eval_frame_head = sframe.parent;
-    const ps = set_val.decodePtr(*const set_collection.PersistentHashSet);
-    const am = ps.map.decodePtr(*const map_collection.ArrayMap);
-    var items = try arena.alloc(Form, am.count);
-    var i: u32 = 0;
-    while (i < am.count) : (i += 1) {
-        items[i] = try valueToForm(arena, rt, env, am.entries[2 * i], call_loc);
-    }
+    const n = set_collection.count(set_val);
+    const items = try arena.alloc(Form, n);
+    var ctx = SetToFormCtx{ .arena = arena, .rt = rt, .env = env, .items = items, .i = 0, .loc = call_loc };
+    try set_collection.forEachElem(set_val, &ctx, SetToFormCtx.cb);
     return .{ .data = .{ .set = items }, .location = call_loc };
 }
 
@@ -1752,14 +2146,38 @@ test "string-literal-as-expression lifts to a .string Value (Phase 3.5)" {
     try testing.expectEqualStrings("hello", string_collection.asString(n.constant.value));
 }
 
-test "vector-literal-as-expression analyzes into VectorLiteralNode (Phase 6.9 cycle 4)" {
+test "vector literal with an evaluated element analyzes into VectorLiteralNode" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
 
-    const n = try fix.analyzeStr("[1 2 3]");
-    try testing.expect(n.* == .vector_literal_node);
-    try testing.expectEqual(@as(usize, 3), n.vector_literal_node.elements.len);
+    const n = try fix.analyzeStr("(let* [x 1] [x 2 3])");
+    const body = n.let_node.body;
+    try testing.expect(body.* == .vector_literal_node);
+    try testing.expectEqual(@as(usize, 3), body.vector_literal_node.elements.len);
+}
+
+test "D-346: an all-constant collection literal folds into one constant" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const v = try fix.analyzeStr("[1 [2 3] (quote a)]");
+    try testing.expect(v.* == .constant);
+    try testing.expectEqual(@as(u32, 3), vector_collection.count(v.constant.value));
+    const inner = vector_collection.nth(v.constant.value, 1);
+    try testing.expectEqual(@as(u32, 2), vector_collection.count(inner));
+
+    // Ten simple keys exceed the array-map threshold: the fold assocs into a
+    // hash map, as the backends do.
+    const m = try fix.analyzeStr("{0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8 9 9}");
+    try testing.expect(m.* == .constant);
+    try testing.expect(m.constant.value.tag() == .hash_map);
+    try testing.expectEqual(@as(u32, 10), map_collection.count(m.constant.value));
+
+    const s = try fix.analyzeStr("#{:a :b}");
+    try testing.expect(s.* == .constant);
+    try testing.expectEqual(@as(u32, 2), set_collection.count(s.constant.value));
 }
 
 test "resolved symbol → var_ref pointing at the right Var.root" {
@@ -1878,13 +2296,14 @@ test "(fn* [x & rest] x) — has_rest is true; params include rest" {
     try testing.expectEqualStrings("rest", v.params[1]);
 }
 
-test "(def x 1) records name + value expr" {
+test "(def x 1) captures the declared Var + value expr" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
 
     const n = try fix.analyzeStr("(def x 1)");
-    try testing.expectEqualStrings("x", n.def_node.name);
+    try testing.expectEqualStrings("x", n.def_node.var_ptr.name);
+    try testing.expectEqual(fix.env.current_ns.?, n.def_node.var_ptr.ns);
     try testing.expect(n.def_node.value_expr.constant.value.tag() == .integer);
 }
 
@@ -2048,6 +2467,27 @@ test "ctor call (Foo. ...) analyses into interop_call_node .constructor" {
     try testing.expect(n.interop_call_node.kind == .constructor);
     try testing.expectEqualStrings("Foo", n.interop_call_node.type_name);
     try testing.expectEqual(@as(usize, 2), n.interop_call_node.args.len);
+    // [CLJW-CTOR-ANALYZE-TIME]: a bare type name carries the namespace it was
+    // analyzed in, so eval-time lookup qualifies it lexically.
+    try testing.expectEqualStrings(fix.env.current_ns.?.name, n.interop_call_node.definer_ns);
+}
+
+test "constructInstance resolves <definer_ns>.<Name> before the last-wins simple name" {
+    const td_mod = @import("../../runtime/type_descriptor.zig");
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    // aaa.Point has two fields; bbb.Point, registered later, has one, so a
+    // simple-name lookup would pick bbb's and reject two arguments.
+    const aaa = try td_mod.registerType(&fix.rt, "Point", "aaa", &.{ "x", "y" }, &.{}, .defrecord);
+    const bbb = try td_mod.registerType(&fix.rt, "Point", "bbb", &.{"q"}, &.{}, .defrecord);
+    const two = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
+    const a = try special_forms.constructInstance(&fix.rt, &fix.env, "Point", "aaa", &two, .{});
+    try testing.expect(a.tag() == .typed_instance);
+    try testing.expect(a.decodePtr(*const td_mod.TypedInstance).descriptor == aaa);
+    const one = [_]Value{Value.initInteger(9)};
+    const b = try special_forms.constructInstance(&fix.rt, &fix.env, "Point", "bbb", &one, .{});
+    try testing.expect(b.decodePtr(*const td_mod.TypedInstance).descriptor == bbb);
 }
 
 test "member access (.x inst) analyses into interop_call_node .instance_member" {

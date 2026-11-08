@@ -1,0 +1,25 @@
+# Layer 8 (ADR-0186) sweep targets — `scripts/mutation/run.sh --targets-from .dev/mutation_targets.txt`
+#
+# Ordering principle: a survivor is only worth the rebuild it costs, so sweep the
+# code where an unconstrained line would be BOTH easy to get wrong and expensive
+# to get wrong. That is the persistent collections (representation boundaries,
+# hand-written HAMT arithmetic, and the site of Discussion #12) before anything
+# that is mostly plumbing.
+#
+# Add a file when a sweep of the current list stops finding survivors, not
+# before — the list is a queue, not an inventory.
+
+# --- the collections: boundaries, bit arithmetic, structural sharing ---
+src/runtime/collection/map.zig
+src/runtime/collection/set.zig
+src/runtime/collection/vector.zig
+src/runtime/collection/list.zig
+
+# --- value representation: the layer everything above it trusts ---
+src/runtime/compare.zig
+src/runtime/print.zig
+
+# --- next, once the above are clean ---
+# src/eval/analyzer/analyzer.zig
+# src/runtime/collection/sorted.zig
+# src/runtime/collection/range.zig

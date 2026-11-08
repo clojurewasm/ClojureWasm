@@ -1,0 +1,166 @@
+(.longValue 5)
+;;=> 5
+(.intValue 5)
+;;=> 5
+(.doubleValue 1/2)
+;;=> 0.5
+(.doubleValue -2/3)
+;;=> -0.6666666666666667
+(.doubleValue 1/7)
+;;=> 0.1428571428571429
+(.intValue 5N)
+;;=> 5
+(.intValue 3.9)
+;;=> 3
+(.intValue -3.9)
+;;=> -3
+(.floatValue 5)
+;;=> 5.0
+(.floatValue 0.1)
+;;=> 0.1
+(.shortValue 70000)
+;;=> 4464
+(.byteValue 300)
+;;=> 44
+(.byteValue -129)
+;;=> 127
+(.intValue 4294967297)
+;;=> 1
+(.compareTo 5 6)
+;;=> -1
+(.compareTo 6 5)
+;;=> 1
+(.compareTo 5 5)
+;;=> 0
+(.isNaN ##NaN)
+;;=> true
+(.isNaN 1.0)
+;;=> false
+(.isInfinite ##-Inf)
+;;=> true
+(Long/valueOf 9007199254740993)
+;;=> 9007199254740993
+(.longValue 9007199254740993)
+;;=> 9007199254740993
+(.intValue ##NaN)
+;;=> 0
+(.longValue ##Inf)
+;;=> 9223372036854775807
+(.longValue ##-Inf)
+;;=> -9223372036854775808
+(.intValue 1.0E20)
+;;=> 2147483647
+(.shortValue 1.0E10)
+;;=> -1
+(.byteValue 200.7)
+;;=> -56
+(.byteValue -2.5)
+;;=> -2
+(.intValue -0.0)
+;;=> 0
+(.longValue 99999999999999999999N)
+;;=> 7766279631452241919
+(.longValue -99999999999999999999N)
+;;=> -7766279631452241919
+(.intValue 99999999999999999999N)
+;;=> 1661992959
+(.intValue 9223372036854775808N)
+;;=> 0
+(.longValue 9223372036854775808N)
+;;=> -9223372036854775808
+(.longValue -9223372036854775809N)
+;;=> 9223372036854775807
+(.byteValue 99999999999999999999N)
+;;=> -1
+(.shortValue -32769)
+;;=> 32767
+(.longValue 7/2)
+;;=> 3
+(.intValue -7/2)
+;;=> -3
+(.shortValue 100000/3)
+;;=> -32203
+(.intValue 10000000000/3)
+;;=> 2147483647
+(.shortValue 10000000000/3)
+;;=> -1
+(.longValue (/ 100000000000000000000000N 3))
+;;=> 66792140173563221
+(.longValue (/ -100000000000000000000000N 3))
+;;=> -66792140173563221
+(.equals 5 5)
+;;=> true
+(.equals 5 5.0)
+;;=> false
+(.equals 5 5N)
+;;=> false
+(.equals 1/2 0.5)
+;;=> false
+(.equals ##NaN ##NaN)
+;;=> true
+(.equals 0.0 -0.0)
+;;=> false
+(.equals 9007199254740993 9007199254740993)
+;;=> true
+(.equals (/ 100000000000000000000N 3) (/ 100000000000000000000N 3))
+;;=> true
+(.hashCode 5)
+;;=> 5
+(.hashCode -1)
+;;=> 0
+(.hashCode 4294967296)
+;;=> 1
+(.hashCode 9007199254740993)
+;;=> 2097153
+(.hashCode 1.5)
+;;=> 1073217536
+(.hashCode -0.0)
+;;=> -2147483648
+(.hashCode ##NaN)
+;;=> 2146959360
+(.hashCode 5N)
+;;=> 5
+(.hashCode -1N)
+;;=> 0
+(.hashCode 99999999999999999999N)
+;;=> 1882487351
+(.hashCode -99999999999999999999N)
+;;=> -1882487351
+(.hashCode 123456789012345678901234567890N)
+;;=> 1915528825
+(.hashCode 1/2)
+;;=> 3
+(.hashCode -1/2)
+;;=> -3
+(.hashCode 1/3)
+;;=> 2
+(.compareTo 1.5 2.5)
+;;=> -1
+(.compareTo 0.0 -0.0)
+;;=> 1
+(.compareTo ##NaN 1.0)
+;;=> 1
+(.compareTo ##NaN ##NaN)
+;;=> 0
+(.compareTo ##Inf ##NaN)
+;;=> -1
+(.compareTo 1/2 1/3)
+;;=> 1
+(.compareTo 1/2 1)
+;;=> -1
+(.compareTo 1/2 0.5)
+;;=> 0
+(.compareTo 1/2 5N)
+;;=> -1
+(.compareTo (biginteger 5) (biginteger 6))
+;;=> -1
+(.compareTo 1 1.0)
+;;=> <clj-error> ClassCastException
+(.compareTo 1.0 1)
+;;=> <clj-error> ClassCastException
+(.compareTo 1 5N)
+;;=> <clj-error> ClassCastException
+(.compareTo (biginteger 5) 6)
+;;=> <clj-error> ClassCastException
+(.isNaN 1)
+;;=> <clj-error> IllegalArgumentException

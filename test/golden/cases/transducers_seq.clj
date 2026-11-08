@@ -1,0 +1,8 @@
+(prn (into [] (comp (map inc) (filter even?) (take 3)) (range 20)))
+(prn (transduce (map inc) + 0 [1 2 3]))
+(prn (sequence (mapcat range) [1 2 3]))
+(prn (eduction (filter odd?) (range 10)))
+(prn (reduce-kv (fn [acc k v] (assoc acc v k)) {} {:a 1 :b 2}))
+(prn (group-by odd? (range 6)) (frequencies "aabbbc") (partition-by odd? [1 3 2 4 5]))
+(prn (sort [3 1 2]) (sort-by - [3 1 2]) (sort compare ["b" "a"]))
+(prn (take 3 (iterate #(* 2 %) 1)) (take 4 (cycle [:a :b])) (take 3 (repeat :x)))

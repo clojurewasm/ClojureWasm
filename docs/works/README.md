@@ -51,8 +51,12 @@ cd consumer-proj && cljw -e '(require (quote clojure.data.priority-map))'
 ```
 
 The older manual classpath still works: `-cp <root>` (alias `--classpath`,
-colon-separated) makes `require` search each root for `<ns-path>.clj` then
-`.cljc` (ADR-0084); `$CLJW_PATH` is the fallback when `-cp` is absent.
+colon-separated) makes `require` search each root for `<ns-path>.cljw`, then
+`.clj`, then `.cljc` (ADR-0084, ADR-0189); `$CLJW_PATH` is the fallback when
+`-cp` is absent. `.cljw` is cljw's own extension and is probed first, so a
+`foo/bar.cljw` beside a `foo/bar.clj` is the file cljw loads — the same
+precedence ClojureScript gives `.cljs` over `.cljc`. Roots are still searched
+in order, so an earlier root's `.clj` beats a later root's `.cljw`.
 
 **The residual limitation is Maven, not deps.edn:** a `:mvn/version` coord is
 **skipped** (ADR-0101 am.1), not fetched — cljw has no artifact downloader — so
@@ -63,9 +67,13 @@ un-cloned transitive dep (not a real cljw feature gap) is marked
 un-fetched Maven/transitive dep" — they are not cljw failures, just
 not-yet-loadable without laying the dep out.
 
-`.cljc` reader conditionals resolve to the `:clj` branch on cljw (cljw is a
-Clojure runtime, not ClojureScript), so `#?(:clj ... :cljs ...)` picks the
-JVM-shaped branch — which is exactly where the Java interop blockers live.
+`.cljc` reader conditionals resolve against the feature set
+`{:cljw, :clj, :default}` (ADR-0188). cljw is a Clojure runtime, not
+ClojureScript, so `#?(:clj ... :cljs ...)` picks the JVM-shaped branch — which
+is exactly where the Java interop blockers live. `:cljw` names *this* runtime
+for the cases where it diverges from the JVM; since branches are read
+left-to-right, it only wins where an author put it ahead of `:clj`, so an
+existing library reads exactly the branch it always did.
 
 ## How to add a library
 

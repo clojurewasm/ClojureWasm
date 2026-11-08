@@ -1,0 +1,88 @@
+(try (int 2147483648) (catch Exception e :threw))
+;;=> :threw
+(try (int -2147483649) (catch Exception e :threw))
+;;=> :threw
+(int 2147483647)
+;;=> 2147483647
+(int -2147483648)
+;;=> -2147483648
+(try (int 2.147483647000001E9) (catch Exception e :threw))
+;;=> :threw
+(try (int -2.147483648000001E9) (catch Exception e :threw))
+;;=> :threw
+(int 2.1474836469E9)
+;;=> 2147483646
+(try (int 2147483648N) (catch Exception e :threw))
+;;=> :threw
+(int 1.9)
+;;=> 1
+(int -1.9)
+;;=> -1
+(int 3/2)
+;;=> 1
+(int 1.5M)
+;;=> 1
+(int \a)
+;;=> 97
+(int 5N)
+;;=> 5
+(try (byte 128) (catch Exception e :threw))
+;;=> :threw
+(try (byte -129) (catch Exception e :threw))
+;;=> :threw
+(byte 127)
+;;=> 127
+(byte -128)
+;;=> -128
+(try (byte 127.000001) (catch Exception e :threw))
+;;=> :threw
+(try (byte -128.000001) (catch Exception e :threw))
+;;=> :threw
+(try (byte 127.9) (catch Exception e :threw))
+;;=> :threw
+(try (short 32768) (catch Exception e :threw))
+;;=> :threw
+(try (short 32767.000001) (catch Exception e :threw))
+;;=> :threw
+(short 32767)
+;;=> 32767
+(short -32768)
+;;=> -32768
+(int ##NaN)
+;;=> 0
+(long ##NaN)
+;;=> 0
+(try (byte ##NaN) (catch IllegalArgumentException e :threw))
+;;=> :threw
+(try (short ##NaN) (catch IllegalArgumentException e :threw))
+;;=> :threw
+(try (byte ##Inf) (catch Exception e :threw))
+;;=> :threw
+(try (int ##Inf) (catch Exception e :threw))
+;;=> :threw
+(long 2147483648)
+;;=> 2147483648
+(long 9223372036854775807)
+;;=> 9223372036854775807
+(long 3.7)
+;;=> 3
+(long -3.7)
+;;=> -3
+(long 5N)
+;;=> 5
+(long 7/2)
+;;=> 3
+(long \A)
+;;=> 65
+(try (long 1.0E30) (catch Exception e :threw))
+;;=> :threw
+(try (int "x") (catch Exception e :threw))
+;;=> :threw
+(try (byte nil) (catch Exception e :threw))
+;;=> :threw
+(unchecked-byte 128)
+;;=> -128
+(unchecked-int 2147483648)
+;;=> -2147483648
+(unchecked-short 32768)
+;;=> -32768

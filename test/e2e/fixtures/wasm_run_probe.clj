@@ -38,4 +38,28 @@
   (try (wasm/run "test/e2e/fixtures/wasm_run_probe.wasm" {:args ["p"] :env {"K" 5}}) "NOT-CAUGHT"
     (catch Throwable _ "CAUGHT")))
 
+;; D-350 amendment: wasm/run caches the compiled module. Every per-call option
+;; still applies per call, and a cached run returns what an uncached one does.
+(wasm/clear-cache!)
+(let [probe "test/e2e/fixtures/wasm_run_probe.wasm"
+      cases [["alpha" "one"] ["3" "two"] ["beta" ""]]
+      runs (doall (for [[a in] cases]
+                    [(wasm/run probe {:args ["prog" a] :stdin in})
+                     (wasm/run probe {:args ["prog" a] :stdin in :cache false})]))]
+  (doseq [[cached cold] runs]
+    (assert (= cached cold) (pr-str cached cold)))
+  (assert (= 3 (:exit (first (second runs)))) (pr-str (second runs)))
+  (assert (clojure.string/includes? (:out (first (first runs))) "stdin=one"))
+  (assert (= 1 (wasm/clear-cache!)) "the cached runs should share one entry")
+  (assert (= 0 (wasm/clear-cache!)))
+  (println "PASS wasm-run-cache"))
+(let [spin "test/e2e/fixtures/wasm_spin.wasm"]
+  (assert (= 1 (:exit (wasm/run spin {:fuel 100000}))))
+  (assert (= 1 (:exit (wasm/run spin {:fuel 100000}))) "fuel applies to a cached module")
+  (wasm/clear-cache!)
+  (println "PASS wasm-run-cache-fuel"))
+(println "cache-bad-type:"
+  (try (wasm/run "test/e2e/fixtures/wasm_run_probe.wasm" {:cache 1}) "NOT-CAUGHT"
+    (catch Throwable _ "CAUGHT")))
+
 (println "DONE")

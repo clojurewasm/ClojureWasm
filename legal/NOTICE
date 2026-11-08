@@ -1,10 +1,25 @@
 ClojureWasm independently reimplements the Clojure language. The namespaces
 under src/lang/clj/clojure/** implement Clojure / Clojure-contrib APIs
 (originally (c) Rich Hickey and contributors, Eclipse Public License 1.0).
-Two files reproduce upstream source text and retain the original notice
+
+Ten files reproduce upstream source text and retain the original notice
 under EPL-2.0 per EPL-1.0 §7:
-  - src/lang/clj/clojure/template.clj (clojure.template, by Stuart Sierra)
+  - src/lang/clj/clojure/core_meta.clj (docstrings, verbatim from clojure.core)
   - src/lang/clj/clojure/core/protocols.clj (docstrings)
+  - src/lang/clj/clojure/core/reducers.clj (clojure.core.reducers, by Rich Hickey)
+  - src/lang/clj/clojure/core/specs/alpha.clj (clojure.core.specs.alpha, by Rich Hickey)
+  - src/lang/clj/clojure/datafy.clj (clojure.datafy, by Rich Hickey)
+  - src/lang/clj/clojure/spec/alpha.clj (clojure.spec.alpha, by Rich Hickey)
+  - src/lang/clj/clojure/set.clj (docstrings, from clojure.set by Rich Hickey)
+  - src/lang/clj/clojure/spec/gen/alpha.clj (clojure.spec.gen.alpha, by Rich Hickey)
+  - src/lang/clj/clojure/template.clj (clojure.template, by Stuart Sierra)
+  - src/lang/clj/clojure/test/junit.clj (clojure.test.junit, by Jason Sankey)
+
 All other namespaces are independent reimplementations (no upstream source
 text reproduced). ClojureWasm is not affiliated with or endorsed by the
 Clojure project.
+
+The list above is checked against the tree by scripts/check_clj_attribution.sh:
+a file carrying the upstream copyright banner must appear here, and a file
+listed here must carry it. It read "Three files" while six more had grown the
+banner, which is why it is gated now rather than maintained by hand.

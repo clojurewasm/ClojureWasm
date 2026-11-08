@@ -10,6 +10,12 @@
 ;;=> nil
 (parse-long "")
 ;;=> nil
+(parse-long "+42")
+;;=> 42
+(parse-long " 42 ")
+;;=> nil
+(parse-long "9223372036854775808")
+;;=> nil
 (parse-double "3.14")
 ;;=> 3.14
 (parse-double "-0.0")
@@ -22,11 +28,17 @@
 ;;=> ##Inf
 (parse-double "NaN")
 ;;=> ##NaN
+(parse-double " 1.5 ")
+;;=> 1.5
+(parse-double "0x1.0p0")
+;;=> 1.0
 (parse-boolean "true")
 ;;=> true
 (parse-boolean "false")
 ;;=> false
 (parse-boolean "yes")
+;;=> nil
+(parse-boolean "TRUE")
 ;;=> nil
 (parse-uuid "00000000-0000-0000-0000-000000000000")
 ;;=> #uuid "00000000-0000-0000-0000-000000000000"

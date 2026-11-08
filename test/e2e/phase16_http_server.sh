@@ -11,7 +11,7 @@ fail() { echo "FAIL $1" >&2; exit 1; }
 
 # Portable bounded run: GNU `timeout`, else coreutils `gtimeout`, else
 # unbounded (hosted mac runners ship neither; same pattern as
-# scripts/check_corpus_regression.sh).
+# scripts/corpus_regression.clj).
 run_bounded() {
     local secs="$1"; shift
     if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"
@@ -50,12 +50,29 @@ echo "PASS http-header -> $got"
 
 # Response :headers map → Content-Type + custom header written verbatim.
 hdrs=$(curl -s -D - -o /dev/null "http://127.0.0.1:$PORT/html" 2>&1)
-echo "$hdrs" | grep -qi "^content-type: text/html; charset=utf-8" || fail "resp :headers content-type: got '$hdrs'"
-echo "$hdrs" | grep -qi "^x-custom: yes" || fail "resp :headers x-custom: got '$hdrs'"
+grep -qi "^content-type: text/html; charset=utf-8" <<<"$hdrs" || fail "resp :headers content-type: got '$hdrs'"
+grep -qi "^x-custom: yes" <<<"$hdrs" || fail "resp :headers x-custom: got '$hdrs'"
 echo "PASS http-resp-headers -> content-type+x-custom"
 body=$(curl -s "http://127.0.0.1:$PORT/html" 2>&1)
 [[ "$body" == "<h1>hi</h1>" ]] || fail "GET /html body: got '$body'"
 echo "PASS http-html-body -> $body"
+
+# A primitive byte-array :body is served verbatim: 256 bytes, one of each
+# value 0..255. A UTF-8 path would expand bytes >= 0x80 and grow the body.
+BLEN=$(curl -s "http://127.0.0.1:$PORT/bytes" | wc -c | tr -d ' ')
+[[ "$BLEN" == "256" ]] || fail "GET /bytes length: got $BLEN, want 256"
+BOD=$(curl -s "http://127.0.0.1:$PORT/bytes" | od -An -tu1 | tr -s ' ')
+EXP=""
+for i in $(seq 0 255); do EXP="$EXP $i"; done
+[[ "$(echo $BOD)" == "$(echo $EXP)" ]] || fail "GET /bytes content mismatch"
+echo "PASS http-bytes-body -> 256 verbatim bytes"
+
+# NINE response headers — a >8-entry :headers map promotes to hash_map
+# (Discussion #12 bug class) and used to be dropped wholesale.
+hdrs=$(curl -s -D - -o /dev/null "http://127.0.0.1:$PORT/many-headers" 2>&1)
+grep -qi "^x-m1: 1" <<<"$hdrs" || fail "9-resp-headers x-m1: got '$hdrs'"
+grep -qi "^x-m9: 9" <<<"$hdrs" || fail "9-resp-headers x-m9: got '$hdrs'"
+echo "PASS http-9-resp-headers -> x-m1..x-m9"
 
 # FIX-2 (SE-4): an out-of-range :status (200000 > 1023) must fall back to 500,
 # NOT panic the whole server process. Assert 500 AND that the server survives (a
@@ -71,7 +88,7 @@ echo "PASS http-survives-badstatus -> $got"
 # cljw rejects the dirty header at the boundary → 500, and the injected
 # "Set-Cookie: pwned" must NOT appear anywhere in the response headers.
 resp=$(curl -s -D - "http://127.0.0.1:$PORT/crlf-header" 2>&1)
-echo "$resp" | grep -qi "Set-Cookie: pwned" && fail "SE-5 header injection: Set-Cookie reflected:
+grep -qi "Set-Cookie: pwned" <<<"$resp" && fail "SE-5 header injection: Set-Cookie reflected:
 $resp"
 echo "PASS http-crlf-no-injection -> no Set-Cookie"
 code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/crlf-header" 2>&1)
@@ -81,4 +98,36 @@ got=$(curl -s "http://127.0.0.1:$PORT/still-alive" 2>&1)
 [[ "$got" == "GET /still-alive" ]] || fail "server died after CRLF header: got '$got'"
 echo "PASS http-survives-crlf -> $got"
 
-echo "OK — phase16_http_server (12 cases) green"
+# D-339 (SE-3, slowloris): a client that opens a connection and never finishes
+# sending the request head must NOT wedge the server. The accept loop is serial
+# by design, so a half-open connection blocks every other client for as long as
+# the read blocks — without a deadline, that is forever, and one packet DoSes a
+# public deploy. The fixture sets :header-timeout-ms 1500, so the stalled
+# connection must be dropped and the next client served well inside 15s.
+#
+# The stalled client runs in a SUBSHELL, not via `exec` on the parent: a
+# redirection failure on `exec` is fatal to a non-interactive shell, which would
+# take the whole suite down on a host without bash /dev/tcp.
+if (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null; then
+  # Writes a partial head (no terminating blank line) and holds the connection.
+  ( printf 'GET /still-alive HTTP/1.1\r\nHost: localhost\r\n'; sleep 12 ) \
+      >/dev/tcp/127.0.0.1/$PORT 2>/dev/null &
+  SLOW=$!
+  sleep 0.5   # let the stalled client reach the accept loop first
+  start=$(date +%s)
+  got=$(run_bounded 15 curl -s --max-time 12 "http://127.0.0.1:$PORT/still-alive" 2>&1 || true)
+  elapsed=$(( $(date +%s) - start ))
+  kill "$SLOW" 2>/dev/null || true
+  wait "$SLOW" 2>/dev/null || true
+  [[ "$got" == "GET /still-alive" ]] || fail "slowloris wedged the server (D-339): got '$got' after ${elapsed}s"
+  # The elapsed bound is the real assertion. Without a header deadline the
+  # server serves this request only when the ATTACKER disconnects (12s here),
+  # which still "passes" a body-only check — so assert the deadline did the
+  # work: 1500ms fixture timeout + dispatch must land well under 5s.
+  [[ "$elapsed" -lt 5 ]] || fail "slowloris blocked the server for ${elapsed}s (D-339: no header deadline; it was the attacker giving up, not the server recovering)"
+  echo "PASS http-slowloris-recovers -> served in ${elapsed}s"
+else
+  echo "SKIP http-slowloris (bash /dev/tcp unavailable)"
+fi
+
+echo "OK — phase16_http_server (14 cases) green"

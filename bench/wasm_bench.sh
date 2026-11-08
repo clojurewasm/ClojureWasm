@@ -1,16 +1,26 @@
 #!/usr/bin/env bash
-# wasm_bench.sh — Wasm runtime benchmark: ClojureWasm vs wasmtime
+# wasm_bench.sh: Wasm runtime benchmark, ClojureWasm's embedded zwasm vs wasmtime
 #
 # Uses TinyGo-compiled .wasm modules with built-in iteration loops.
 # Both CW and wasmtime execute the SAME wasm function with the SAME
 # loop count, making the comparison fair (apples-to-apples).
 #
+# The cljw side goes through the ordinary FFI surface, `(wasm/load path opts)`
+# + `(wasm/call m "fn" args)` (ADR-0192). `:fuel 0` is unmetered: these loops
+# run past the finite default fuel budget, and metering is not what is being
+# measured. `:engine` selects zwasm's execution tier, the cljw default is
+# `.auto` (JIT-first with interp fallback, .dev/zwasm_capabilities.md D-488),
+# so the default column is JIT-vs-JIT against wasmtime, NOT interpreter-vs-JIT.
+# `--engine=interp` measures the fallback tier instead.
+#
 # Usage:
-#   bash bench/wasm_bench.sh              # All wasm benchmarks
-#   bash bench/wasm_bench.sh --quick      # Single run, no warmup
-#   bash bench/wasm_bench.sh --bench=fib  # Specific benchmark
-#   bash bench/wasm_bench.sh --rebuild    # Rebuild .wasm files from .go sources
-#   bash bench/wasm_bench.sh --no-wasm    # Early exit (binary built with -Dwasm=false)
+#   bash bench/wasm_bench.sh                 # All wasm benchmarks
+#   bash bench/wasm_bench.sh --quick         # Single run, no warmup
+#   bash bench/wasm_bench.sh --bench=fib     # Specific benchmark
+#   bash bench/wasm_bench.sh --engine=interp # zwasm interp tier (default: auto)
+#   bash bench/wasm_bench.sh --yaml=FILE     # Write measurements as YAML
+#   bash bench/wasm_bench.sh --rebuild       # Rebuild .wasm files from .go sources
+#   bash bench/wasm_bench.sh --no-wasm       # Early exit (binary built with -Dwasm=false)
 
 set -euo pipefail
 
@@ -24,6 +34,7 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib_build_lock.sh"
 CLJW="$PROJECT_ROOT/zig-out/bin/cljw"
 WASM_DIR="$SCRIPT_DIR/wasm"
 
@@ -42,11 +53,15 @@ WARMUP=2
 BENCH_FILTER=""
 REBUILD=false
 SKIP_BUILD=false
+ENGINE="auto"
+YAML_FILE=""
 
 for arg in "$@"; do
   case "$arg" in
     --quick)      RUNS=1; WARMUP=0 ;;
     --bench=*)    BENCH_FILTER="${arg#--bench=}" ;;
+    --engine=*)   ENGINE="${arg#--engine=}" ;;
+    --yaml=*)     YAML_FILE="${arg#--yaml=}" ;;
     --rebuild)    REBUILD=true ;;
     --runs=*)     RUNS="${arg#--runs=}" ;;
     --warmup=*)   WARMUP="${arg#--warmup=}" ;;
@@ -57,6 +72,8 @@ for arg in "$@"; do
       echo "Options:"
       echo "  --quick          Single run, no warmup"
       echo "  --bench=NAME     Run specific benchmark (fib, tak, arith, sieve)"
+      echo "  --engine=E       zwasm engine tier: auto (default) | jit | interp"
+      echo "  --yaml=FILE      Write measurements as YAML"
       echo "  --rebuild        Rebuild .wasm files from .go sources"
       echo "  --runs=N         Hyperfine runs (default: 5)"
       echo "  --warmup=N       Hyperfine warmup (default: 2)"
@@ -99,7 +116,7 @@ fi
 # --- Build CW ---
 if ! $SKIP_BUILD; then
   echo -e "${CYAN}Building ClojureWasm (ReleaseSafe)...${RESET}"
-  (cd "$PROJECT_ROOT" && zig build -Dwasm -Doptimize=ReleaseSafe) || {
+  (cd "$PROJECT_ROOT" && with_build_lock zig build -Dwasm -Doptimize=ReleaseSafe) || {
     echo -e "${RED}Build failed${RESET}" >&2
     exit 1
   }
@@ -109,7 +126,7 @@ fi
 for entry in "${BENCHMARKS[@]}"; do
   IFS=: read -r name wasm_file _ _ _ <<< "$entry"
   if [[ ! -f "$WASM_DIR/$wasm_file" ]]; then
-    echo -e "${RED}Missing: $WASM_DIR/$wasm_file — run with --rebuild${RESET}" >&2
+    echo -e "${RED}Missing: $WASM_DIR/$wasm_file. Run with --rebuild${RESET}" >&2
     exit 1
   fi
 done
@@ -141,12 +158,13 @@ print(f'{mean_s * 1000:.1f}')
 # --- Measure startup overhead ---
 echo -e "${CYAN}Measuring startup overhead...${RESET}"
 
-# CW startup: load a wasm module and call a trivial function
-cat > "$TMPDIR_WASM/noop.clj" << 'CEOF'
-(require '[cljw.wasm :as wasm])
-(def m (wasm/load-wasi "bench/wasm/fib_bench.wasm"))
-(def f (wasm/fn m "fib"))
-(println (f 1))
+# CW startup: load a wasm module and call a trivial function. This is the
+# subtrahend for "warm", so it must carry the SAME engine as the timed runs,
+# JIT compilation happens at load, and charging it to compute would flatter the
+# interp column by exactly the JIT's compile time.
+cat > "$TMPDIR_WASM/noop.clj" << CEOF
+(def m (wasm/load "$WASM_DIR/fib_bench.wasm" {:engine :$ENGINE :fuel 0}))
+(println (wasm/call m "fib" 1))
 CEOF
 CW_STARTUP_MS=$(hf_mean_ms "$CLJW $TMPDIR_WASM/noop.clj")
 echo -e "  CW startup+load:   ${CW_STARTUP_MS} ms"
@@ -158,12 +176,14 @@ echo ""
 
 # --- Run benchmarks ---
 echo -e "${BOLD}═══════════════════════════════════════════════════════════════════════${RESET}"
-echo -e "${BOLD}  Wasm Runtime Benchmark: ClojureWasm interpreter vs wasmtime JIT${RESET}"
+echo -e "${BOLD}  Wasm Runtime Benchmark: ClojureWasm (zwasm, :engine ${ENGINE}) vs wasmtime${RESET}"
 echo -e "${BOLD}═══════════════════════════════════════════════════════════════════════${RESET}"
 echo ""
 printf "  ${DIM}%-10s %10s %10s %10s %10s %10s${RESET}\n" \
   "Benchmark" "CW (ms)" "wt (ms)" "CW warm" "wt warm" "ratio"
 echo -e "  ${DIM}──────────────────────────────────────────────────────────────────${RESET}"
+
+YAML_ROWS=()
 
 for entry in "${BENCHMARKS[@]}"; do
   IFS=: read -r name wasm_file bench_fn bench_args expected <<< "$entry"
@@ -187,14 +207,12 @@ for entry in "${BENCHMARKS[@]}"; do
   # Create CW bench script (single wasm call with loop inside wasm)
   cw_clj="$TMPDIR_WASM/cw_${name}.clj"
   cat > "$cw_clj" << CEOF
-(require '[cljw.wasm :as wasm])
-(def m (wasm/load-wasi "$wasm_path"))
-(def f (wasm/fn m "$bench_fn"))
-(println (f $bench_args))
+(def m (wasm/load "$wasm_path" {:engine :$ENGINE :fuel 0}))
+(println (wasm/call m "$bench_fn" $bench_args))
 CEOF
 
   # Verify CW output
-  cw_output=$($CLJW "$cw_clj" 2>&1 | head -1 | tr -d '[:space:]')
+  cw_output=$($CLJW "$cw_clj" 2>&1 | sed -n 1p | tr -d '[:space:]')
   if [[ "$cw_output" != "$expected_clean" ]]; then
     echo -e "  ${RED}SKIP${RESET} $name: CW output mismatch (got=$cw_output expected=$expected_clean)"
     continue
@@ -226,7 +244,46 @@ else: print('N/A')
 
   printf "  ${color}%-10s %10s %10s %10s %10s %10s${RESET}\n" \
     "$name" "$cw_ms" "$wt_ms" "$cw_warm" "$wt_warm" "$ratio"
+
+  YAML_ROWS+=("$name:$cw_ms:$wt_ms:$cw_warm:$wt_warm")
 done
+
+# --- YAML export ---
+# Scrollback is not data. A run that is only printed cannot be diffed against
+# the next one, so the table in the docs is generated from this file, never
+# transcribed by hand (bench/README.md's standing rule).
+if [[ -n "$YAML_FILE" ]]; then
+  {
+    echo "# Wasm FFI benchmark: cljw (embedded zwasm) vs wasmtime"
+    echo "# Generated: $(date -Iseconds) by bench/wasm_bench.sh"
+    echo ""
+    echo "date: \"$(date +%F)\""
+    echo ""
+    echo "env:"
+    echo "  machine: $(uname -srm)"
+    echo "  cpu: $(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo 2>/dev/null | head -1 || sysctl -n machdep.cpu.brand_string 2>/dev/null || echo unknown)"
+    echo "  cljw: $("$CLJW" --version 2>&1 | head -1)"
+    echo "  wasmtime: $(wasmtime --version 2>&1 | head -1)"
+    echo "  engine: $ENGINE"
+    echo "  tool: hyperfine"
+    echo "  runs: $RUNS"
+    echo "  warmup: $WARMUP"
+    echo ""
+    echo "startup_ms:"
+    echo "  cw: $CW_STARTUP_MS"
+    echo "  wasmtime: $WT_STARTUP_MS"
+    echo ""
+    echo "benchmarks:"
+    for row in "${YAML_ROWS[@]}"; do
+      IFS=: read -r n cwm wtm cww wtw <<< "$row"
+      echo "  $n:"
+      echo "    cold_ms: {cw: $cwm, wasmtime: $wtm}"
+      echo "    warm_ms: {cw: $cww, wasmtime: $wtw}"
+    done
+  } > "$YAML_FILE"
+  echo ""
+  echo -e "  ${CYAN}YAML written: $YAML_FILE${RESET}"
+fi
 
 echo ""
 echo -e "  ${DIM}CW startup+load: ${CW_STARTUP_MS}ms  |  wasmtime startup: ${WT_STARTUP_MS}ms${RESET}"

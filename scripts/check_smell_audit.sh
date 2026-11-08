@@ -11,7 +11,7 @@
 # Source-bearing file set (same as scripts/check_learning_doc.sh):
 #   - src/**/*.zig
 #   - build.zig, build.zig.zon
-#   - .dev/decisions/NNNN_<slug>.md (real ADRs; 0000_template excluded)
+#   (ADRs are no longer files; decisions live in memory as of 2026-09-11.)
 #
 # Required commit body line:
 #   Smell-audited: <depth 0-4>: <one-line summary>
@@ -38,29 +38,16 @@ hook_is_git_push || exit 0
 hook_cd_project_root
 
 # --- 3. Identify unpushed commits --------------------------------------------
-UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo '')"
-if [[ -n "$UPSTREAM" ]]; then
-  RANGE="$UPSTREAM..HEAD"
-else
-  RANGE="HEAD"
-fi
-
-# Fail-closed on git error (Wave-16 review-fix block#4 — previous
-# `|| true` swallowed any git failure as "no unpushed commits",
-# bypassing the gate). Use the same approach as hook_iter_unpushed.
-if ! UNPUSHED="$(git log --format='%H' "$RANGE" 2>&1)"; then
-  echo "internal: git log $RANGE failed — failing closed" >&2
-  echo "$UNPUSHED" >&2
-  exit 1
-fi
-[[ -z "$UNPUSHED" ]] && exit 0
+# Commits not yet on any remote branch (hook_unpushed_shas fails closed on a
+# git error). Replaces the old `@{u}..HEAD`, which mis-fired on a cross-branch
+# push by measuring against origin/main only ([CLJW-SMELLHOOK]).
+UNPUSHED="$(hook_unpushed_shas)"
+[[ -z "${UNPUSHED//[$'\n']/}" ]] && exit 0
 
 # --- 4. Helpers --------------------------------------------------------------
 is_source_path() {
   case "$1" in
     src/*.zig|build.zig|build.zig.zon)        return 0 ;;
-    .dev/decisions/0000_*.md)                  return 1 ;;
-    .dev/decisions/[0-9][0-9][0-9][0-9]_*.md) return 0 ;;
     *)                                         return 1 ;;
   esac
 }
@@ -102,7 +89,7 @@ cat >&2 <<'EOF'
 ✗ push blocked by scripts/check_smell_audit.sh
 
 One or more unpushed commits that touch source-bearing files
-(src/**/*.zig, build.zig, build.zig.zon, .dev/decisions/NNNN_*.md)
+(src/**/*.zig, build.zig, build.zig.zon)
 do not record a Step 6 Bad-Smell self-audit.
 
 Required line in the commit body:
@@ -114,7 +101,7 @@ Examples:
     Smell-audited: 3: ADR-0027 amendment 1 landed (commit abc1234)
 
 To recover:
-  1. Re-read .dev/principle.md Bad Smell catalogue (8 entries
+  1. Re-read the Bad Smell catalogue in memory: query :tags ["bad-smell"] (24 entries
      incl. Smallest-diff bias / Reservation-as-bias /
      Progress-pressure).
   2. Self-audit the staged diff (depth 0 if clean, 1-4 otherwise).

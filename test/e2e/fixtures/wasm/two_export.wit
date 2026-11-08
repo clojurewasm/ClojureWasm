@@ -1,0 +1,5 @@
+package local:cljwit@0.1.0;
+world echo {
+  export echo-bool: func(v: bool) -> bool;
+  export echo-s32: func(v: s32) -> s32;
+}

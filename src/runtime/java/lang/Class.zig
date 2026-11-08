@@ -60,16 +60,16 @@ fn getSimpleName(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
 }
 
 /// `(.isInstance klass obj)` — true iff `obj` is an instance of `klass`. Routes
-/// through the shared `class_name.isInstance` predicate (native tags + interface
-/// sets + Throwable hierarchy + user TypeDescriptor walk). JVM reference:
+/// through the same `class_name.isInstanceOfClass` entry `instance?` uses
+/// (native tags + interface sets + Throwable hierarchy by name, descriptor
+/// identity for a user class per ADR-0201). JVM reference:
 /// java.lang.Class#isInstance.
 fn isInstance(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity(".isInstance", args, 2, loc);
     const td = type_descriptor.asTypeDescriptorRef(args[0]);
-    const name = td.fqcn orelse return .false_val;
-    return Value.initBoolean(class_name.isInstance(args[1], name));
+    return Value.initBoolean(class_name.isInstanceOfClass(args[1], td));
 }
 
 /// Populate the per-Runtime `.type_descriptor` native descriptor's method table

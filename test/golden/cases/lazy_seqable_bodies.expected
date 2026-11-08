@@ -1,0 +1,26 @@
+--- exit ---
+0
+--- stdout ---
+(\h \i)
+\h (\i) (\i) 2
+(\h \i)
+(\a \b)
+nil nil () 0
+[0 (1 2 3 4) (1 2 3 4) true]
+([:a 1]) (:a 1) ([:a 1] [:b 2])
+[1 (2) 2]
+[7 (8) 2]
+[1 (2) 2]
+[:f () nil 1]
+[1 true 2]
+100000
+scalar first: :threw
+realized after failure: false
+scalar count again: :threw
+scalar seq again: :threw
+thrown thunk: boom false
+thrown thunk again: :threw
+[:class-cast :class-cast]
+"closed thunk retry:" [:threw :threw 2 false]
+"inner realized:" [[1 2] true]
+--- stderr ---

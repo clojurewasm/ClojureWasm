@@ -1,0 +1,4 @@
+name: "Float Loop Recur"
+category: numeric
+expected_output: "749999250000"
+description: "1M-iteration loop/recur accumulating (+ acc (* 1.5 i)) — mixed double/long arithmetic in a tight loop"

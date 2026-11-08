@@ -212,5 +212,39 @@ EOF
 )
 assert_eq 'shutdown_agents_no_handler_fire' "$got" '[[] 0]'
 
+# --- Binding conveyance (clj parity, CLJW-BINDING-CONVEYANCE) ---
+# A send / send-off action re-establishes the DISPATCHING thread's dynamic
+# bindings (clj's binding-conveyor-fn); without it the action sees the var's root.
+got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
+(def ^:dynamic *cv* :unset)
+(def a (agent nil))
+(binding [*cv* :caller] (send a (fn [_] *cv*)))
+(await a)
+(prn @a)
+EOF
+)
+assert_eq 'agent_send_conveys_bindings' "$got" ':caller'
+
+got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
+(def ^:dynamic *cv* :unset)
+(def a (agent nil))
+(binding [*cv* :caller] (send-off a (fn [_] *cv*)))
+(await a)
+(prn @a)
+EOF
+)
+assert_eq 'agent_sendoff_conveys_bindings' "$got" ':caller'
+
+# Dispatched OUTSIDE any binding → the action sees the var's ROOT (no leaked frame).
+got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
+(def ^:dynamic *cv* :unset)
+(def a (agent nil))
+(send a (fn [_] *cv*))
+(await a)
+(prn @a)
+EOF
+)
+assert_eq 'agent_send_no_conveyance_sees_root' "$got" ':unset'
+
 echo
 echo "Phase B #6 agent (first slice + error modes) e2e: all green."

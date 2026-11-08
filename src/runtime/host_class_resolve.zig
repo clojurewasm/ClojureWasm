@@ -29,11 +29,34 @@ const Namespace = @import("env.zig").Namespace;
 pub fn resolve(rt: *Runtime, imports_ns: ?*const Namespace, head: []const u8) ?*const TypeDescriptor {
     if (rt.types.get(head)) |td| return td;
     if (std.mem.findScalar(u8, head, '.') == null) {
+        // ADR-0198: user types are keyed by `<defining_ns>.<Name>`, so a
+        // dot-free head naming a type defined in THIS namespace no longer
+        // hits the exact-key probe above. This qualified probe is what that
+        // hit became. It sits ahead of the `java.lang` auto-import because a
+        // type defined right here should beat a default, and behind the
+        // explicit `(:import …)` map below only in the sense that an
+        // explicit import is a deliberate statement about a name; a local
+        // definition and an explicit import of the same simple name is a
+        // genuine conflict either way.
+        if (imports_ns) |ns| {
+            var qbuf: [512]u8 = undefined;
+            if (std.fmt.bufPrint(&qbuf, "{s}.{s}", .{ ns.name, head })) |qualified| {
+                if (rt.types.get(qualified)) |td| return td;
+            } else |_| {
+                // Namespace + name longer than the buffer: no registered key
+                // could match it either, so fall through to the steps below.
+            }
+        }
         if (imports_ns) |ns| {
             if (ns.imports.get(head)) |fqcn| {
                 if (rt.types.get(fqcn)) |td| return td;
             }
         }
+        // ADR-0198: a bare user-type name with no namespace to qualify it.
+        // The VM's `op_ctor_call` resolves at RUNTIME, where the current ns
+        // is the CALLER's, so the qualified probe above cannot answer it.
+        // Last-wins, exactly as every lookup behaved before the key change.
+        if (rt.types_by_simple.get(head)) |td| return td;
         var buf: [256]u8 = undefined;
         const auto = std.fmt.bufPrint(&buf, "java.lang.{s}", .{head}) catch return null;
         if (rt.types.get(auto)) |td| return td;

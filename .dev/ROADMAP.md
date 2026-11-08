@@ -71,25 +71,35 @@ per CLAUDE.md `§ When the active work unit completes`.
 and Wasm support, implemented in Zig 0.16.0.**
 
 - **No JVM**: single static binary within the ADR-0172 per-component size
-  budget (measured 9.5 MB at v1.3.1, derived ceiling ≈ 12 MB → ≈ 10 MB after
-  queued levers; the pre-engine "≤ 5 MB" target was retired when the embedded
-  Wasm JIT engine — ~3 MB of code by itself, F-001 — landed), cold start ≤ 10 ms
-- **Edge execution**: runs on Cloudflare Workers / Fastly / Fermyon Spin
-  and other Wasm Component Model hosts
+  budget (measured 8.14 MB at 2026-09-14, enforced ceiling
+  8,800,000 bytes; the pre-engine "≤ 5 MB" target <!--size:other--> was retired when the embedded
+  Wasm JIT engine — roughly 3 MB of code by itself <!--size:other-->, F-001 — landed), cold start
+  ≤ 10 ms
+- **Wasm interop**: load a Wasm core module or component in-process and call it
+  like a namespace <!--claim:shipped--> (§8.2, ADR-0135). Running *cljw itself*
+  as a Wasm guest — the artifact that would let it run on Cloudflare Workers /
+  Fastly / Fermyon Spin — remains an **aim, not a capability**
+  <!--claim:planned:D-552-->; it is research-first and user-nod-gated, and no
+  `wasm32` target exists in `build.zig` today.
 - **Language semantics compatible**: preserve Clojure JVM's *observable*
   behaviour. The Java interop surface (`.method`, `Class/`) is mapped onto
   v2's internal `Class` concept, not Java itself.
-- **Teachable**: shrink code volume to 30–40 % of v1 (89K LOC) and document
-  the design decision behind every phase.
+- **Teachable**: every subsystem readable end-to-end, with the design decision
+  behind each one written down. (The original "shrink to 30–40 % of v1 (89K
+  LOC)" target is **retired**, not met: measured 124,712 LOC of Zig at v1.5.1,
+  of which 18,534 is generated Unicode tables — ~119 % of v1 even excluding
+  those. The redesign bought a Wasm engine, a full numeric tower, STM, and an
+  AOT path that v1 did not have. A LOC count was always a proxy for
+  readability; §1.2 axis 3 states the property directly, so the proxy goes.)
 
 ### 1.2 Differentiation (3 axes)
 
-| # | Axis                               | Edge over the field                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-|---|------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1 | **Edge-native Clojure**            | Babashka is native but produces no Wasm. SCI is JS-only. v2 makes Wasm Component a first-class output.                                                                                                                                                                                                                                                                                                                                                              |
-| 2 | **Wasm-native interop**            | `require` a Wasm **component** as a Clojure ns (finished form: **ADR-0135** + **Amendment 1**, 2026-06-21 user-directed — `(:require ["x.wasm" :as x])`, resolution order, type leverage, single-binary embed **ADR-0158**, always-latest **F-016**). **ACTIVE epic = D-404** (blocker dissolved; phases A ns-`:require` wiring → B resolution → C types → D single-binary → E resource/registry). Inversely, expose Clojure functions as WIT exports (later). |
-| 3 | **Comprehensible runtime**         | Codebase is small enough to be read end-to-end. Each phase ships a written walkthrough.                                                                                                                                                                                                                                                                                                                                                                             |
-| 4 | **Zig-level optimisation ceiling** | The *meta*-differentiator. Babashka rides GraalVM, clj rides the JVM: to make a hot path fast you must work *within* the host's object model / bytecode / GC. cljw is Zig from the metal up, so any primitive can be rewritten / fused / comptime-specialised (NaN-box, superinstructions, D-133 JIT) as a **Zig PR, not a host-engineering project** — a higher optimisation ceiling than any JVM-bound Clojure, provable per-workload.                           |
+| # | Axis                               | Edge over the field                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+|---|------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1 | **Edge-native Clojure**            | **AIM, NOT BUILT** <!--claim:planned:D-552-->. Babashka is native but produces no Wasm; SCI is JS-only; making a Wasm Component a first-class *output* of cljw would be the differentiator — and it does not exist. `build.zig` DOES have a `wasm32` target since ADR-0193 (v1.11.0, `-Dtarget=wasm32-wasi`), but that produces a wasi *program* — a `_start` entry point a host executes — not a component that EXPORTS named functions a host can call. `cljw build` likewise emits a native binary with a bytecode trailer, and there is no library artifact at all: `build.zig` declares only `addExecutable`, and nothing in the tree is `export fn`. The verdict is unchanged; only the evidence for it moved. Owner: **D-552** (research-first, user-nod-gated). Sequenced behind axis 2 by F-010. Compiling *Clojure source* to a component is a sibling project's scope (ClojureWit), not a cljw plan. |
+| 2 | **Wasm-native interop**            | `require` a Wasm **component** as a Clojure ns (finished form: **ADR-0135** + **Amendment 1**, 2026-06-21 user-directed — `(:require ["x.wasm" :as x])`, resolution order, type leverage, single-binary embed **ADR-0158**, always-latest **F-016**). **ACTIVE epic = D-404** (blocker dissolved; phases A ns-`:require` wiring → B resolution → C types → D single-binary → E resource/registry). Inversely, expose Clojure functions as WIT exports (later).                                            |
+| 3 | **Comprehensible runtime**         | Codebase is small enough to be read end-to-end. Each phase ships a written walkthrough.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 4 | **Zig-level optimisation ceiling** | The *meta*-differentiator. Babashka rides GraalVM, clj rides the JVM: to make a hot path fast you must work *within* the host's object model / bytecode / GC. cljw is Zig from the metal up, so any primitive can be rewritten / fused / comptime-specialised (NaN-box, superinstructions, D-133 JIT) as a **Zig PR, not a host-engineering project** — a higher optimisation ceiling than any JVM-bound Clojure, provable per-workload.                                                                      |
 
 **Axis 2 is the north star** (ADR-0099 / **ADR-0135**): WebAssembly component as
 a first-class namespace — the analogue of clj↔Java / cljs↔JS / cljd↔Dart, but
@@ -109,9 +119,12 @@ discipline is to keep the hot paths clean while the compat grind adds slow-OK
 ### 1.3 Intended users
 
 - **Clojurians shipping to edge / serverless** who find Babashka / SCI
-  short on concurrency or Wasm interop.
-- **Wasm-ecosystem users** who want to call a Clojure runtime as a
-  component, or distribute a Clojure DSL as a Wasm component.
+  short on concurrency or Wasm interop. (Today cljw serves them as a native
+  binary with fast cold start; the Wasm-guest deployment path is D-552.)
+- **Wasm-ecosystem users** who want to pull a Wasm component into a Clojure
+  program <!--claim:shipped-->. The inverse — calling a Clojure runtime *as* a
+  component, or distributing a Clojure DSL as one — is **not built**
+  <!--claim:planned:D-552-->.
 - **Learners of runtime implementation** who want design decisions and
   implementation in lockstep.
 
@@ -236,11 +249,11 @@ its source ADR.
 | A19 | ARCHITECTURE.md is the 5-minute orientation                 | repo root `ARCHITECTURE.md` (ADR-0020)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | A20 | run_step is the runner dispatch pattern                     | `test/run_all.sh` `run_step` + summary (ADR-0024)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | A21 | Comptime conditional import + stub struct for phase staging | `runtime/X/stub.zig` parallels real X, `build_options.phase_at_least_N` switches (ADR-0023)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| A22 | ADRs carry "Affected files" from 0020 onward                | `.dev/decisions/0000_template.md` + every new ADR (ADR-0020)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| A23 | Bad Smell sensor + four depths of revision                  | `.dev/principle.md` + `.claude/rules/plan_revision_thinking.md` (no ADR — meta layer above ADR / ROADMAP)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| A24 | Autonomous workflow is direct sequential                    | `CLAUDE.md § Autonomous Workflow` (cw v0-style, in-loop reflexive re-read of principle.md at Steps 1 / 4 / 6)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| A25 | Existing code is mutable; rewrite is part of design         | Skeleton activation (e.g. Phase 5 activates `TypeDescriptor.lookupMethod` against Phase 1-3 primitives) and ADR `Supersedes` chains rewrite already-written `src/`, not just add. Apply via `.dev/principle.md` depth 1-4. `Phase N+ migration note` section in the entry ADR narrates the rewrite scope; ROADMAP §A4 (isolated subsystem) and §A11 (day-1 enum) pin slot boundaries, everything between the slots is mutable. No "stays additive" default.                                                                                                                                                                                  |
-| A26 | cw-v0 gap incorporation is plan-driven (not v0-copy)        | When opening Phase 15+ or minting quality-loop rows, consult [`.dev/cw_v0_parity_and_gap_plan.md`](./cw_v0_parity_and_gap_plan.md) — the 2026-05-29 parity snapshot + per-gap cw-v1-redesign direction + ordering + ROADMAP-amendment hook (user directive: incorporate most v0 gaps, but redesigned on cw v1's architecture with better design/ordering, never copied). Amend §9 in place per §17 referencing that doc. F-003 foresight — the owning phase decides the concrete design (Devil's-advocate at depth ≥ 2). Gaps with no current §9 row (`deps`/`test`/`--list-vars`/some namespaces) get NEW rows minted at incorporation. |
+| A22 | ADRs carry "Affected files" from 0020 onward                | every new decision entry carries its affected files (ADR-0020)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| A23 | Bad Smell sensor + four depths of revision                  | memory `query :tags ["bad-smell"]` + `20260911004145-29ffd52a` (no ADR, meta layer above the rest)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| A24 | Autonomous workflow is direct sequential                    | `CLAUDE.md § Autonomous Workflow` (cw v0-style, in-loop reflexive re-read of the smell corpus at Steps 1 / 4 / 6)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| A25 | Existing code is mutable; rewrite is part of design         | Skeleton activation (e.g. Phase 5 activates `TypeDescriptor.lookupMethod` against Phase 1-3 primitives) and ADR `Supersedes` chains rewrite already-written `src/`, not just add. Apply via the depth 1-4 recipe, memory `20260901165122-24182b0a`. `Phase N+ migration note` section in the entry ADR narrates the rewrite scope; ROADMAP §A4 (isolated subsystem) and §A11 (day-1 enum) pin slot boundaries, everything between the slots is mutable. No "stays additive" default.                                                                                                                                                                                  |
+| A26 | cw-v0 gap incorporation is plan-driven (not v0-copy)        | When opening Phase 15+ or minting quality-loop rows, consult memory `20260911004837-4f399769` (redesign-first, never a v0 copy) and `20260911004838-1e222586` (which v0 gaps are still unincorporated, verified 2026-09-11) (user directive: incorporate most v0 gaps, but redesigned on cw v1's architecture with better design/ordering, never copied). Amend §9 in place per §17 referencing that doc. F-003 foresight — the owning phase decides the concrete design (Devil's-advocate at depth ≥ 2). Gaps with no current §9 row (`deps`/`test`/`--list-vars`/some namespaces) get NEW rows minted at incorporation. |
 
 ---
 
@@ -333,6 +346,10 @@ Layer 0: src/runtime/     Value, Collections, GC, Env, Dispatch, Module
 modules/                  comptime-gated optional (math, c-ffi, wasm)
                           imports runtime/ + eval/ only
 ```
+
+The optional modules landed under `src/runtime/cljw/<area>/` rather than a
+top-level `modules/`: `wasm/` behind `-Dwasm` (ADR-0099) and `ffi/` behind
+`-Dffi` (ADR-0202, on by default for x86_64 / aarch64 Linux and macOS).
 
 When a lower zone needs to call an upper zone: vtable pattern. The lower
 zone declares the `VTable` type, the upper zone injects function pointers
@@ -622,7 +639,7 @@ ClojureWasm/                         (working dir on disk)
 │
 ├── modules/                        comptime-gated optional
 │   ├── math/                       clojure.math
-│   ├── c_ffi/
+│   ├── c_ffi/                      landed as src/runtime/cljw/ffi/ (cljw.ffi, ADR-0202)
 │   └── wasm/                       cljw.wasm namespace
 │
 ├── test/
@@ -661,7 +678,7 @@ ClojureWasm/                         (working dir on disk)
 │   ├── compat_tiers.yaml           per-namespace tier (created at Phase 10)
 │   ├── handover.md                 session-state memo (created when needed mid-task)
 │   ├── debt.yaml                   row-level debt ledger (ADR-0072; replaced the planned known_issues.md)
-│   ├── placement.yaml              Clojure-ns var placement SSOT (ADR-0033; covers the planned status/vars.yaml)
+│   ├── placement.yaml              GENERATED per-var placement index (ADR-0178; supersedes status/vars.yaml)
 │   ├── principle.md                Bad Smell catalogue + revision depths
 │   └── project_facts.md            user-declared invariants (F-001…)
 │
@@ -942,13 +959,25 @@ comptime gate.
 
 ### 8.1 Adopted: hybrid
 
-**Two artifacts from one source tree**:
-1. **Native CLI** (`cljw`): the usual binary for macOS / Linux x86_64 / aarch64.
-2. **Wasm Component** (`cljw.wasm`): Component-Model conformant; exports
-   `clojure.eval` and friends via WIT.
+**One artifact ships; a second is an aim.**
 
-The `Runtime` struct does not depend on the backend, so both fall out of
-the same `std.Io` abstraction.
+1. **Native CLI** (`cljw`) — the usual binary for macOS / Linux x86_64 /
+   aarch64. <!--claim:shipped-->
+2. **Wasm Component** (`cljw.wasm`) — Component-Model conformant, exporting
+   `clojure.eval` and friends via WIT. **NOT IMPLEMENTED**
+   <!--claim:planned:D-552-->. `build.zig` has no `wasm32` target, and
+   `cljw build` emits a native binary with an embedded bytecode payload
+   (`src/app/builder.zig`), not a `.wasm`. Owner: **D-552** — research-first,
+   implementation user-nod-gated.
+
+The hybrid remains the *intent*: the `Runtime` struct does not depend on the
+backend, so in principle both fall out of the same `std.Io` abstraction. What
+D-552 has to settle first is not the build flag but the architecture behind it
+— memory management and the GC/allocator story in linear memory, sandbox-first
+assumptions for the interpreter, and the browser / edge / Node host models.
+Note the standing tension recorded in §8.3: the NaN-boxed value representation
+and the mark-sweep heap live in linear memory, so such a build would not share
+objects with WasmGC-based languages.
 
 ### 8.2 Component as a first-class namespace (the finished form — ADR-0135)
 
@@ -970,15 +999,17 @@ needed)** — lives in **ADR-0135**. Today's `(wasm/load)`+`(wasm/call handle
 
 ### 8.3 WIT / Component Model timeline
 
-| Capability                            | Phase                     | Note                                                           |
-|---------------------------------------|---------------------------|----------------------------------------------------------------|
-| WASI 0.2 (preview2)                   | Phase 14                  | Component build begins. Minimal exports.                       |
-| `wasm/load`+`wasm/call` core FFI      | done (spike)              | ADR-0099 minimal core-module surface; the layer below ADR-0135 |
-| **Component-as-namespace** (ADR-0135) | when zwasm CM API freezes | introspect component → ns; WIT↔clj mapping; D-404            |
-| Pod loader                            | Phase 14-15               | `app/pod.zig`                                                  |
-| WIT auto-binding                      | Phase 19                  | adopt wit-bindgen or similar                                   |
-| WASI 0.3 (concurrency)                | Phase 19+                 | when std.Io WASI backend stabilises                            |
-| WasmGC                                | v0.2+                     | conflicts with NaN boxing; linear memory leads                 |
+Everything here is cljw **consuming** Wasm except the row marked otherwise.
+
+| Capability                            | Status        | Note                                                                                              |
+|---------------------------------------|---------------|---------------------------------------------------------------------------------------------------|
+| `wasm/load`+`wasm/call` core FFI      | **BUILT**     | ADR-0099 minimal core-module surface; the layer below ADR-0135 <!--claim:shipped-->               |
+| **Component-as-namespace** (ADR-0135) | **BUILT**     | introspect component → ns; WIT↔clj mapping. Param-marshalling tail = D-404 <!--claim:shipped--> |
+| Pod loader                            | **BUILT**     | `app/pod.zig` <!--claim:shipped-->                                                                |
+| WIT auto-binding                      | not built     | adopt wit-bindgen or similar; gap area II <!--claim:planned:D-404-->                              |
+| WASI 0.3 (concurrency)                | not built     | when the `std.Io` WASI backend stabilises <!--claim:planned:D-036-->                              |
+| **cljw itself as a component**        | **not built** | the §8.1 artifact 2 — no `wasm32` target exists <!--claim:planned:D-552-->                      |
+| WasmGC                                | not built     | conflicts with NaN boxing; linear memory leads <!--claim:planned:D-552-->                         |
 
 ---
 
@@ -1013,8 +1044,8 @@ audit trail, not as a forward-looking instruction.
 | 15    | **Concurrency** — BUILT + race-hardened (gap area I; ADR-0142)                                 | atom/ref+STM/agent/future/promise/delay/locking/volatile ship; gap = parity/load (R1) + D-442/D-105 (`:volatile-mutable` happens-before DONE 2026-06-16: ADR-0152) | 🔒    |
 | 16    | **Wasm/edge-native** BUILT (gap area II) · ClojureScript→JS = future                          | component build/run/require ship (`cljw.wasm/*`); CLJS→JS genuinely unbuilt                                                                                       |      |
 | 17    | **VM perf: fusion → JIT** PARTIAL (gap area III)                                               | superinstruction/fusion slice landed (D-386 / O-018/019/021/023); narrow ARM64 JIT = milestone M                                                                   |      |
-| 18    | math + module/deps DONE · **C FFI** = future                                                   | `clojure.math` + deps.edn ship; C FFI (`dlopen`/libffi) genuinely unbuilt                                                                                          |      |
-| 19    | **Wasm/edge-native** cont. — WIT auto-binding (gap area II)                                    | component require BUILT; gap = WIT marshalling (D-404) + zwasm integration shape (D-036/D-350)                                                                     |      |
+| 18    | math + module/deps DONE · **C FFI** BUILT (register-only shape)                                | `clojure.math` + deps.edn ship; `cljw.ffi` dlopen + 6-int/8-double call shape, no libffi (ADR-0202); structs/varargs/callbacks unbuilt                            |      |
+| 19    | **Wasm/edge-native** cont. — WIT auto-binding (gap area II)                                    | component require BUILT; gap = WIT marshalling (D-404); command/handle embedding shape settled by ADR-0124/D-350                                                   |      |
 | 20    | **broad JIT** = future (distal; gated on gap-area-III fusion outcome)                           | narrow ARM64 JIT (milestone M) is the near-term scope; broad JIT decided after fusion lands                                                                        |      |
 
 ### 9.0 Completion-grade gap-area model (ADR-0142 / F-015 / D-440)
@@ -1038,7 +1069,7 @@ in ADRs / debt rows / overlays still resolve while R4/R5 rewrite them at source)
 | Phase 15 (§9.17)        | **Gap area I — Concurrency hardening** (BUILT + race-hardened)                  |
 | Phase 16 (§9.18)        | **Gap area II — Wasm/edge-native** (BUILT) · ClojureScript→JS = future bucket |
 | Phase 17 (§9.19)        | **Gap area III — VM perf: fusion → JIT** (PARTIAL)                             |
-| Phase 18 (§9.20)        | math + module/deps **DONE** · C FFI = future bucket                             |
+| Phase 18 (§9.20)        | math + module/deps **DONE** · C FFI **BUILT** (`cljw.ffi`, ADR-0202)            |
 | Phase 19 (§9.21)        | **Gap area II — Wasm/edge-native** (WIT auto-binding; D-404)                    |
 | Phase 20 (§9.22)        | **future bucket** — broad JIT (distal; narrow ARM64 JIT = milestone M)          |
 
@@ -1054,15 +1085,17 @@ in ADRs / debt rows / overlays still resolve while R4/R5 rewrite them at source)
   (gated, engine correct without them): D-244 #4a' auto-collect, D-245 Option C
   blocking monitor.
 - **(II) Wasm / edge-native** — `cljw.wasm/*` component build/run/require BUILT
-  (`src/runtime/cljw/wasm/`, embeds zwasm v2 per F-001). Gaps: WIT param marshalling
-  (**D-404**), zwasm integration finished-form (**D-036 / D-350 / D-039**).
+  (`src/runtime/cljw/wasm/`, embeds zwasm v2 per F-001). Gap: WIT param marshalling
+  (**D-404**). The core command/handle shape and I/O responsibility split are
+  settled (**ADR-0124 / D-350 / D-039**); D-036 retains only JIT coordination.
 - **(III) VM perf (fusion → JIT)** — arith/compare-branch superinstructions +
   reduce/lazy-seq fusion landed (**D-386 / O-018/019/021/023**). Gaps: remaining
   fusion surface; **narrow ARM64 JIT (F-010 milestone M)** → broad JIT go/no-go
   (distal, D-005 / D-035).
 
 **Genuinely-future bucket** (no impl; honest future): ClojureScript→JS compiler,
-C FFI (`dlopen`/libffi), broad JIT (Phase 20).
+broad JIT (Phase 20). C FFI left this bucket with `cljw.ffi` (ADR-0202); its
+own future tail is structs by value, varargs and C-to-Clojure callbacks.
 
 > **Milestone M** (F-010) = concurrency complete (gap area I drained to parity)
 > + the cw-v0-level narrow ARM64 JIT. M is a **named milestone token**, not a
@@ -1498,10 +1531,12 @@ surface}.zig`, embedding zwasm v2 (`@import("zwasm")`, F-001 — SHA-pinned dep,
 interp-only). e2e `phase16_wasm_{run,component,ffi,require_component}.sh` (real,
 build `-Dwasm`). Gated `-Dwasm` opt-in by design (lazy dep), NOT unimplemented.
 
-**Gaps**: WIT param-type marshalling raises `feature_not_supported`
-(`component.zig`) for some types → **D-404** (full WIT↔EDN table); zwasm
-integration finished-form → **D-036 / D-350 / D-039** (responsibility split,
-embedding shape). Entry facts: F-001 (zwasm unavoidable) · F-004 · F-006 · F-008
+**Gap**: WIT param-type marshalling raises `feature_not_supported`
+(`component.zig`) for some types → **D-404** (full WIT↔EDN table). The integration
+finished form is settled: persistent core-library handles, one-shot captured WASI
+commands, and persistent WASI components (**ADR-0124 / D-350**); cw Tier-1 I/O
+and zwasm WASI remain separate (**D-039**). D-036 retains only JIT coordination.
+Entry facts: F-001 (zwasm unavoidable) · F-004 · F-006 · F-008
 (zwasm v2 spec review). Consult zwasm `docs/zig_api_design.md` +
 `docs/consuming_prerelease_zwasm.md` (the SHA-pin procedure).
 
@@ -1530,20 +1565,24 @@ an independent cljw-bytecode→native path (NOT via zwasm; F-001); bytecode ABI 
 decoder-only-compatible (ADR-0033 D10 / ADR-0034 D6) so JIT go/no-go does not
 perturb placement/build.
 
-### 9.20 math + module/deps DONE (formerly "Phase 18") · C FFI = future
+### 9.20 math + module/deps DONE (formerly "Phase 18") · C FFI BUILT
 
 **Status: math + module/deps DONE.** `clojure.math` ships (`clojure/math.clj`,
 e2e `phase14_math*`); the deps.edn resolver + the `modules/` zone rule already
-exist (Phase 14). **C FFI = genuinely-future bucket**: no `dlopen`/`dlsym`/
-`libffi`/`c_ffi`; `zig build -D<lib>` comptime-gated module builds are future
-work, low priority.
+exist (Phase 14). **C FFI BUILT** (ADR-0202): `cljw.ffi` (`open close sym
+function call string bytes`) dlopens a library and calls any signature of at
+most 6 integer-class and 8 double arguments through two function pointer
+types, no libffi. Comptime-gated by `-Dffi` (default on for x86_64 / aarch64
+Linux and macOS, absent on wasm). The surface is shared with clojurust's
+`clojure.rust.ffi`. Future tail: structs by value, varargs, float32,
+callbacks into Clojure.
 
 ### 9.21 Gap area II (cont.) — WIT auto-binding (formerly "Phase 19")
 
 **Status: component require BUILT** (see §9.18). **Gap**: full WIT auto-binding
 (`(wasm/component "x.wasm")` → bindgen → Clojure namespace) — some WIT param
-marshalling is fixture-blocked → **D-404**; the zwasm integration shape is
-**D-036 / D-350**. This is the same Wasm/edge-native gap area as §9.18.
+marshalling is fixture-blocked → **D-404**. The zwasm embedding shape is settled
+by **ADR-0124 / D-350**. This is the same Wasm/edge-native gap area as §9.18.
 
 ### 9.22 broad JIT = future bucket (formerly "Phase 20"; distal)
 
@@ -1569,21 +1608,27 @@ goes in just before Phase 4. Used during Phases 4-7.
 
 ### 10.3 v0.1.0 targets
 
-| Bench             | v0.1.0 target | Stretch |
-|-------------------|---------------|---------|
-| Cold start        | < 12 ms       | < 8 ms  |
-| Warm start        | < 4 ms        | < 2 ms  |
-| Binary size       | < 3.5 MB      | < 2 MB  |
-| fib_recursive     | 24 ms         | 18 ms   |
-| map_filter_reduce | 17 ms         | 10 ms   |
-| transduce         | 16 ms         | 10 ms   |
-| lazy_chain        | 16 ms         | 10 ms   |
-| Idle memory       | < 25 MB       | < 15 MB |
-| Wasm cold start   | < 50 ms       | < 20 ms |
+| Bench             | v0.1.0 target | Stretch |                   |
+|-------------------|---------------|---------|-------------------|
+| Cold start        | < 12 ms       | < 8 ms  |                   |
+| Warm start        | < 4 ms        | < 2 ms  |                   |
+| Binary size       | superseded    | —      |                   |
+| fib_recursive     | 24 ms         | 18 ms   |                   |
+| map_filter_reduce | 17 ms         | 10 ms   |                   |
+| transduce         | 16 ms         | 10 ms   |                   |
+| lazy_chain        | 16 ms         | 10 ms   |                   |
+| Idle memory       | < 25 MB       | < 15 MB | <!--size:other--> |
 
-The binary-size row is a v0.1.0-era figure that predates the embedded zwasm
-JIT engine (~3 MB of code by itself); the live size budget is ADR-0172's
-per-component ledger (measured 9.5 MB at v1.3.1).
+The binary-size row was a v0.1.0-era figure that predates the embedded zwasm
+JIT engine (roughly 3 MB of code by itself <!--size:other-->). It is **superseded** by ADR-0172's
+per-component ledger; the live figure is 8.14 MB at v1.14.7
+against an enforced ceiling of 8,800,000 bytes, checked on every full gate by
+`scripts/binary_size_report.sh --check`. A target this table states and nothing
+measures is the exact rot the 2026-08-04 audit found in three other documents.
+
+The old **"Wasm cold start < 50 ms"** row is **removed**: it set a performance
+target for the §8.1 artifact 2 (cljw running as a Wasm guest), which does not
+exist <!--claim:planned:D-552-->. It belongs to D-552 and returns with it.
 
 ### 10.4 Fused reduce via structural metadata
 
@@ -1911,7 +1956,8 @@ points; this section enumerates every required file).
 - `.dev/handover.md` — current state, Active task, Next Phase Queue
 - `.dev/debt.yaml` — debt ledger (row-level predicates, per A13)
 - `.dev/reference_clones.md` — usage purpose of `additionalDirectories`
-- `.dev/lessons/INDEX.md` — observational lessons (distinct from ADRs)
+- observational lessons: hive memory + KG (the `.dev/lessons/` directory was
+  migrated into memory and deleted 2026-09-09); search, do not read a file
 - `.dev/orbstack_setup.md` — Linux x86_64 gate setup
 - `.dev/README.md` — index / convention pointer
 - `.dev/decisions/{README.md, 0000_template.md}` — ADR infrastructure
@@ -2015,22 +2061,27 @@ landed); do not create `compat_tiers.md`.
 
 #### `.dev/status/vars.yaml` — SUPERSEDED (not created)
 
-Per-var tracking is covered by `placement.yaml` (Clojure-ns var placement SSOT,
-ADR-0033) + `compat_tiers.yaml` (var/class tier). The originally-planned
-`status/vars.yaml` + `generate_vars_yaml.clj` generator were not built.
+Per-var tracking is covered by `placement.yaml` + `compat_tiers.yaml` (var/class
+tier). The originally-planned `status/vars.yaml` + `generate_vars_yaml.clj`
+generator were not built — and per **ADR-0178** they no longer need to be:
+`placement.yaml` IS a generator's output now (`scripts/gen_placement.sh` reading
+`(cljw.internal/__dump-placement)`), covering every var in every bundled
+namespace, with the `placement_drift` gate failing on any disagreement with the
+code. The hand-maintained form it replaced covered 49 of ~683 `clojure.core`
+publics and had drifted to contradict its own source tree.
 
 ### 15.2 Local reference clones (already present)
 
-| Path                                                               | Purpose                                                                                                                             |
-|--------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
-| cw v0 — git tag `v0.5.0`                                          | ClojureWasm v0 (89K LOC). Design reference; NOT in `main`'s tree (`-s ours` merge) — reach via `git worktree add ../cw-v0 v0.5.0`. |
-| `~/Documents/OSS/clojure/`                                         | Upstream Clojure JVM. core.clj / LispReader.java / Numbers.java.                                                                    |
-| `~/Documents/OSS/babashka/`                                        | Babashka (SCI-based). Pod / native / compatibility precedent.                                                                       |
-| `~/Documents/OSS/spec.alpha/`                                      | clojure.spec.alpha source.                                                                                                          |
-| `~/Documents/OSS/zig/`                                             | Zig stdlib source.                                                                                                                  |
-| `~/Documents/OSS/wasmtime/`                                        | Wasm runtime reference.                                                                                                             |
-| `~/Documents/OSS/malli/`                                           | Spec alternative.                                                                                                                   |
-| `~/Documents/OSS/mattpocock_skills/improve-codebase-architecture/` | Module/Interface/Depth vocabulary and deepening principles.                                                                         |
+| Path                                                               | Purpose                                                                                                                                     |
+|--------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| cw v0 — git tag `v0.5.0`                                          | ClojureWasm v0 (89K LOC). Design reference; NOT in `main`'s tree (`-s ours` merge) — reach via `git worktree add ../cw-v0 v0.5.0`.         |
+| `~/Documents/OSS/clojure/`                                         | Upstream Clojure JVM. core.clj / LispReader.java / Numbers.java.                                                                            |
+| `~/Documents/OSS/babashka/`                                        | Babashka (SCI-based). Pod / native / compatibility precedent.                                                                               |
+| `~/Documents/OSS/spec.alpha/`                                      | clojure.spec.alpha source.                                                                                                                  |
+| `$(zig env \| grep std_dir)`                                       | Zig stdlib source — the pinned toolchain's own, not a clone (a clone drifts from the pin; ADR-0090 §Context).                             |
+| `~/Documents/OSS/wasmtime/`                                        | Wasm runtime reference. **Clone on demand** (`git clone --depth 1 https://github.com/bytecodealliance/wasmtime`) — not present by default. |
+| `~/Documents/OSS/malli/`                                           | Spec alternative.                                                                                                                           |
+| `~/Documents/OSS/mattpocock_skills/improve-codebase-architecture/` | Module/Interface/Depth vocabulary and deepening principles.                                                                                 |
 
 ### 15.3 Official docs (web)
 
@@ -2150,7 +2201,7 @@ ADRs progress through these statuses:
   ROADMAP.
 - **Superseded by ADR-NNNN** — replaced by a later ADR.
 - **Closed (Phase N DONE)** — phase boundary made the ADR irrelevant.
-- **Demoted to .dev/lessons/<file>** — observational learning only.
+- **Demoted to a hive memory entry** (observational learning only; cite the id).
 
 Status changes are recorded in the ADR's `## Revision history`
 section. `scripts/check_adr_history.sh` (on-demand audit — not a wired

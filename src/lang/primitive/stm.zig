@@ -18,6 +18,7 @@ const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const ref_mod = @import("../../runtime/stm/ref.zig");
+const eval_budget = @import("../../runtime/concurrency/eval_budget.zig");
 const lock_tx = @import("../../runtime/concurrency/lock_tx.zig");
 const delay_mod = @import("../../runtime/delay.zig");
 const promise_mod = @import("../../runtime/promise.zig");
@@ -56,6 +57,7 @@ pub fn refFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         const k = args[i];
         const val = args[i + 1];
         if (@intFromEnum(k) == @intFromEnum(kw_meta)) {
+            try iref.requireMetaMap(val, "ref", loc);
             ref_mod.setMeta(r, val);
         } else if (@intFromEnum(k) == @intFromEnum(kw_validator)) {
             ref_mod.setValidator(r, val);
@@ -119,14 +121,27 @@ pub fn derefFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         .ref => if (lock_tx.current_tx) |tx| lock_tx.doGet(tx, v.decodePtr(*ref_mod.Ref)) else ref_mod.current(v),
         .reduced => reduced_mod.unreduce(v),
         .delay => try delay_mod.force(rt, env, v, loc),
-        // Blocks until delivered (Phase B #4b / D-113) — matches JVM Clojure.
-        .promise => promise_mod.deref(v),
+        // Blocks until delivered (Phase B #4b / D-113) — matches JVM Clojure,
+        // except that the eval budget's deadline bounds the block: `@(promise)`
+        // under a metered evaluation raises rather than parking forever.
+        .promise => blk: {
+            if (promise_mod.deref(v, eval_budget.deadlineOf())) |val| break :blk val;
+            try eval_budget.checkDeadlineNow(rt.io);
+            // No budget armed → an undelivered promise is a user deadlock, as in
+            // clj; the bounded wait only returns null when a deadline passed.
+            break :blk promise_mod.deref(v, null).?;
+        },
         // ADR-0120: a failed future re-raises the worker's MARSHALLED error
         // (real kind/message/location), not a generic future_thunk_failed.
         // The `future_thunk_failed` fallback only fires if the marshal yielded
         // nil (no error info — shouldn't happen at a real thunk failure).
         .future => blk: {
-            if (future_mod.deref(v)) |val| break :blk val;
+            if (future_mod.deref(v, eval_budget.deadlineOf())) |val| break :blk val;
+            // The budget's wall clock bounds this block: a deref that outlasts
+            // the deadline raises the (uncatchable) budget error rather than
+            // parking forever. Checked BEFORE the cancelled/failed cases so a
+            // still-pending future reports the reason it actually stopped.
+            if (!future_mod.isRealised(v)) try eval_budget.checkDeadlineNow(rt.io);
             // D-442 / ADR-0153: a cancelled future's deref throws a
             // CancellationException (distinct from a thunk failure).
             if (future_mod.isCancelled(v)) break :blk error_catalog.raise(.future_cancelled, loc, .{});
@@ -206,7 +221,14 @@ pub fn deliverFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     _ = env;
     try error_catalog.checkArity("deliver", args, 2, loc);
     if (args[0].tag() != .promise)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "deliver: first arg must be a promise" });
+        // clj throws a catchable ClassCastException for `(deliver 42 1)`, so a
+        // wrong-typed first arg is a `.type_error`, not the uncatchable
+        // `.not_implemented` — same miscategorisation as the timed `deref` above.
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "deliver",
+            .expected = "a promise",
+            .actual = @tagName(args[0].tag()),
+        });
     return promise_mod.deliver(args[0], args[1]);
 }
 

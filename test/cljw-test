@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# The one entry point for everything runnable in this repository.
+#
+# Reads test/units.list, selects a subset, runs it. Selection is computed
+# before anything executes, so --dry-run and --list answer the same question
+# the run would.
+#
+# Usage:
+#   cljw-test                          # the gate
+#   cljw-test --list                   # every unit, with layer and gated flag
+#   cljw-test --layer 7                # one layer
+#   cljw-test --only golden,tier_a     # named units
+#   cljw-test --tag timing             # by tag
+#   cljw-test --all                    # every gated unit
+#   cljw-test --step e2e_phase4_cli    # one of run_all.sh's 435 inner steps
+#   cljw-test --only mutation -- --targets src/runtime/collection/vector.zig --budget 8
+#
+# Everything after `--` is appended to the selected unit's command, so a unit
+# gains options without this file gaining a flag.
+#
+# Exit code 0 iff every selected unit exited 0.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+ROOT=$(pwd)
+REGISTRY="$ROOT/test/units.list"
+
+LIST=0
+DRY=0
+ALL=0
+SELECT_IDS=""
+SELECT_LAYERS=""
+SELECT_TAGS=""
+INNER_STEP=""
+PASSTHROUGH=()
+
+die() { echo "cljw-test: $*" >&2; exit 2; }
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --list) LIST=1 ;;
+        --dry-run) DRY=1 ;;
+        --all) ALL=1 ;;
+        --only) [ $# -ge 2 ] || die "--only needs a value"; SELECT_IDS="$2"; shift ;;
+        --layer) [ $# -ge 2 ] || die "--layer needs a value"; SELECT_LAYERS="$2"; shift ;;
+        --tag) [ $# -ge 2 ] || die "--tag needs a value"; SELECT_TAGS="$2"; shift ;;
+        --step) [ $# -ge 2 ] || die "--step needs a value"; INNER_STEP="$2"; shift ;;
+        --gate) SELECT_IDS="gate" ;;
+        --smoke) SELECT_IDS="smoke" ;;
+        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --) shift; PASSTHROUGH=("$@"); break ;;
+        *) die "unknown flag: $1 (try --help)" ;;
+    esac
+    shift
+done
+
+[ -f "$REGISTRY" ] || die "no registry at $REGISTRY"
+
+# --- selection (pure: reads the registry, writes nothing, runs nothing) -----
+
+in_csv() { case ",$2," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+
+# A unit's layer field is a comma list; it matches if any of its layers is asked for.
+layer_matches() {
+    local have="$1" want="$2" l
+    IFS=',' read -ra _have <<< "$have"
+    for l in "${_have[@]}"; do in_csv "$l" "$want" && return 0; done
+    return 1
+}
+
+tag_matches() {
+    local have="$1" want="$2" t
+    [ -n "$have" ] || return 1
+    IFS=',' read -ra _want <<< "$want"
+    for t in "${_want[@]}"; do in_csv "$t" "$have" && return 0; done
+    return 1
+}
+
+declare -a SEL_ID=() SEL_LAYER=() SEL_GATED=() SEL_TAGS=() SEL_CMD=()
+declare -a ALL_ID=() ALL_LAYER=() ALL_GATED=() ALL_TAGS=() ALL_CMD=()
+
+while IFS='|' read -r id layer gated tags cmd; do
+    case "$id" in ''|\#*) continue ;; esac
+    [ -n "${cmd:-}" ] || die "registry row '$id' has no command"
+    ALL_ID+=("$id"); ALL_LAYER+=("$layer"); ALL_GATED+=("$gated")
+    ALL_TAGS+=("$tags"); ALL_CMD+=("$cmd")
+
+    keep=0
+    if [ -n "$SELECT_IDS" ]; then
+        in_csv "$id" "$SELECT_IDS" && keep=1
+    elif [ -n "$SELECT_LAYERS" ]; then
+        layer_matches "$layer" "$SELECT_LAYERS" && keep=1
+    elif [ -n "$SELECT_TAGS" ]; then
+        tag_matches "$tags" "$SELECT_TAGS" && keep=1
+    elif [ "$ALL" = 1 ]; then
+        [ "$gated" = yes ] && keep=1
+    fi
+    # A composite already contains the units it delegates to; selecting by
+    # layer or tag would run them twice.
+    if [ "$keep" = 1 ] && [ -z "$SELECT_IDS" ] && tag_matches "composite" "$tags"; then
+        keep=0
+    fi
+
+    if [ "$keep" = 1 ]; then
+        SEL_ID+=("$id"); SEL_LAYER+=("$layer"); SEL_GATED+=("$gated")
+        SEL_TAGS+=("$tags"); SEL_CMD+=("$cmd")
+    fi
+done < "$REGISTRY"
+
+if [ "$LIST" = 1 ]; then
+    printf '%-28s %-10s %-6s %s\n' UNIT LAYER GATED TAGS
+    for i in "${!ALL_ID[@]}"; do
+        printf '%-28s %-10s %-6s %s\n' \
+            "${ALL_ID[$i]}" "${ALL_LAYER[$i]}" "${ALL_GATED[$i]}" "${ALL_TAGS[$i]}"
+    done
+    echo
+    echo "${#ALL_ID[@]} units. Inner gate steps: bash test/run_all.sh --list"
+    exit 0
+fi
+
+if [ -n "$INNER_STEP" ]; then
+    SEL_ID=("step:$INNER_STEP")
+    SEL_CMD=("bash test/run_all.sh --only $INNER_STEP")
+    SEL_TAGS=("inner")
+fi
+
+if [ "${#SEL_ID[@]}" -eq 0 ]; then
+    if [ -n "$SELECT_IDS$SELECT_LAYERS$SELECT_TAGS" ] || [ "$ALL" = 1 ]; then
+        die "selection matched no unit (try --list)"
+    fi
+    SEL_ID=("gate"); SEL_TAGS=("composite")
+    SEL_CMD=("bash scripts/run_gate.sh")
+fi
+
+if [ "$DRY" = 1 ]; then
+    for i in "${!SEL_ID[@]}"; do
+        printf '%s\n' "${SEL_ID[$i]}: ${SEL_CMD[$i]}${PASSTHROUGH[*]:+ ${PASSTHROUGH[*]}}"
+    done
+    exit 0
+fi
+
+# --- execution (the only effectful part) ------------------------------------
+
+# One build at a time on this machine. Two concurrent `zig build`s drove load
+# average to ~34 and killed a terminal on 2026-08-12.
+LOCK="$ROOT/.dev/.build.lock"
+lock_held=0
+acquire_lock() {
+    mkdir -p "$ROOT/.dev"
+    local waited=0
+    while ! mkdir "$LOCK" 2>/dev/null; do
+        if [ "$waited" = 0 ]; then
+            echo "cljw-test: another build holds $LOCK — waiting" >&2
+        fi
+        waited=$((waited + 5))
+        [ "$waited" -le 1800 ] || die "timed out waiting for $LOCK (stale? rmdir it)"
+        sleep 5
+    done
+    lock_held=1
+}
+release_lock() { [ "$lock_held" = 1 ] && rmdir "$LOCK" 2>/dev/null; lock_held=0; }
+trap release_lock EXIT INT TERM
+
+passed=0; failed=0
+declare -a FAILED_IDS=()
+
+for i in "${!SEL_ID[@]}"; do
+    id="${SEL_ID[$i]}"
+    cmd="${SEL_CMD[$i]}"
+    tags="${SEL_TAGS[$i]:-}"
+    [ "${#PASSTHROUGH[@]}" -eq 0 ] || cmd="$cmd ${PASSTHROUGH[*]}"
+
+    tag_matches "timing" "$tags" && echo "cljw-test: $id is a timing measurement — run it on a quiet machine"
+
+    echo "==> $id"
+    # A self-locking unit serializes only its build phases. Wrapping it here
+    # would recursively acquire this mkdir lock and wait on itself forever.
+    unit_owns_lock=0
+    if tag_matches "self-locking" "$tags"; then
+        unit_owns_lock=1
+    else
+        acquire_lock
+    fi
+    start=$(date +%s)
+    if eval "$cmd"; then
+        rc=0; passed=$((passed + 1))
+    else
+        rc=$?; failed=$((failed + 1)); FAILED_IDS+=("$id")
+    fi
+    [ "$unit_owns_lock" = 1 ] || release_lock
+    echo "    [$([ $rc -eq 0 ] && echo pass || echo FAIL)] $id ($(( $(date +%s) - start ))s)"
+
+    # A fail-fast unit reports the first blocking site and stops; aggregating
+    # past it destroys the one-fix-one-answer loop it exists for.
+    if [ $rc -ne 0 ] && tag_matches "failfast" "$tags"; then
+        echo "cljw-test: $id failed fast — stopping" >&2
+        break
+    fi
+done
+
+echo
+echo "cljw-test: $passed passed, $failed failed"
+[ "$failed" -eq 0 ] || { echo "cljw-test: failed:${FAILED_IDS[*]/#/ }" >&2; exit 1; }

@@ -1,0 +1,42 @@
+(read-string "12x")
+;;=> <clj-error> NumberFormatException
+(read-string "1.5x")
+;;=> <clj-error> NumberFormatException
+(read-string "1/2x")
+;;=> <clj-error> NumberFormatException
+(read-string "1/2/3")
+;;=> <clj-error> NumberFormatException
+(read-string "4/-2")
+;;=> <clj-error> NumberFormatException
+(clojure.edn/read-string "1/2x")
+;;=> <clj-error> NumberFormatException
+(read-string "12N3")
+;;=> <clj-error> NumberFormatException
+(read-string "1.5N")
+;;=> <clj-error> NumberFormatException
+(read-string "1.5.3")
+;;=> <clj-error> NumberFormatException
+(read-string "2r")
+;;=> <clj-error> NumberFormatException
+(read-string "0x1g")
+;;=> <clj-error> NumberFormatException
+(read-string "+12x")
+;;=> <clj-error> NumberFormatException
+(read-string "1.5Mx")
+;;=> <clj-error> NumberFormatException
+(read-string "09")
+;;=> <clj-error> NumberFormatException
+(read-string "[1#{}]")
+;;=> [1 #{}]
+(read-string "[1'a]")
+;;=> [1 (quote a)]
+(read-string "[12(x)]")
+;;=> [12 (x)]
+(read-string "[1%]")
+;;=> [1 %]
+(read-string "0xFFN")
+;;=> 255N
+(read-string "017N")
+;;=> 15N
+(read-string "-0x10N")
+;;=> -16N

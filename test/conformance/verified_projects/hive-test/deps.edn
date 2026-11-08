@@ -1,0 +1,10 @@
+{:paths ["."]
+ :deps {io.github.hive-agi/hive-test
+        {:git/url "https://github.com/hive-agi/hive-test.git"
+         :git/sha "82c55d651339af579ce6f362fb440ab7b4312087"}
+        org.clojure/test.check
+        {:git/url "https://github.com/clojure/test.check.git"
+         :git/sha "4a5258ea9f2b4fb63e3be85f182b008f12c1a476"}}
+ :aliases {:verify {:main-opts ["-m" "verify"]}
+           :laws {:main-opts ["-m" "laws"]}
+           :anchor-test {:main-opts ["-m" "golden-anchor-test"]}}}

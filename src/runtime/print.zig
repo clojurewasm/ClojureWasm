@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Value renderer (`pr-str` style).
 //!
 //! A single printer so that the REPL, nREPL, the `pr-str` / `prn`
@@ -20,9 +21,11 @@
 //!   `print-method` override consult (the pr/prn/print primitives).
 //! - `writeStrValue(rt, env, w, v)` — the `str` / `.toString` form:
 //!   top-level strings/chars bare, no reader suffixes.
-//! - `printValue(w, v)` — the pure `(w, v)` tag-switch renderer the
-//!   entries above funnel into; any heap kind without a dedicated
-//!   branch falls back to a `#<tag>` placeholder.
+//! - `printValue(ports, w, v)` — the tag-switch renderer the entries above
+//!   funnel into; any heap kind without a dedicated branch falls back to a
+//!   `#<tag>` placeholder. `ports` is null for a caller that cannot evaluate
+//!   (error rendering, a dying thread's uncaught report) and carries rt/env
+//!   for one that can.
 //!
 //! ### Why a Layer-0 module
 //!
@@ -43,6 +46,7 @@ const protocol = @import("protocol.zig");
 const string_collection = @import("collection/string.zig");
 const list_collection = @import("collection/list.zig");
 const vector_collection = @import("collection/vector.zig");
+const sub_vector = @import("collection/sub_vector.zig");
 const set_collection = @import("collection/set.zig");
 const map_collection = @import("collection/map.zig");
 const map_entry_collection = @import("collection/map_entry.zig");
@@ -51,6 +55,7 @@ const persistent_queue = @import("collection/persistent_queue.zig");
 const sorted_collection = @import("collection/sorted.zig");
 const ex_info_collection = @import("collection/ex_info.zig");
 const big_int_mod = @import("numeric/big_int.zig");
+const decimal_text = @import("numeric/decimal_text.zig");
 const ratio_mod = @import("numeric/ratio.zig");
 const big_decimal_mod = @import("numeric/big_decimal.zig");
 const regex_mod = @import("regex/value.zig");
@@ -61,7 +66,10 @@ const instant_mod = @import("time/instant.zig");
 const duration_value_mod = @import("time/duration_value.zig");
 const local_date_time_value_mod = @import("time/local_date_time_value.zig");
 const lazy_seq_mod = @import("lazy_seq.zig");
+const seqable = @import("seqable.zig");
 const range_collection = @import("collection/range.zig");
+const array_seq_collection = @import("collection/array_seq.zig");
+const string_seq_collection = @import("collection/string_seq.zig");
 const env_mod = @import("env.zig");
 const dispatch_mod = @import("dispatch.zig");
 const writer_value = @import("writer_value.zig");
@@ -84,20 +92,32 @@ pub fn printResult(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anyerr
     // (resets depth to 0) so the recursive `printValue` honours a user binding
     // without a per-element Var deref. Re-snapshotting each call keeps a prior
     // binding from leaking into the next print.
-    snapshotPrintLimits();
-    // Arm the realize context (same shape as `active_consult` below) so
-    // nested dispatch-needing renders — an IPersistentMap-declaring deftype's
-    // map-style print — can reach rt/env from inside the pure `printValue`
-    // recursion. Saved/restored so a re-entrant print keeps its own ctx.
-    const saved = realize_ctx;
-    realize_ctx = .{ .rt = rt, .env = env };
-    defer realize_ctx = saved;
-    try printValue(w, try deepRealize(rt, env, v));
+    try printResultPorts(.{ .rt = rt, .env = env }, w, v);
 }
 
-/// rt/env for dispatch-needing renders inside the pure `printValue` recursion
-/// (armed by `printResult`; same save/restore pattern as `active_consult`).
-threadlocal var realize_ctx: ?struct { rt: *Runtime, env: *env_mod.Env } = null;
+/// `printResult` with the ports already built. `printConsult` enters here so a
+/// value whose own override did not fire still renders its ELEMENTS with the
+/// consult on.
+fn printResultPorts(ports: Ports, w: *Writer, v: Value) anyerror!void {
+    snapshotPrintLimits();
+    try printValue(ports, w, try deepRealize(ports.rt, ports.env, v));
+}
+
+/// What a render needs to re-enter the VM: a `print-method` override's user
+/// body, and the `-seq` dispatch behind an IPersistentMap-declaring deftype's
+/// map-style form. Threaded through the whole `printValue` recursion and null
+/// at any caller that cannot evaluate, so the parameter list — not an arming
+/// convention — says which callers can.
+pub const Ports = struct {
+    rt: *Runtime,
+    env: *env_mod.Env,
+    /// Consult `print-method` per value. True only while a non-default
+    /// override is registered (ADR-0127's dirty flag), so the common path
+    /// never dispatches. Crosses into user code on the writer handle
+    /// (`writer_value.mint`), the only channel that reaches the `:default`
+    /// body a user method calls back into.
+    consult: bool = false,
+};
 
 /// Write `v` in `str`-form (the unquoted `toString` rendering) to `w`. The
 /// single source for `clojure.core/str` (Layer 2) AND the `.toString`
@@ -153,13 +173,13 @@ pub fn writeStrValue(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anye
             }
             if (cls == null) {
                 try w.writeByte(' ');
-                try printValue(w, ex_info_collection.data(v));
+                try printValue(.{ .rt = rt, .env = env }, w, ex_info_collection.data(v));
             }
         },
         // `str`/`.toString` of a BigInt/BigDecimal drops the `N`/`M` reader
         // suffix that `pr`/`prn` keep — JVM `BigInteger`/`BigDecimal.toString`
         // emit plain digits. Ratio's `1/2` form is already suffix-free.
-        .big_int => try w.print("{f}", .{big_int_mod.asManaged(v)}),
+        .big_int => try decimal_text.writeDecimal(w, big_int_mod.asManaged(v)),
         .big_decimal => try writeBigDecimalDigits(w, v),
         // A deftype/reify `Object (toString [this] …)` impl supplies the
         // `str`/`.toString` representation — consulted like the `Seqable/-seq`
@@ -210,6 +230,17 @@ fn listFromItems(rt: *Runtime, items: []const Value) !Value {
 /// concrete contents. Scalars / maps / sets pass through unchanged (lazy
 /// nested in a map value / set element is a rare residual).
 fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
+    return deepRealizeAt(rt, env, v, 0);
+}
+
+/// `deepRealize` at collection-nesting `depth` (root = 0). Nothing below the
+/// `*print-level*` cut is rendered — it prints as `#` — so realizing it is
+/// work whose result is discarded, and on a deep structure that is the whole
+/// cost of the print.
+fn deepRealizeAt(rt: *Runtime, env: *env_mod.Env, v: Value, depth: i64) anyerror!Value {
+    if (print_level_limit) |lvl| {
+        if (depth >= lvl) return v;
+    }
     switch (v.tag()) {
         // `.list` shares the generic seq walk: a `.list` cons may carry a
         // non-list seq as its rest (a "Cons over a seq", e.g.
@@ -221,7 +252,7 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
         // `(rest (range 5))`) — without this it fell through to the generic
         // `#<chunked_cons>` render instead of its elements (it already realizes
         // correctly in a `.list` tail, e.g. `(cons 0 (seq (range 3)))`).
-        .lazy_seq, .list, .chunked_cons => return realizeSeqWalk(rt, env, v),
+        .lazy_seq, .list, .cons, .chunked_cons => return realizeSeqWalk(rt, env, v, depth),
         // A `Sequential` deftype (e.g. `Eduction`) prints as its realized
         // seq, not the deftype default `#Name[..]` (ADR-0068). The
         // marker — NOT `Seqable` — is the discriminator: a record is Seqable
@@ -230,23 +261,21 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
         // `printTypedInstance` (records render map-style there).
         .typed_instance => {
             if (typedInstanceIsSequential(v)) {
-                // Coerce via the `Seqable -seq` protocol first: `realizeSeqWalk`'s
-                // `lazy_seq_mod` helpers cannot coerce a typed_instance (that
-                // coercion is the Layer-2 seq primitive's job). The
-                // coerced result is a lazy_seq/list that deepRealize then walks.
-                // `dispatchOrNull` (not `dispatch`) so a Sequential-but-not-
-                // Seqable deftype falls back to the default render instead of
-                // raising mid-print.
+                // Coerce via the `Seqable -seq` protocol first, with
+                // `dispatchOrNull` (not the boundary's raising `seq`) so a
+                // Sequential-but-not-Seqable deftype falls back to the default
+                // render instead of raising mid-print. The coerced result is a
+                // lazy_seq/list that deepRealize then walks.
                 var cs: dispatch_mod.CallSite = .{};
                 const noloc: SourceLocation = .{};
-                if (try dispatch_mod.dispatchOrNull(rt, env, &cs, v, "Seqable", "-seq", &.{v}, noloc)) |s| {
+                if (try dispatch_mod.dispatchOrNull(rt, env, &cs, v, seqable.SEQABLE, "-seq", &.{v}, noloc)) |s| {
                     if (s.isNil()) return s; // empty Sequential → nil (prints "()")
                     // A self-returning ISeq (`-seq` → an instance, incl. `v` itself):
                     // walk the ISeq protocol, NOT deepRealize(s) which re-dispatches
                     // `-seq` on the same instance forever.
                     if (s.tag() == .typed_instance or s.tag() == .reified_instance)
-                        return realizeInstanceSeq(rt, env, s);
-                    return deepRealize(rt, env, s); // `-seq` → a lazy_seq/list (e.g. Eduction)
+                        return realizeInstanceSeq(rt, env, s, depth);
+                    return deepRealizeAt(rt, env, s, depth); // `-seq` → a lazy_seq/list (e.g. Eduction)
                 }
             }
             return v;
@@ -259,27 +288,64 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
         // opaque `#<fqcn>` render (AD-020).
         .host_instance => {
             const inst = @import("host_instance.zig").asHostInstance(v);
-            if (inst.descriptor.print_content) |pc| return deepRealize(rt, env, try pc(rt, v));
+            if (inst.descriptor.print_content) |pc| return deepRealizeAt(rt, env, try pc(rt, v), depth);
             return v;
         },
         .vector => {
             const n = vector_collection.count(v);
-            var out = vector_collection.empty();
+            // Copy on the FIRST element a realize actually changes, like the
+            // map arm below. An all-strict vector is returned as-is instead of
+            // being rebuilt element by element on every print.
+            var out: ?Value = null;
             var i: u32 = 0;
             while (i < n) : (i += 1) {
-                out = try vector_collection.conj(rt, out, try deepRealize(rt, env, vector_collection.nth(v, i)));
+                const e = vector_collection.nth(v, i);
+                const re = try deepRealizeAt(rt, env, e, depth + 1);
+                if (out) |acc| {
+                    out = try vector_collection.conj(rt, acc, re);
+                } else if (@intFromEnum(re) != @intFromEnum(e)) {
+                    var acc = vector_collection.empty();
+                    var j: u32 = 0;
+                    while (j < i) : (j += 1) acc = try vector_collection.conj(rt, acc, vector_collection.nth(v, j));
+                    out = try vector_collection.conj(rt, acc, re);
+                }
             }
+            const rebuilt = out orelse return v;
             // Carry metadata through the rebuild so `*print-meta*` sees it
             // (the realize pass must not strip `^meta`).
             const m = vector_collection.metaOf(v);
-            return if (m.isNil()) out else try vector_collection.withMeta(rt, out, m);
+            return if (m.isNil()) rebuilt else try vector_collection.withMeta(rt, rebuilt, m);
+        },
+        .sub_vector => {
+            // A subvec's elements may be lazy; realize them like the vector arm.
+            // Structure is not preserved (print only needs the `[..]` form), so
+            // a realize rebuilds a plain vector; an all-strict subvec is returned
+            // as-is. Meta is carried through for `*print-meta*`.
+            const n = sub_vector.count(v);
+            var out: ?Value = null;
+            var i: u32 = 0;
+            while (i < n) : (i += 1) {
+                const e = sub_vector.nth(v, i);
+                const re = try deepRealizeAt(rt, env, e, depth + 1);
+                if (out) |acc| {
+                    out = try vector_collection.conj(rt, acc, re);
+                } else if (@intFromEnum(re) != @intFromEnum(e)) {
+                    var acc = vector_collection.empty();
+                    var j: u32 = 0;
+                    while (j < i) : (j += 1) acc = try vector_collection.conj(rt, acc, sub_vector.nth(v, j));
+                    out = try vector_collection.conj(rt, acc, re);
+                }
+            }
+            const rebuilt = out orelse return v;
+            const m = sub_vector.metaOf(v);
+            return if (m.isNil()) rebuilt else try vector_collection.withMeta(rt, rebuilt, m);
         },
         // A MapEntry realizes its key/val (which may hold lazy seqs) while
         // staying a MapEntry, so it still prints `[k v]`.
         .map_entry => return try map_entry_collection.make(
             rt,
-            try deepRealize(rt, env, map_entry_collection.keyOf(v)),
-            try deepRealize(rt, env, map_entry_collection.valOf(v)),
+            try deepRealizeAt(rt, env, map_entry_collection.keyOf(v), depth + 1),
+            try deepRealizeAt(rt, env, map_entry_collection.valOf(v), depth + 1),
         ),
         // Map values / set elements may hold lazy seqs too (potpuri's
         // build-tree assocs a lazy children seq). Re-assoc / re-conj ONLY the
@@ -289,20 +355,42 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
         // no-op" — deepRealize returns the same Value when nothing was lazy.
         .array_map, .hash_map => {
             var out = v;
-            var ks = try map_collection.keys(rt, v);
-            while (ks.tag() == .list and list_collection.countOf(ks) > 0) : (ks = list_collection.rest(ks)) {
-                const k = list_collection.first(ks);
-                const val = try map_collection.get(v, k);
-                const rk = try deepRealize(rt, env, k);
-                const rv = try deepRealize(rt, env, val);
+            // Walk ENTRIES, not keys-then-get: a key that is not `=` to itself
+            // (a list holding ##NaN) misses its own lookup, so `get` returned
+            // nil, the re-assoc below then ADDED a phantom `k nil` entry and
+            // the map printed one entry too many.
+            // A re-KEYED entry rebuilds the map from its realized entries
+            // instead of dissoc+assoc: `dissoc` of a self-unequal key is a
+            // no-op, which also left a phantom.
+            var rekeyed = false;
+            var es = try map_collection.seq(rt, v);
+            while (es.tag() == .list and list_collection.countOf(es) > 0) : (es = list_collection.rest(es)) {
+                const entry = list_collection.first(es);
+                const k = map_entry_collection.keyOf(entry);
+                const val = map_entry_collection.valOf(entry);
+                const rk = try deepRealizeAt(rt, env, k, depth + 1);
+                const rv = try deepRealizeAt(rt, env, val, depth + 1);
                 if (@intFromEnum(rk) != @intFromEnum(k)) {
-                    out = try map_collection.dissoc(rt, out, k);
-                    out = try map_collection.assoc(rt, out, rk, rv);
+                    rekeyed = true;
+                    break;
                 } else if (@intFromEnum(rv) != @intFromEnum(val)) {
                     out = try map_collection.assoc(rt, out, k, rv);
                 }
             }
-            return out;
+            if (!rekeyed) return out;
+            var rebuilt = map_collection.empty();
+            var rs = try map_collection.seq(rt, v);
+            while (rs.tag() == .list and list_collection.countOf(rs) > 0) : (rs = list_collection.rest(rs)) {
+                const entry = list_collection.first(rs);
+                rebuilt = try map_collection.assoc(
+                    rt,
+                    rebuilt,
+                    try deepRealizeAt(rt, env, map_entry_collection.keyOf(entry), depth + 1),
+                    try deepRealizeAt(rt, env, map_entry_collection.valOf(entry), depth + 1),
+                );
+            }
+            const m = map_collection.metaOf(v);
+            return if (m.isNil()) rebuilt else try map_collection.withMeta(rt, rebuilt, m);
         },
         // Sorted variants ride the sorted module (comparator-aware assoc/
         // dissoc need env; a realized KEY is not re-keyed — the comparator
@@ -312,10 +400,10 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
             var out = v;
             const noloc: SourceLocation = .{};
             var ks = try sorted_collection.keys(rt, v);
-            while (ks.tag() == .list and list_collection.countOf(ks) > 0) : (ks = list_collection.rest(ks)) {
+            while ((ks.tag() == .list or ks.tag() == .cons) and list_collection.countOf(ks) > 0) : (ks = list_collection.rest(ks)) {
                 const k = list_collection.first(ks);
                 const val = try sorted_collection.get(rt, env, v, k, noloc);
-                const rv = try deepRealize(rt, env, val);
+                const rv = try deepRealizeAt(rt, env, val, depth + 1);
                 if (@intFromEnum(rv) != @intFromEnum(val)) {
                     out = try sorted_collection.assoc(rt, env, out, k, rv, noloc);
                 }
@@ -323,14 +411,22 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
             return out;
         },
         .hash_set => {
-            var out = v;
+            const out = v;
             var es = try set_collection.seq(rt, v);
             while (es.tag() == .list and list_collection.countOf(es) > 0) : (es = list_collection.rest(es)) {
                 const e = list_collection.first(es);
-                const re = try deepRealize(rt, env, e);
+                const re = try deepRealizeAt(rt, env, e, depth + 1);
                 if (@intFromEnum(re) != @intFromEnum(e)) {
-                    out = try set_collection.disj(rt, out, e);
-                    out = try set_collection.conj(rt, out, re);
+                    // `disj` of a self-unequal element (a list holding
+                    // ##NaN) is a no-op, so disj+conj printed a phantom
+                    // second element. Rebuild from the realized elements.
+                    var rebuilt = set_collection.empty();
+                    var rs = try set_collection.seq(rt, v);
+                    while (rs.tag() == .list and list_collection.countOf(rs) > 0) : (rs = list_collection.rest(rs)) {
+                        rebuilt = try set_collection.conj(rt, rebuilt, try deepRealizeAt(rt, env, list_collection.first(rs), depth + 1));
+                    }
+                    const m = set_collection.metaOf(v);
+                    return if (m.isNil()) rebuilt else try set_collection.withMeta(rt, rebuilt, m);
                 }
             }
             return out;
@@ -339,9 +435,9 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
             var out = v;
             const noloc: SourceLocation = .{};
             var es = try sorted_collection.seq(rt, v);
-            while (es.tag() == .list and list_collection.countOf(es) > 0) : (es = list_collection.rest(es)) {
+            while ((es.tag() == .list or es.tag() == .cons) and list_collection.countOf(es) > 0) : (es = list_collection.rest(es)) {
                 const e = list_collection.first(es);
-                const re = try deepRealize(rt, env, e);
+                const re = try deepRealizeAt(rt, env, e, depth + 1);
                 if (@intFromEnum(re) != @intFromEnum(e)) {
                     out = try sorted_collection.disjSet(rt, env, out, e, noloc);
                     out = try sorted_collection.conjSet(rt, env, out, re, noloc);
@@ -356,9 +452,9 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
 /// Realize a seq-family value into a concrete list by walking its
 /// `seq`/`first`/`rest`. Shared by the `.lazy_seq`/`.list` arm and the
 /// `Sequential` typed_instance arm: `lazy_seq_mod` forces lazy layers,
-/// routes `.list` cells to the list ops, and coerces a Seqable deftype
-/// through its `-seq`, so one loop realizes all.
-fn realizeSeqWalk(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
+/// routes `.list` cells to the list ops through the Seqable boundary
+/// (`seqable.zig`), so one loop realizes all.
+fn realizeSeqWalk(rt: *Runtime, env: *env_mod.Env, v: Value, depth: i64) anyerror!Value {
     var items: std.ArrayList(Value) = .empty;
     defer items.deinit(rt.gpa);
     var cur = v;
@@ -385,18 +481,18 @@ fn realizeSeqWalk(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
         if (print_length_limit) |lim| {
             if (items.items.len > lim) break;
         }
-        const s = try lazy_seq_mod.seq(rt, env, cur);
+        const s = try seqable.seq(rt, env, cur, seqable.noloc);
         if (s.tag() == .nil) break;
         cur_root[0] = s;
-        try items.append(rt.gpa, try deepRealize(rt, env, try lazy_seq_mod.first(rt, env, s)));
+        try items.append(rt.gpa, try deepRealizeAt(rt, env, try seqable.first(rt, env, s, seqable.noloc), depth + 1));
         gc_frame.locals = items.items; // root the just-appended item across rest's force
-        cur = try lazy_seq_mod.rest(rt, env, s);
+        cur = try seqable.rest(rt, env, s, seqable.noloc);
     }
     const realized = try listFromItems(rt, items.items);
     // Carry the original collection's metadata onto the realized list so
     // `*print-meta*` sees a `^meta` list/seq (the realize must not strip it).
     const m = switch (v.tag()) {
-        .list => list_collection.metaOf(v),
+        .list, .cons => list_collection.metaOf(v),
         .lazy_seq => lazy_seq_mod.metaOf(v),
         else => Value.nil_val,
     };
@@ -411,7 +507,7 @@ fn realizeSeqWalk(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
 /// `*print-length*`-bounded; deepRealizes each element;
 /// GC-rooted like `realizeSeqWalk`. A `-next` that yields a non-instance seq
 /// (lazy/list) hands off to `realizeSeqWalk` for the tail.
-fn realizeInstanceSeq(rt: *Runtime, env: *env_mod.Env, start: Value) anyerror!Value {
+fn realizeInstanceSeq(rt: *Runtime, env: *env_mod.Env, start: Value, depth: i64) anyerror!Value {
     var items: std.ArrayList(Value) = .empty;
     defer items.deinit(rt.gpa);
     var cur = start;
@@ -428,16 +524,16 @@ fn realizeInstanceSeq(rt: *Runtime, env: *env_mod.Env, start: Value) anyerror!Va
         cur_root[0] = cur;
         gc_frame.locals = items.items;
         var cs1: dispatch_mod.CallSite = .{};
-        const f = (try dispatch_mod.dispatchOrNull(rt, env, &cs1, cur, "ISeq", "-first", &.{cur}, noloc)) orelse break;
-        try items.append(rt.gpa, try deepRealize(rt, env, f));
+        const f = (try dispatch_mod.dispatchOrNull(rt, env, &cs1, cur, seqable.ISEQ, "-first", &.{cur}, noloc)) orelse break;
+        try items.append(rt.gpa, try deepRealizeAt(rt, env, f, depth + 1));
         gc_frame.locals = items.items;
         var cs2: dispatch_mod.CallSite = .{};
-        cur = (try dispatch_mod.dispatchOrNull(rt, env, &cs2, cur, "ISeq", "-next", &.{cur}, noloc)) orelse break;
+        cur = (try dispatch_mod.dispatchOrNull(rt, env, &cs2, cur, seqable.ISEQ, "-next", &.{cur}, noloc)) orelse break;
     }
     // A `-next` that returned a non-instance seq (lazy_seq/list): realize its tail.
     if (!cur.isNil() and cur.tag() != .typed_instance and cur.tag() != .reified_instance) {
         cur_root[0] = cur;
-        var t = try realizeSeqWalk(rt, env, cur);
+        var t = try realizeSeqWalk(rt, env, cur, depth);
         while (t.tag() == .list and list_collection.countOf(t) > 0) : (t = list_collection.rest(t)) {
             try items.append(rt.gpa, list_collection.first(t));
             gc_frame.locals = items.items;
@@ -697,17 +793,8 @@ fn printMethodOverride(rt: *Runtime, v: Value) ?Value {
     return m;
 }
 
-/// The active consult context for the current top-level print:
-/// set by `printConsult` ONLY when a non-default `print-method` override is
-/// registered (the dirty flag). While set, `printValue` consults `print-method`
-/// per value — so an override-typed value nested inside a NATIVE collection (e.g.
-/// `(pr [(->T)])`) renders via the user method, matching clj's per-element
-/// recursion. Null otherwise ⇒ the pure native path, zero overhead (the common +
-/// bootstrap case). Threadlocal so a concurrent print on another thread is unaffected.
-threadlocal var active_consult: ?struct { rt: *Runtime, env: *env_mod.Env } = null;
-
 /// Is ANY non-default `print-method` override registered? (The dirty flag — gates
-/// whether `active_consult` is armed at all, so the no-override path never consults.)
+/// whether `Ports.consult` is set at all, so the no-override path never consults.)
 fn anyPrintMethodOverride() bool {
     const varp = print_method_var orelse return false;
     const mfv = varp.deref();
@@ -717,18 +804,18 @@ fn anyPrintMethodOverride() bool {
 
 /// Fire `v`'s `print-method` override into `w` (mints a single-print-scoped writer
 /// handle, A2), or return false when `v` has no non-default override.
-fn fireOverride(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anyerror!bool {
-    const method = printMethodOverride(rt, v) orelse return false;
-    const vt = rt.vtable orelse return false;
-    const wv = try writer_value.mint(rt, w);
+fn fireOverride(ports: Ports, w: *Writer, v: Value) anyerror!bool {
+    const method = printMethodOverride(ports.rt, v) orelse return false;
+    const vt = ports.rt.vtable orelse return false;
+    const wv = try writer_value.mint(ports.rt, w, ports.consult);
     defer writer_value.invalidate(wv);
-    _ = try vt.callFn(rt, env, method, &.{ v, wv }, .{});
+    _ = try vt.callFn(ports.rt, ports.env, method, &.{ v, wv }, .{});
     return true;
 }
 
 /// Print `v` to `w`, consulting `print-method` first. A type with a
 /// non-default override renders via the user method; every other value renders
-/// natively. The pr/prn/print entry points call this; it arms `active_consult` (so
+/// natively. The pr/prn/print entry points call this; it sets `Ports.consult` (so
 /// nested native-collection elements also consult) ONLY when an override
 /// exists. `printResult`/`printValueNative` stay native (they ARE the `:default`),
 /// the recursion guard against an override re-firing on its own value.
@@ -737,11 +824,14 @@ pub fn printConsult(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anyer
         try printResult(rt, env, w, v); // no override anywhere → pure native fast path
         return;
     }
-    const saved = active_consult;
-    active_consult = .{ .rt = rt, .env = env };
-    defer active_consult = saved;
-    if (try fireOverride(rt, env, w, v)) return;
-    try printResult(rt, env, w, v);
+    const ports: Ports = .{ .rt = rt, .env = env, .consult = true };
+    // The limits belong to the whole top-level print, including one an override
+    // renders. `printResultPorts` snapshots them on the fall-through; a firing
+    // override returns before it, so the snapshot has to happen here — without
+    // it the override body runs on whatever the PREVIOUS print left behind.
+    snapshotPrintLimits();
+    if (try fireOverride(ports, w, v)) return;
+    try printResultPorts(ports, w, v);
 }
 
 /// `(rt/__print-method-default o w)` — the `print-method` `:default` body. Unwraps
@@ -757,7 +847,8 @@ pub fn printMethodDefaultFn(rt: *Runtime, env: *env_mod.Env, args: []const Value
     // printValueNative (NOT printValue): render `o` itself WITHOUT re-consulting its
     // own override (which just dispatched here), the recursion guard; its
     // child elements still consult via the printValue calls inside printValueNative.
-    try printValueNative(w, try deepRealize(rt, env, args[0]));
+    const ports: Ports = .{ .rt = rt, .env = env, .consult = writer_value.consultOf(args[1]) };
+    try printValueNative(ports, w, try deepRealize(rt, env, args[0]));
     return .nil_val;
 }
 
@@ -770,9 +861,10 @@ threadlocal var print_meta: bool = false;
 fn metaForPrint(v: Value) Value {
     return switch (v.tag()) {
         .vector => vector_collection.metaOf(v),
+        .sub_vector => sub_vector.metaOf(v),
         .array_map, .hash_map => map_collection.metaOf(v),
         .hash_set => set_collection.metaOf(v),
-        .list => list_collection.metaOf(v),
+        .list, .cons => list_collection.metaOf(v),
         else => Value.nil_val,
     };
 }
@@ -832,9 +924,22 @@ fn snapshotPrintLimits() void {
 /// collection, including a `.map_entry` which renders as the 2-vector `[k v]`).
 fn isCollectionTag(t: Value.Tag) bool {
     return switch (t) {
-        .list, .range, .vector, .map_entry, .persistent_queue, .hash_set, .sorted_set, .sorted_map, .array_map, .hash_map => true,
+        .list, .cons, .range, .array_seq, .string_seq, .vector, .sub_vector, .map_entry, .persistent_queue, .hash_set, .sorted_set, .sorted_map, .array_map, .hash_map => true,
+        // Reachable only unrealized: a null-ports render, or below the cut
+        // where the realize is skipped. Both must still print `#`.
+        .lazy_seq, .chunked_cons => true,
         else => false,
     };
+}
+
+/// `*print-level*` guard for a map-style body the tag `switch` does not treat
+/// as a collection — a record's `{…}` and an IPersistentMap-declaring
+/// deftype's. True when the body is at or past the limit and must render `#`
+/// instead. The caller emits any prefix that belongs OUTSIDE the cut (a
+/// record's `#ns.Name` tag) before asking.
+fn levelCutHere() bool {
+    const lvl = print_level_limit orelse return false;
+    return print_depth >= lvl;
 }
 
 /// `*print-length*` guard for index-driven collection loops: when the limit is
@@ -858,12 +963,12 @@ fn lengthTruncated(w: *Writer, i: i64, sep: []const u8) Writer.Error!bool {
 /// skipped. Used to decide the compact `#:ns{…}` print form.
 fn mapCommonNs(v: Value) ?[]const u8 {
     if (v.tag() != .array_map) return null;
-    const am = v.decodePtr(*const map_collection.ArrayMap);
+    const am = v.decodePtr(*const map_collection.ArrayMap); // repr-decode-ok: ns-prefix scan is tag-guarded to the array_map arm; hash_map maps just skip the prefix sugar
     if (am.count == 0) return null;
     var common: ?[]const u8 = null;
     var i: u32 = 0;
     while (i < am.count) : (i += 1) {
-        const key = am.entries[2 * i];
+        const key = am.entries()[2 * i];
         const kns: ?[]const u8 = switch (key.tag()) {
             .keyword => keyword.asKeyword(key).ns,
             .symbol => symbol.asSymbol(key).ns,
@@ -880,34 +985,34 @@ fn mapCommonNs(v: Value) ?[]const u8 {
 /// Print a map key, omitting its namespace when `strip` (the compact
 /// `#:ns{…}` form already carries the shared namespace). Non-symbolic keys
 /// are unaffected by `strip`.
-fn printMapKey(w: *Writer, key: Value, strip: bool) anyerror!void {
-    if (!strip) return printValue(w, key);
+fn printMapKey(ports: ?Ports, w: *Writer, key: Value, strip: bool) anyerror!void {
+    if (!strip) return printValue(ports, w, key);
     switch (key.tag()) {
         .keyword => {
             try w.writeByte(':');
             try w.writeAll(keyword.asKeyword(key).name);
         },
         .symbol => try w.writeAll(symbol.asSymbol(key).name),
-        else => try printValue(w, key),
+        else => try printValue(ports, w, key),
     }
 }
 
-/// Print `v`, consulting `print-method` first when `active_consult` is armed (an
+/// Print `v`, consulting `print-method` first when the ports say to (an
 /// override is registered) — so a nested override-typed value
 /// renders via the user method. Otherwise (the common case) a direct native render.
 /// Collection printers recurse through THIS fn, so every element consults uniformly.
-pub fn printValue(w: *Writer, v: Value) anyerror!void {
-    if (active_consult) |ctx| {
-        if (try fireOverride(ctx.rt, ctx.env, w, v)) return;
+pub fn printValue(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
+    if (ports) |p| {
+        if (p.consult and try fireOverride(p, w, v)) return;
     }
-    try printValueNative(w, v);
+    try printValueNative(ports, w, v);
 }
 
 /// The native renderer (the `print-method` `:default`): the big tag `switch`, NO
 /// top-level consult on `v` itself (the recursion guard — `__print-method-default`
 /// and the no-override path land here). Child elements recurse via `printValue`,
 /// which re-arms the consult per element.
-fn printValueNative(w: *Writer, v: Value) anyerror!void {
+fn printValueNative(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     const vtag = v.tag();
     // *print-level*: a collection at nesting depth `d` (root = 0)
     // renders as a bare `#` when `d >= level`. The check + depth bookkeeping is
@@ -929,7 +1034,7 @@ fn printValueNative(w: *Writer, v: Value) anyerror!void {
         const m = metaForPrint(v);
         if (!m.isNil() and map_collection.count(m) > 0) {
             try w.writeByte('^');
-            try printValue(w, m);
+            try printValue(ports, w, m);
             try w.writeByte(' ');
         }
     }
@@ -965,27 +1070,29 @@ fn printValueNative(w: *Writer, v: Value) anyerror!void {
             try w.writeAll(s.name);
         },
         .string => if (print_readably) try printString(w, string_collection.asString(v)) else try w.writeAll(string_collection.asString(v)),
-        .list => try printList(w, v),
-        .range => try printRange(w, v),
-        .vector => try printVector(w, v),
+        .list, .cons => try printList(ports, w, v),
+        .range => try printRange(ports, w, v),
+        .array_seq => try printArraySeq(ports, w, v),
+        .string_seq => try printStringSeq(ports, w, v),
+        .vector, .sub_vector => try printVector(ports, w, v),
         // A MapEntry prints as the 2-vector `[k v]`.
         .map_entry => {
             try w.writeByte('[');
-            try printValue(w, map_entry_collection.keyOf(v));
+            try printValue(ports, w, map_entry_collection.keyOf(v));
             try w.writeByte(' ');
-            try printValue(w, map_entry_collection.valOf(v));
+            try printValue(ports, w, map_entry_collection.valOf(v));
             try w.writeByte(']');
         },
-        .persistent_queue => try printQueue(w, v),
-        .hash_set => try printSet(w, v),
-        .sorted_set => try printSortedSet(w, v),
-        .sorted_map => try printSortedMap(w, v),
-        .array_map, .hash_map => try printMap(w, v),
-        .ex_info => try printExInfo(w, v),
+        .persistent_queue => try printQueue(ports, w, v),
+        .hash_set => try printSet(ports, w, v),
+        .sorted_set => try printSortedSet(ports, w, v),
+        .sorted_map => try printSortedMap(ports, w, v),
+        .array_map, .hash_map => try printMap(ports, w, v),
+        .ex_info => try printExInfo(ports, w, v),
         .big_int => try printBigInt(w, v),
         .ratio => try printRatio(w, v),
         .big_decimal => try printBigDecimal(w, v),
-        .typed_instance => try printTypedInstance(w, v),
+        .typed_instance => try printTypedInstance(ports, w, v),
         .type_descriptor => try printTypeDescriptor(w, v),
         .var_ref => try printVarRef(w, v),
         .ns => try printNamespace(w, v),
@@ -1014,9 +1121,9 @@ fn printValueNative(w: *Writer, v: Value) anyerror!void {
             // form any value; both via the same readable printer.
             const tl = tagged_literal_mod.asTaggedLiteral(v);
             try w.writeByte('#');
-            try printValue(w, tl.tag);
+            try printValue(ports, w, tl.tag);
             try w.writeByte(' ');
-            try printValue(w, tl.form);
+            try printValue(ports, w, tl.form);
         },
         // AD-020: a stateful host object prints opaquely by its
         // surface fqcn (e.g. `#<java.util.Random>`) — clj prints an identity
@@ -1058,19 +1165,16 @@ fn printBigInt(w: *Writer, v: Value) anyerror!void {
     // WITHOUT `N` (it is a primitive Long that merely overflowed cljw's i48
     // inline range), matching clj `(parse-long "999999999999999")`.
     const m = big_int_mod.asManaged(v);
-    if (big_int_mod.originOf(v) == .long) {
-        try w.print("{f}", .{m});
-    } else {
-        try w.print("{f}N", .{m});
-    }
+    try decimal_text.writeDecimal(w, m);
+    if (big_int_mod.originOf(v) != .long) try w.writeByte('N');
 }
 
 fn printRatio(w: *Writer, v: Value) anyerror!void {
     // Render numerator `/` denominator without a trailing `N` (small =
-    // inline i64s; big = the stored BigInt Manageds via `{f}`).
+    // inline i64s; big = the stored BigInt Manageds, no size ceiling).
     switch (ratio_mod.parts(v)) {
         .small => |s| try w.print("{d}/{d}", .{ s.n, s.d }),
-        .big => |b| try w.print("{f}/{f}", .{ b.n.m, b.d.m }),
+        .big => |b| try decimal_text.writeFraction(w, b.n.m, b.d.m),
     }
 }
 
@@ -1114,14 +1218,11 @@ fn writePlainDigits(w: *Writer, digits: []const u8, scale: i32) anyerror!void {
 /// plain arm.
 pub fn writeBigDecimalPlain(w: *Writer, v: Value) anyerror!void {
     const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
-    var buf: [1024]u8 = undefined;
-    var sw: std.Io.Writer = .fixed(&buf);
-    sw.print("{f}", .{bd.unscaled.m}) catch {
-        // Unscaled wider than the buffer — lossy digits-only fallback,
-        // mirroring writeBigDecimalDigits' stance.
-        return w.print("{f}", .{bd.unscaled.m});
-    };
-    const written = buf[0..sw.end];
+    // Stack scratch for the common width, heap past it: no size ceiling.
+    var sfa = std.heap.stackFallback(2048, bd.unscaled.m.allocator);
+    const alloc = sfa.get();
+    const written = try decimal_text.decimalAlloc(alloc, bd.unscaled.m);
+    defer alloc.free(written);
     const neg = written.len > 0 and written[0] == '-';
     const digits = if (neg) written[1..] else written;
     if (neg) try w.writeByte('-');
@@ -1134,15 +1235,12 @@ pub fn writeBigDecimalDigits(w: *Writer, v: Value) anyerror!void {
     // `(precision-1) - scale >= -6`, otherwise scientific `d.dddE±exp`.
     const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
 
-    // Render unscaled digits into a scratch buffer; split off the sign.
-    var buf: [1024]u8 = undefined;
-    var sw: std.Io.Writer = .fixed(&buf);
-    sw.print("{f}", .{bd.unscaled.m}) catch {
-        // Unscaled wider than the buffer — fall back to the lossy form
-        // (digits only; the caller appends `M` for the reader form).
-        return w.print("{f}", .{bd.unscaled.m});
-    };
-    const written = buf[0..sw.end];
+    // Render unscaled digits (no size ceiling); split off the sign.
+    // Stack scratch for the common width, heap past it: no size ceiling.
+    var sfa = std.heap.stackFallback(2048, bd.unscaled.m.allocator);
+    const alloc = sfa.get();
+    const written = try decimal_text.decimalAlloc(alloc, bd.unscaled.m);
+    defer alloc.free(written);
     const neg = written.len > 0 and written[0] == '-';
     const digits = if (neg) written[1..] else written;
     const n: i64 = @intCast(digits.len);
@@ -1167,14 +1265,22 @@ pub fn writeBigDecimalDigits(w: *Writer, v: Value) anyerror!void {
 /// Render an IPersistentMap-declaring deftype map-style `{k v, …}` from its
 /// `-seq`, in SEQ ORDER (clj: core_print's defmethod on the clojure.lang
 /// interface class — data.priority-map prints in priority order). Needs
-/// `realize_ctx` (rt/env for the -seq dispatch + entry realization); without
-/// it the caller falls back to the default `#Name[…]` render. Returns false
+/// the ports (rt/env for the -seq dispatch + entry realization); a caller
+/// holding none falls back to the default `#Name[…]` render. Returns false
 /// when the type has no dispatchable `-seq`.
-fn printMapLikeTypedInstance(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anyerror!bool {
+fn printMapLikeTypedInstance(ports: Ports, w: *Writer, v: Value) anyerror!bool {
     var cs: dispatch_mod.CallSite = .{};
     const noloc: SourceLocation = .{};
-    const s = (try dispatch_mod.dispatchOrNull(rt, env, &cs, v, "Seqable", "-seq", &.{v}, noloc)) orelse return false;
-    const entries = try realizeSeqWalk(rt, env, s);
+    const s = (try dispatch_mod.dispatchOrNull(ports.rt, ports.env, &cs, v, seqable.SEQABLE, "-seq", &.{v}, noloc)) orelse return false;
+    // The `{…}` body nests for *print-level* exactly like a native map. The
+    // value carries no tag outside it, so at the cut the whole render is `#`.
+    if (levelCutHere()) {
+        try w.writeByte('#');
+        return true;
+    }
+    print_depth += 1;
+    defer print_depth -= 1;
+    const entries = try realizeSeqWalk(ports.rt, ports.env, s, print_depth);
     try w.writeByte('{');
     var node = entries;
     var i: i64 = 0;
@@ -1184,9 +1290,9 @@ fn printMapLikeTypedInstance(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Val
         const e = list_collection.first(node);
         const k = if (e.tag() == .map_entry) map_entry_collection.keyOf(e) else vector_collection.nth(e, 0);
         const val = if (e.tag() == .map_entry) map_entry_collection.valOf(e) else vector_collection.nth(e, 1);
-        try printValue(w, try deepRealize(rt, env, k));
+        try printValue(ports, w, try deepRealize(ports.rt, ports.env, k));
         try w.writeByte(' ');
-        try printValue(w, try deepRealize(rt, env, val));
+        try printValue(ports, w, try deepRealize(ports.rt, ports.env, val));
         i += 1;
     }
     try w.writeByte('}');
@@ -1197,25 +1303,50 @@ fn printMapLikeTypedInstance(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Val
 /// `<k> <v>` after the declared fields, comma-separated. `printed` tracks how
 /// many entries (declared + prior extmap) are already out so the comma lands.
 const ExtmapPrintCtx = struct {
+    ports: ?Ports,
     w: *Writer,
     printed: usize,
     fn cb(ctx: *ExtmapPrintCtx, k: Value, val: Value) anyerror!void {
         if (ctx.printed > 0) try ctx.w.writeAll(", ");
-        try printValue(ctx.w, k);
+        try printValue(ctx.ports, ctx.w, k);
         try ctx.w.writeByte(' ');
-        try printValue(ctx.w, val);
+        try printValue(ctx.ports, ctx.w, val);
         ctx.printed += 1;
     }
 };
 
-fn printTypedInstance(w: *Writer, v: Value) anyerror!void {
+/// The `#<tag> "<body>"` reader-literal parts of a descriptor-tagged host
+/// value (today only `#inst`), or null when `v` is not one. `buf` holds the
+/// formatted body.
+///
+/// Shared by the printer and by the analyzer's Value→Form inverse. The two
+/// MUST agree: whatever prints as a reader literal is exactly what has to
+/// read back as the same value, and a macro expansion carrying such a value
+/// round-trips through this form. Two copies of the rule would let a printed
+/// literal and a re-analysed one drift apart silently.
+pub fn readerTagParts(v: Value, buf: []u8) ?struct { tag: []const u8, body: []const u8 } {
+    if (v.tag() != .typed_instance) return null;
+    const inst = v.decodePtr(*const td_mod.TypedInstance);
+    const tag = inst.descriptor.print_tag orelse return null;
+    if (inst.field_count < 1 or inst.fields()[0].tag() != .integer) return null;
+    const epoch_ms = inst.fields()[0].asInteger();
+    // A 2-field inst value is a Timestamp (epoch-ms + nanos) → 9-digit
+    // fraction; a 1-field one is a Date → 3-digit ms.
+    const iso = if (inst.field_count >= 2 and inst.fields()[1].tag() == .integer)
+        instant_mod.formatInstantNanos(buf, epoch_ms, @intCast(inst.fields()[1].asInteger()))
+    else
+        instant_mod.formatInstantMillis(buf, epoch_ms);
+    return .{ .tag = tag, .body = iso };
+}
+
+fn printTypedInstance(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     const inst = v.decodePtr(*const td_mod.TypedInstance);
     // A deftype declaring clojure.lang.IPersistentMap prints map-style when a
     // realize context is available (printResult arms it; the pure printValue
     // paths keep the default render).
     if (inst.descriptor.kind != .defrecord and inst.descriptor.declaresProtocol("IPersistentMap")) {
-        if (realize_ctx) |ctx| {
-            if (try printMapLikeTypedInstance(ctx.rt, ctx.env, w, v)) return;
+        if (ports) |p| {
+            if (try printMapLikeTypedInstance(p, w, v)) return;
         }
     }
     // Bare-toString host time value: emit the value's ISO toString
@@ -1277,17 +1408,10 @@ fn printTypedInstance(w: *Writer, v: Value) anyerror!void {
     // Reader-tag host value: emit `#<tag> "<iso>"`. Today only
     // `#inst` (java.util.Date) — body = the epoch-ms field 0 as the
     // canonical ISO string. Descriptor-driven (no rt, no surface import).
-    if (inst.descriptor.print_tag) |tag| {
-        if (inst.field_count >= 1 and inst.fields()[0].tag() == .integer) {
-            var buf: [48]u8 = undefined;
-            const epoch_ms = inst.fields()[0].asInteger();
-            // A 2-field inst value is a Timestamp (epoch-ms + nanos) →
-            // 9-digit fraction; a 1-field one is a Date → 3-digit ms.
-            const iso = if (inst.field_count >= 2 and inst.fields()[1].tag() == .integer)
-                instant_mod.formatInstantNanos(&buf, epoch_ms, @intCast(inst.fields()[1].asInteger()))
-            else
-                instant_mod.formatInstantMillis(&buf, epoch_ms);
-            try w.print("#{s} \"{s}\"", .{ tag, iso });
+    {
+        var buf: [48]u8 = undefined;
+        if (readerTagParts(v, &buf)) |parts| {
+            try w.print("#{s} \"{s}\"", .{ parts.tag, parts.body });
             return;
         }
     }
@@ -1301,19 +1425,25 @@ fn printTypedInstance(w: *Writer, v: Value) anyerror!void {
         if (inst.descriptor.field_layout) |layout| {
             const fs = inst.fields();
             if (inst.descriptor.defining_ns) |dns| {
-                try w.print("#{s}.{s}{{", .{ dns, fqcn });
+                try w.print("#{s}.{s}", .{ dns, fqcn });
             } else {
-                try w.print("#{s}{{", .{fqcn});
+                try w.print("#{s}", .{fqcn});
             }
+            // clj prints the tag and then treats the map body as its own
+            // nesting level, so the cut renders `#user.R#`, not a bare `#`.
+            if (levelCutHere()) return w.writeByte('#');
+            print_depth += 1;
+            defer print_depth -= 1;
+            try w.writeByte('{');
             for (layout, 0..) |fe, i| {
                 if (i > 0) try w.writeAll(", ");
                 try w.print(":{s} ", .{fe.name});
-                try printValue(w, fs[fe.index]);
+                try printValue(ports, w, fs[fe.index]);
             }
             // Non-declared keys (extmap) print after the
             // declared fields — `#user.R{:x 1, :y 2, :z 9}`.
             if (!inst.extmap.isNil()) {
-                var ctx = ExtmapPrintCtx{ .w = w, .printed = layout.len };
+                var ctx = ExtmapPrintCtx{ .ports = ports, .w = w, .printed = layout.len };
                 try map_collection.forEachEntry(inst.extmap, &ctx, ExtmapPrintCtx.cb);
             }
             try w.writeByte('}');
@@ -1323,7 +1453,7 @@ fn printTypedInstance(w: *Writer, v: Value) anyerror!void {
     try w.print("#{s}[", .{fqcn});
     for (inst.fields(), 0..) |fv, i| {
         if (i > 0) try w.writeByte(' ');
-        try printValue(w, fv);
+        try printValue(ports, w, fv);
     }
     try w.writeByte(']');
 }
@@ -1363,15 +1493,15 @@ fn printNamespace(w: *Writer, v: Value) anyerror!void {
 /// Render an `ex-info` Value in `#error{ :message "..." :data ... }`
 /// form — the same shape Clojure JVM's pr-str emits, modulo ordering.
 /// The data field is any Value, rendered via `printValue`.
-pub fn printExInfo(w: *Writer, v: Value) anyerror!void {
+pub fn printExInfo(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     try w.writeAll("#error{:message ");
     try printString(w, ex_info_collection.message(v));
     try w.writeAll(" :data ");
-    try printValue(w, ex_info_collection.data(v));
+    try printValue(ports, w, ex_info_collection.data(v));
     const cause = ex_info_collection.cause(v);
     if (!cause.isNil()) {
         try w.writeAll(" :cause ");
-        try printValue(w, cause);
+        try printValue(ports, w, cause);
     }
     try w.writeByte('}');
 }
@@ -1379,7 +1509,7 @@ pub fn printExInfo(w: *Writer, v: Value) anyerror!void {
 /// `#queue (e1 e2 …)` — a reader-round-trippable form (ADR-0087). clj prints
 /// the opaque non-reproducible `#object[…@hash]`; cljw ships a readable form +
 /// a matching `queue` data-reader. Walks front (list) then rear (vector).
-pub fn printQueue(w: *Writer, v: Value) anyerror!void {
+pub fn printQueue(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     try w.writeAll("#queue (");
     var first_iter = true;
     var emitted: i64 = 0;
@@ -1392,7 +1522,7 @@ pub fn printQueue(w: *Writer, v: Value) anyerror!void {
         }
         if (!first_iter) try w.writeByte(' ');
         first_iter = false;
-        try printValue(w, list_collection.first(cur));
+        try printValue(ports, w, list_collection.first(cur));
         cur = list_collection.rest(cur);
         emitted += 1;
     }
@@ -1405,7 +1535,7 @@ pub fn printQueue(w: *Writer, v: Value) anyerror!void {
                 if (try lengthTruncated(w, emitted, " ")) break;
                 if (!first_iter) try w.writeByte(' ');
                 first_iter = false;
-                try printValue(w, vector_collection.nth(rear, i));
+                try printValue(ports, w, vector_collection.nth(rear, i));
                 emitted += 1;
             }
         }
@@ -1416,34 +1546,82 @@ pub fn printQueue(w: *Writer, v: Value) anyerror!void {
 /// Render a heap List in `(a b c)` form. Empty list (a List Value
 /// whose count is 0) prints as `()`. Walks via `list_collection`'s
 /// `first` / `rest` so this stays decoupled from the Cons internals.
-pub fn printList(w: *Writer, v: Value) anyerror!void {
+pub fn printList(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     try w.writeByte('(');
     var cur = v;
     var first_iter = true;
     var emitted: i64 = 0;
-    while (cur.tag() == .list and list_collection.countOf(cur) > 0) {
+    while ((cur.tag() == .list or cur.tag() == .cons) and list_collection.countOf(cur) > 0) {
         if (try lengthTruncated(w, emitted, " ")) break;
         if (!first_iter) try w.writeByte(' ');
         first_iter = false;
-        try printValue(w, list_collection.first(cur));
+        try printValue(ports, w, list_collection.first(cur));
         cur = list_collection.rest(cur);
         emitted += 1;
     }
     try w.writeByte(')');
 }
 
-/// Render a compact `.range` as a list `(0 1 2 …)` (JVM parity). Computes
-/// each element with pure scalar math (`start + i*step`) so it needs no
-/// `rt` and allocates nothing — unlike a generic seq-walk. A huge range
-/// prints every element (same as realizing a lazy seq).
-pub fn printRange(w: *Writer, v: Value) anyerror!void {
+/// Render a compact `.range` as a list `(0 1 2 …)` (JVM parity). Each element
+/// is a Long, which always prints as its plain decimal digits (an element past
+/// i48 is a heap Long — origin `.long`, no `N`), so the printer renders the raw
+/// `elementI64` directly: it needs no `rt` and allocates nothing (unlike a
+/// generic seq-walk, and unlike boxing each element through `wrapI64` just to
+/// print it). A huge range prints every element (same as realizing a lazy seq).
+pub fn printRange(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
+    _ = ports;
     try w.writeByte('(');
     const n = range_collection.countOf(v);
     var i: i64 = 0;
     while (i < n) : (i += 1) {
         if (try lengthTruncated(w, i, " ")) break;
         if (i > 0) try w.writeByte(' ');
-        try printValue(w, range_collection.elementAt(v, i));
+        try w.print("{d}", .{range_collection.elementI64(v, i)});
+    }
+    try w.writeByte(')');
+}
+
+/// Render an `.array_seq` vector view as a list `(a b c)` — it is a seq, so it
+/// prints in seq form, not the `[…]` of the vector it views. Index-driven
+/// through the view like `printRange`, so it allocates nothing and never walks
+/// a cons chain.
+pub fn printArraySeq(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
+    try w.writeByte('(');
+    const n = array_seq_collection.countOf(v);
+    var i: u32 = 0;
+    while (i < n) : (i += 1) {
+        if (try lengthTruncated(w, @intCast(i), " ")) break;
+        if (i > 0) try w.writeByte(' ');
+        if (array_seq_collection.peekNth(v, i)) |e| {
+            try printValue(ports, w, e);
+        } else {
+            // A primitive long beyond the immediate range: its digits, which
+            // is how its heap box prints.
+            const a = array_seq_collection.primitiveBacking(v).?;
+            try w.print("{d}", .{a.slice(.long)[array_seq_collection.indexOf(v) + i]});
+        }
+    }
+    try w.writeByte(')');
+}
+
+/// Render a `.string_seq` as a list of characters `(\a \b)` — it is a seq, so
+/// it prints in seq form, not as the string it views.
+///
+/// Walks the remaining BYTES once and decodes in place. Index-driven printing
+/// (the `printArraySeq` shape) would call `nth` per element, and `nth` on
+/// UTF-8 is O(i) — printing would be quadratic, which is the defect the view
+/// exists to remove. [refs: D-179]
+pub fn printStringSeq(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
+    try w.writeByte('(');
+    const bytes = string_seq_collection.remainingBytes(v);
+    var off: usize = 0;
+    var i: usize = 0;
+    while (off < bytes.len) : (i += 1) {
+        if (try lengthTruncated(w, @intCast(i), " ")) break;
+        if (i > 0) try w.writeByte(' ');
+        const step = string_seq_collection.decodeAt(bytes, off);
+        try printValue(ports, w, Value.initChar(@intCast(step.cp)));
+        off += step.len;
     }
     try w.writeByte(')');
 }
@@ -1451,14 +1629,16 @@ pub fn printRange(w: *Writer, v: Value) anyerror!void {
 /// Render a heap Vector in `[a b c]` form. Indexes via
 /// `vector_collection.nth` so this stays decoupled from the HAMT
 /// internals.
-pub fn printVector(w: *Writer, v: Value) anyerror!void {
+pub fn printVector(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     try w.writeByte('[');
-    const n = vector_collection.count(v);
+    // A subvec prints identically to a vector; read its count/nth polymorphically.
+    const is_sub = v.tag() == .sub_vector;
+    const n = if (is_sub) sub_vector.count(v) else vector_collection.count(v);
     var i: u32 = 0;
     while (i < n) : (i += 1) {
         if (try lengthTruncated(w, @intCast(i), " ")) break;
         if (i > 0) try w.writeByte(' ');
-        try printValue(w, vector_collection.nth(v, i));
+        try printValue(ports, w, if (is_sub) sub_vector.nth(v, i) else vector_collection.nth(v, i));
     }
     try w.writeByte(']');
 }
@@ -1469,7 +1649,7 @@ pub fn printVector(w: *Writer, v: Value) anyerror!void {
 /// separator across the recursion. Alloc-free — the printer has no
 /// allocator, so it reads `slots` directly rather than materialising a
 /// seq (front-loaded KV pairs, back-loaded children per map.zig).
-fn printHamtEntries(w: *Writer, node: *const map_collection.HamtMapNode, first: *bool, count: *i64, stop: *bool, comptime kv: bool) anyerror!void {
+fn printHamtEntries(ports: ?Ports, w: *Writer, node: *const map_collection.HamtMapNode, first: *bool, count: *i64, stop: *bool, comptime kv: bool) anyerror!void {
     const data_count = @popCount(node.data_map);
     var i: u32 = 0;
     while (i < data_count) : (i += 1) {
@@ -1484,10 +1664,10 @@ fn printHamtEntries(w: *Writer, node: *const map_collection.HamtMapNode, first: 
         };
         if (!first.*) try w.writeAll(if (kv) ", " else " ");
         first.* = false;
-        try printValue(w, node.slots[2 * i]);
+        try printValue(ports, w, node.slots[2 * i]);
         if (kv) {
             try w.writeByte(' ');
-            try printValue(w, node.slots[2 * i + 1]);
+            try printValue(ports, w, node.slots[2 * i + 1]);
         }
         count.* += 1;
     }
@@ -1495,11 +1675,11 @@ fn printHamtEntries(w: *Writer, node: *const map_collection.HamtMapNode, first: 
     var j: u32 = 0;
     while (j < child_count) : (j += 1) {
         if (stop.*) return;
-        try printHamtEntries(w, node.slots[63 - j].decodePtr(*const map_collection.HamtMapNode), first, count, stop, kv);
+        try printHamtEntries(ports, w, node.slots[63 - j].decodePtr(*const map_collection.HamtMapNode), first, count, stop, kv); // repr-decode-ok: printHamtEntries IS the HAMT walker (printer-side early-stop for *print-length*)
     }
 }
 
-pub fn printMap(w: *Writer, v: Value) anyerror!void {
+pub fn printMap(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     // Compact namespaced-map form `#:ns{:a 1, :b 2}` when enabled and
     // all keys share one namespace (array_map only — see `mapCommonNs`).
     const compact_ns: ?[]const u8 = if (print_namespace_maps) mapCommonNs(v) else null;
@@ -1510,22 +1690,22 @@ pub fn printMap(w: *Writer, v: Value) anyerror!void {
     const strip = compact_ns != null;
     try w.writeByte('{');
     if (v.tag() == .array_map) {
-        const am = v.decodePtr(*const map_collection.ArrayMap);
+        const am = v.decodePtr(*const map_collection.ArrayMap); // repr-decode-ok: printer dual-path, array_map arm (hash_map arm below)
         var i: u32 = 0;
         while (i < am.count) : (i += 1) {
             if (try lengthTruncated(w, @intCast(i), ", ")) break;
             if (i > 0) try w.writeAll(", ");
-            try printMapKey(w, am.entries[2 * i], strip);
+            try printMapKey(ports, w, am.entries()[2 * i], strip);
             try w.writeByte(' ');
-            try printValue(w, am.entries[2 * i + 1]);
+            try printValue(ports, w, am.entries()[2 * i + 1]);
         }
     } else {
-        const phm = v.decodePtr(*const map_collection.PersistentHashMap);
+        const phm = v.decodePtr(*const map_collection.PersistentHashMap); // repr-decode-ok: printer dual-path, hash_map arm
         if (phm.root) |root| {
             var first = true;
             var count: i64 = 0;
             var stop = false;
-            try printHamtEntries(w, root, &first, &count, &stop, true);
+            try printHamtEntries(ports, w, root, &first, &count, &stop, true);
         }
     }
     try w.writeByte('}');
@@ -1535,26 +1715,26 @@ pub fn printMap(w: *Writer, v: Value) anyerror!void {
 /// map's keys directly: an `array_map`'s `entries` array (≤ 8
 /// elements, insertion order) or the HAMT keys for a larger
 /// `hash_map`-backed set.
-pub fn printSet(w: *Writer, v: Value) anyerror!void {
+pub fn printSet(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     try w.writeAll("#{");
-    const s = v.decodePtr(*const set_collection.PersistentHashSet);
+    const s = v.decodePtr(*const set_collection.PersistentHashSet); // repr-decode-ok: set printer reads the backing map value only to dual-path on its tag
     if (s.map.tag() == .array_map) {
-        const am = s.map.decodePtr(*const map_collection.ArrayMap);
+        const am = s.map.decodePtr(*const map_collection.ArrayMap); // repr-decode-ok: printer dual-path, array_map arm (hash_map arm below)
         var i: u32 = 0;
         while (i < am.count) : (i += 1) {
             if (try lengthTruncated(w, @intCast(i), " ")) break;
             if (i > 0) try w.writeByte(' ');
-            try printValue(w, am.entries[2 * i]);
+            try printValue(ports, w, am.entries()[2 * i]);
         }
     } else {
         // hash_map-backed set (> 8 elements): walk the backing map's HAMT
         // keys directly (the set stores each element as a map key).
-        const phm = s.map.decodePtr(*const map_collection.PersistentHashMap);
+        const phm = s.map.decodePtr(*const map_collection.PersistentHashMap); // repr-decode-ok: printer dual-path, hash_map arm
         if (phm.root) |root| {
             var first = true;
             var count: i64 = 0;
             var stop = false;
-            try printHamtEntries(w, root, &first, &count, &stop, false);
+            try printHamtEntries(ports, w, root, &first, &count, &stop, false);
         }
     }
     try w.writeByte('}');
@@ -1562,11 +1742,11 @@ pub fn printSet(w: *Writer, v: Value) anyerror!void {
 
 /// In-order (ascending) walk of an LLRB tree, alloc-free (the printer has
 /// no allocator). `kv` true → "k v" pairs (map), false → bare keys (set).
-fn printSortedEntries(w: *Writer, root: Value, first: *bool, count: *i64, stop: *bool, comptime kv: bool) anyerror!void {
+fn printSortedEntries(ports: ?Ports, w: *Writer, root: Value, first: *bool, count: *i64, stop: *bool, comptime kv: bool) anyerror!void {
     if (root.tag() != .rb_node) return;
     if (stop.*) return;
-    const n = root.decodePtr(*const sorted_collection.RbNode);
-    try printSortedEntries(w, n.left, first, count, stop, kv);
+    const n = root.decodePtr(*const sorted_collection.RbNode); // repr-decode-ok: sorted printer in-order walk; sorted_map/set have a single RB-tree backing
+    try printSortedEntries(ports, w, n.left, first, count, stop, kv);
     if (stop.*) return;
     // *print-length*: in ascending order, stop emitting once the
     // count reaches the limit (mark the cut with `...`).
@@ -1578,33 +1758,33 @@ fn printSortedEntries(w: *Writer, root: Value, first: *bool, count: *i64, stop: 
     };
     if (!first.*) try w.writeAll(if (kv) ", " else " ");
     first.* = false;
-    try printValue(w, n.key);
+    try printValue(ports, w, n.key);
     if (kv) {
         try w.writeByte(' ');
-        try printValue(w, n.val);
+        try printValue(ports, w, n.val);
     }
     count.* += 1;
-    try printSortedEntries(w, n.right, first, count, stop, kv);
+    try printSortedEntries(ports, w, n.right, first, count, stop, kv);
 }
 
-pub fn printSortedMap(w: *Writer, v: Value) anyerror!void {
+pub fn printSortedMap(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     try w.writeByte('{');
-    const m = v.decodePtr(*const sorted_collection.SortedMap);
+    const m = v.decodePtr(*const sorted_collection.SortedMap); // repr-decode-ok: single-backing tag (sorted_map)
     var first = true;
     var count: i64 = 0;
     var stop = false;
-    try printSortedEntries(w, m.root, &first, &count, &stop, true);
+    try printSortedEntries(ports, w, m.root, &first, &count, &stop, true);
     try w.writeByte('}');
 }
 
-pub fn printSortedSet(w: *Writer, v: Value) anyerror!void {
+pub fn printSortedSet(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     try w.writeAll("#{");
-    const s = v.decodePtr(*const sorted_collection.SortedSet);
-    const m = s.map.decodePtr(*const sorted_collection.SortedMap);
+    const s = v.decodePtr(*const sorted_collection.SortedSet); // repr-decode-ok: single-backing tag (sorted_set)
+    const m = s.map.decodePtr(*const sorted_collection.SortedMap); // repr-decode-ok: single-backing tag (sorted_set -> its SortedMap)
     var first = true;
     var count: i64 = 0;
     var stop = false;
-    try printSortedEntries(w, m.root, &first, &count, &stop, false);
+    try printSortedEntries(ports, w, m.root, &first, &count, &stop, false);
     try w.writeByte('}');
 }
 
@@ -1631,9 +1811,98 @@ pub fn printString(w: *Writer, s: []const u8) anyerror!void {
 const testing = std.testing;
 const Runtime = @import("runtime.zig").Runtime;
 
+/// Count non-overlapping occurrences of `needle` in `hay`.
+fn occurrences(hay: []const u8, needle: []const u8) usize {
+    var n: usize = 0;
+    var i: usize = 0;
+    while (std.mem.findPos(u8, hay, i, needle)) |at| : (i = at + needle.len) n += 1;
+    return n;
+}
+
+/// Render `v` under one pair of limits, restoring them after. The limits are
+/// file-private thread-locals, which is why the two monotonicity laws below
+/// live here rather than in `testing/prop_print.zig`.
+fn renderAtLimits(buf: []u8, v: Value, length: ?i64, level: ?i64) ![]const u8 {
+    const saved_len = print_length_limit;
+    const saved_lvl = print_level_limit;
+    const saved_depth = print_depth;
+    defer {
+        print_length_limit = saved_len;
+        print_level_limit = saved_lvl;
+        print_depth = saved_depth;
+    }
+    print_length_limit = length;
+    print_level_limit = level;
+    print_depth = 0;
+    var w: Writer = .fixed(buf);
+    try printValue(null, &w, v);
+    return w.buffered();
+}
+
+// Raising `*print-length*` never removes output: the `...` marker can only
+// disappear, never appear, and at a limit past the collection's size there is
+// none at all. Exhaustive over every limit from 0 to size+1 rather than
+// sampled — the domain is small enough that exhaustive is the stronger claim.
+test "property: *print-length* truncation is monotone in the limit" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+
+    const sizes = [_]u32{ 0, 1, 2, 5, 9 };
+    for (sizes) |n| {
+        var vec = vector_collection.empty();
+        var i: u32 = 0;
+        while (i < n) : (i += 1) vec = try vector_collection.conj(&rt, vec, Value.initInteger(i));
+
+        var buf_a: [512]u8 = undefined;
+        var buf_b: [512]u8 = undefined;
+        var lim: i64 = 0;
+        while (lim <= @as(i64, n) + 1) : (lim += 1) {
+            const lower = try renderAtLimits(&buf_a, vec, lim, null);
+            const lower_marks = occurrences(lower, "...");
+            const higher = try renderAtLimits(&buf_b, vec, lim + 1, null);
+            // Never MORE truncation from a HIGHER limit.
+            try testing.expect(occurrences(higher, "...") <= lower_marks);
+            // At or past the size, nothing is cut.
+            if (lim >= n) try testing.expectEqual(@as(usize, 0), lower_marks);
+        }
+    }
+}
+
+// Raising `*print-level*` never turns rendered structure back into `#`. The
+// generated value carries no set, record or tagged literal, so every `#` in
+// the rendering is a level cut.
+test "property: *print-level* truncation is monotone in the limit" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+
+    // [[[[0]]]] to a depth of 6 — one cut per level, so the count moves.
+    var nested = Value.initInteger(0);
+    var d: u32 = 0;
+    while (d < 6) : (d += 1) {
+        nested = try vector_collection.conj(&rt, vector_collection.empty(), nested);
+    }
+
+    var buf_a: [512]u8 = undefined;
+    var buf_b: [512]u8 = undefined;
+    var lvl: i64 = 0;
+    while (lvl <= 8) : (lvl += 1) {
+        const lower = try renderAtLimits(&buf_a, nested, null, lvl);
+        const higher = try renderAtLimits(&buf_b, nested, null, lvl + 1);
+        try testing.expect(occurrences(higher, "#") <= occurrences(lower, "#"));
+    }
+    // Past the depth the value renders whole, with no cut at all.
+    const whole = try renderAtLimits(&buf_a, nested, null, 99);
+    try testing.expectEqual(@as(usize, 0), occurrences(whole, "#"));
+    try testing.expectEqualStrings("[[[[[[0]]]]]]", whole);
+}
+
 fn renderToBuf(buf: []u8, v: Value) ![]const u8 {
     var w: Writer = .fixed(buf);
-    try printValue(&w, v);
+    try printValue(null, &w, v);
     return w.buffered();
 }
 

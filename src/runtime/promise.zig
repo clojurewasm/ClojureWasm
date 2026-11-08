@@ -4,15 +4,15 @@
 //! `(promise)` constructs an unfulfilled Promise. `(deliver p v)` sets the
 //! value once (idempotent: re-delivery returns `nil`, matching JVM
 //! `Promise.deliver` after a failed CAS) and wakes every blocked deref'er.
-//! `(deref p)` BLOCKS on an `Io.Mutex`+`Io.Condition` cell until the value is
-//! delivered (possibly from another thread), then returns it — the standard
+//! `(deref p)` BLOCKS on the cell's latch until the value is delivered
+//! (possibly from another thread), then returns it — the standard
 //! `(let [p (promise)] (future (deliver p v)) (deref p))` cross-thread pattern.
 //! Deref of a never-delivered promise blocks forever, exactly as JVM Clojure
 //! does (D-113 discharged: the prior single-thread `promise_undelivered_error`
 //! raise is retired now that real threading can block).
 //!
-//! The result cell (`Io.Condition` has automatic layout, so it cannot live in
-//! the `extern` Promise) is infra-allocated and freed by the Promise's
+//! The result cell (its sync members have automatic layout, so it cannot live
+//! in the `extern` Promise) is infra-allocated and freed by the Promise's
 //! finaliser — the same shape as `future.zig`'s `FutureCell`.
 //!
 //! Per F-009 the implementation is namespace-neutral; surface `promise` /
@@ -24,6 +24,8 @@ const Value = value_mod.Value;
 const HeapHeader = value_mod.HeapHeader;
 const Runtime = @import("runtime.zig").Runtime;
 const io_default = @import("concurrency/io_default.zig");
+const Latch = @import("concurrency/latch.zig").Latch;
+const clock = @import("clock.zig");
 const tag_ops = @import("gc/tag_ops.zig");
 const gc_heap_mod = @import("gc/gc_heap.zig");
 const mark_sweep = @import("gc/mark_sweep.zig");
@@ -34,12 +36,16 @@ pub const PromiseState = enum(u8) {
 };
 
 /// Blocking cell, held off the GC heap (see the module doc); infra-allocated at
-/// construction, freed by the Promise's finaliser. `deref` waits on `cond`;
-/// `deliver` broadcasts it. Stable address — a parked deref'er's wait target is
-/// valid for the cell's lifetime (the Promise stays rooted while held).
+/// construction, freed by the Promise's finaliser. Stable address — a parked
+/// deref'er's wait target is valid for the cell's lifetime (the Promise stays
+/// rooted while held).
+///
+/// `mutex` guards the payload (`state` / `value`); `delivered` carries the edge.
+/// Delivery is monotonic, so it is a latch, and a latch can be waited on with a
+/// deadline (`concurrency/latch.zig`). Publish under the mutex, then `signal`.
 const PromiseCell = struct {
     mutex: std.Io.Mutex = .init,
-    cond: std.Io.Condition = .init,
+    delivered: Latch = .{},
 };
 
 pub const Promise = extern struct {
@@ -83,21 +89,22 @@ pub fn deliver(v: Value, val: Value) Value {
     if (p.state == .delivered) return .nil_val;
     p.value = val;
     p.state = .delivered;
-    io_default.condBroadcast(&p.cell.cond);
+    p.cell.delivered.signal();
     return v;
 }
 
 /// `(deref p)` — BLOCK until the value is delivered (matching JVM Clojure),
-/// then return it. A never-delivered promise blocks forever (a user deadlock,
-/// as in clj).
-pub fn deref(v: Value) Value {
+/// then return it. Bounded by `deadline_ns` when the caller has an eval budget
+/// armed: without one a never-delivered promise blocks forever, which is the clj
+/// behaviour, but a metered evaluation must not be able to park past its
+/// deadline. Returns null iff the deadline passed undelivered.
+pub fn deref(v: Value, deadline_ns: ?i64) ?Value {
     std.debug.assert(v.tag() == .promise);
     const p = v.decodePtr(*Promise);
+    // Wait OUTSIDE the mutex: the latch is the edge, the mutex guards the value.
+    if (!p.cell.delivered.wait(deadline_ns)) return null;
     io_default.lockMutex(&p.cell.mutex);
     defer io_default.unlockMutex(&p.cell.mutex);
-    while (p.state == .pending) {
-        io_default.condWait(&p.cell.cond, &p.cell.mutex);
-    }
     return p.value;
 }
 
@@ -110,16 +117,12 @@ pub fn isRealised(v: Value) bool {
 }
 
 /// Wait up to `timeout_ms` for a delivery (the 3-arity `deref` support).
-/// Polls in 1ms sleeps — Zig 0.16's `std.Io.Condition` has no timed wait
-/// (the future.zig waitRealised twin). False on timeout.
+/// False on timeout.
 pub fn waitDelivered(io: std.Io, v: Value, timeout_ms: i64) bool {
-    const clock = @import("clock.zig");
-    const deadline = clock.currentMillis(io) + @max(timeout_ms, 0);
-    while (!isRealised(v)) {
-        if (clock.currentMillis(io) >= deadline) return false;
-        io_default.sleep(1_000_000); // 1ms
-    }
-    return true;
+    std.debug.assert(v.tag() == .promise);
+    const p = v.decodePtr(*Promise);
+    // Saturating: `(deref p Long/MAX_VALUE v)` must wait "forever", not overflow.
+    return p.cell.delivered.wait(clock.nanoTime(io) +| (@max(timeout_ms, 0) *| std.time.ns_per_ms));
 }
 
 pub fn traceGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
@@ -138,9 +141,16 @@ pub fn finaliseGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
     gc.infra.destroy(p.cell);
 }
 
+/// D-573: the off-heap cell.
+fn ownedBytes(header: *HeapHeader) usize {
+    _ = header;
+    return @sizeOf(PromiseCell);
+}
+
 pub fn registerGcHooks() void {
     tag_ops.registerTrace(.promise, &traceGc);
     tag_ops.registerFinaliser(.promise, &finaliseGc);
+    tag_ops.registerOwnedBytes(.promise, &ownedBytes);
 }
 
 const testing = std.testing;
@@ -156,9 +166,9 @@ test "Promise alloc + deliver + deref (already-delivered, no block)" {
     _ = deliver(p, Value.initInteger(42));
     try testing.expect(isRealised(p));
     // Already delivered → deref returns immediately (no block).
-    try testing.expectEqual(@as(i64, 42), deref(p).asInteger());
+    try testing.expectEqual(@as(i64, 42), deref(p, null).?.asInteger());
     // Retry-deliver returns nil and does NOT overwrite.
     const second = deliver(p, Value.initInteger(99));
     try testing.expect(second.isNil());
-    try testing.expectEqual(@as(i64, 42), deref(p).asInteger());
+    try testing.expectEqual(@as(i64, 42), deref(p, null).?.asInteger());
 }

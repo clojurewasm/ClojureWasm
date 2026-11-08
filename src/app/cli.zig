@@ -6,10 +6,10 @@
 //!   - `-e <expr>` / `--eval <expr>`: in-line source string.
 //!   - `<file.clj>` (positional): file's contents.
 //!   - `-` (positional): stdin (heredoc-friendly).
-//!   - `--compare`: runs source through BOTH backends
-//!     via `eval/evaluator.compare`; prints `OK` + the value when
-//!     they agree, `MISMATCH` + both values when they diverge
-//!     (exit 1 on mismatch). ADR-0005 full-bench remit.
+//!   - `--compare`: runs source through BOTH backends in isolated runtimes;
+//!     prints `OK` + the agreed value/error when value and stdout agree,
+//!     `MISMATCH` + both outcomes otherwise (exit 1 on mismatch).
+//!     ADR-0005 full-bench remit.
 //!   - `-h` / `--help`: usage message.
 //!
 //! Argv parsing lives here (extracted from `src/main.zig`, D-031) so
@@ -34,7 +34,16 @@ const deps_resolve = @import("deps/resolve.zig");
 const deps_run_mode = @import("deps/run_mode.zig");
 const error_print = @import("../runtime/error/print.zig");
 const build_options = @import("build_options");
+const builtin = @import("builtin");
 const startup_profile = @import("../runtime/startup_profile.zig");
+
+/// Cross-platform argv iterator.
+fn argIter(init: std.process.Init, gpa: std.mem.Allocator) !std.process.Args.Iterator {
+    return if (comptime builtin.os.tag == .wasi)
+        try std.process.Args.Iterator.initAllocator(init.minimal.args, gpa)
+    else
+        init.minimal.args.iterate();
+}
 
 /// Top-level CLI dispatcher. Called from `src/main.zig::main` with
 /// the Juicy-Main `std.process.Init` bundle. Parses argv, decides
@@ -73,6 +82,10 @@ pub fn dispatch(init: std.process.Init) !void {
     // safepoint mode above; both armed together by `gc_torture.arm()`.
     if (init.environ_map.get("CLJW_GC_TORTURE_ALLOC")) |raw|
         gc_torture.configureAlloc(std.fmt.parseInt(u32, raw, 10) catch 1);
+    // ADR-0176: teardown fault injection (widens the exit-teardown window so
+    // a live-worker-guard regression aborts deterministically; test-only).
+    if (init.environ_map.get("CLJW_TORTURE_TEARDOWN_DELAY_MS")) |raw|
+        gc_torture.configureTeardownDelay(std.fmt.parseInt(u32, raw, 10) catch 50);
 
     // Publish the process env for the runtime surface (`System/getenv`).
     // `init.environ_map` is already a `*Environ.Map` owned by `init`
@@ -98,15 +111,17 @@ pub fn dispatch(init: std.process.Init) !void {
     // dispatch proceeds.
     var embedded_args: std.ArrayList([]const u8) = .empty;
     {
-        var ait = init.minimal.args.iterate();
+        var ait = try argIter(init, gpa);
         _ = ait.skip(); // argv[0]
         while (ait.next()) |a| try embedded_args.append(arena, a);
     }
     var cli_prof = startup_profile.Profiler.start(io);
-    if (try builder.tryRunEmbedded(io, gpa, arena, stdout, embedded_args.items)) return;
+    if (comptime builtin.os.tag != .wasi) {
+        if (try builder.tryRunEmbedded(io, gpa, arena, stdout, embedded_args.items)) return;
+    }
     cli_prof.mark("tryRunEmbedded(self-exe read)");
 
-    var args = init.minimal.args.iterate();
+    var args = try argIter(init, gpa);
     _ = args.skip(); // argv[0]
 
     // Env-derived run config, hoisted so every dispatch path (REPL entries +
@@ -118,13 +133,24 @@ pub fn dispatch(init: std.process.Init) !void {
     const git_cache_base: ?[]const u8 = init.environ_map.get("CLJW_HOME") orelse
         if (init.environ_map.get("HOME")) |h| try std.fmt.allocPrint(arena, "{s}/.cljw", .{h}) else null;
 
-    // `cljw repl` subcommand (ADR-0048) — peek the first positional
-    // and route to the REPL when it matches. The REPL takes no further
-    // argv; trailing args are not allowed today (a future `--init` /
-    // `--port` would relax this).
+    // Subcommand routing (ADR-0048) — peek the first positional and
+    // route when it matches.
     if (args.next()) |first| {
         if (std.mem.eql(u8, first, "repl")) {
-            const load_paths = try resolveDefaultClasspath(io, arena, stderr, cljw_path, git_cache_base);
+            // Same `[-cp <dirs>] [-A:alias…]` surface as every other eval
+            // entry point (the D-322 residual): trailing args used to be
+            // silently ignored, so `cljw repl -cp src` dropped the -cp
+            // without a diagnostic. Unknown arguments are rejected.
+            var repl_cp: ?[]const u8 = null;
+            var repl_aliases: std.ArrayList([]const u8) = .empty;
+            while (args.next()) |a| {
+                if (!(try consumeCpAliasArg(arena, stderr, "repl", a, &args, &repl_cp, &repl_aliases))) {
+                    try stderr.print("repl: unknown argument '{s}'\n", .{a});
+                    try stderr.flush();
+                    std.process.exit(1);
+                }
+            }
+            const load_paths = try resolveClasspath(io, arena, stderr, repl_cp, cljw_path, repl_aliases.items, git_cache_base);
             return repl.run(io, gpa, arena, stdout, stderr, load_paths, fs_jail_root);
         }
         if (std.mem.eql(u8, first, "render-error")) {
@@ -133,9 +159,14 @@ pub fn dispatch(init: std.process.Init) !void {
             return;
         }
         if (std.mem.eql(u8, first, "nrepl")) {
-            // nREPL server (ADR-0048). Optional `--port N`
-            // (default 7888 per JVM nREPL convention).
+            // nREPL server (ADR-0048). Optional `--port N` (default 7888 per
+            // JVM nREPL convention), plus the same `[-cp <dirs>] [-A:alias…]`
+            // classpath surface every other entry point carries (D-322): an
+            // editor session is the one place the user is CERTAIN to be on a
+            // project, so `(require '[my.lib])` must resolve off disk there.
             var port: u16 = 7888;
+            var nrepl_cp: ?[]const u8 = null;
+            var nrepl_aliases: std.ArrayList([]const u8) = .empty;
             while (args.next()) |a| {
                 if (std.mem.eql(u8, a, "--port")) {
                     const p_str = args.next() orelse {
@@ -148,13 +179,16 @@ pub fn dispatch(init: std.process.Init) !void {
                         try stderr.flush();
                         std.process.exit(1);
                     };
+                } else if (try consumeCpAliasArg(arena, stderr, "nrepl", a, &args, &nrepl_cp, &nrepl_aliases)) {
+                    // consumed by the shared classpath-surface arm
                 } else {
                     try stderr.print("nrepl: unknown argument '{s}'\n", .{a});
                     try stderr.flush();
                     std.process.exit(1);
                 }
             }
-            return nrepl.run(io, gpa, arena, stdout, stderr, port);
+            const load_paths = try resolveClasspath(io, arena, stderr, nrepl_cp, cljw_path, nrepl_aliases.items, git_cache_base);
+            return nrepl.run(io, gpa, arena, stdout, stderr, port, load_paths, fs_jail_root);
         }
         if (std.mem.eql(u8, first, "build")) {
             // D-100(b) + ADR-0034 am3/am4: `cljw build <in.clj> -o <out>` (script
@@ -181,17 +215,8 @@ pub fn dispatch(init: std.process.Init) !void {
                         try stderr.flush();
                         std.process.exit(1);
                     };
-                } else if (std.mem.eql(u8, a, "-cp") or std.mem.eql(u8, a, "--classpath")) {
-                    build_cp = args.next() orelse {
-                        try stderr.writeAll("build: -cp requires an argument\n");
-                        try stderr.flush();
-                        std.process.exit(1);
-                    };
-                } else if (std.mem.startsWith(u8, a, "-A")) {
-                    var it = std.mem.splitScalar(u8, a[2..], ':');
-                    while (it.next()) |name| {
-                        if (name.len > 0) try build_aliases.append(arena, name);
-                    }
+                } else if (try consumeCpAliasArg(arena, stderr, "build", a, &args, &build_cp, &build_aliases)) {
+                    // consumed by the shared classpath-surface arm
                 } else if (std.mem.startsWith(u8, a, "-") and a.len > 1) {
                     try stderr.print("build: unknown option '{s}'\n", .{a});
                     try stderr.flush();
@@ -237,13 +262,13 @@ pub fn dispatch(init: std.process.Init) !void {
                 std.process.exit(1);
             }
             if (main_ns) |mns| {
-                builder.buildMainFile(io, gpa, arena, mns, main_args.items, out, deps.load_paths) catch |err| {
+                builder.buildMainFile(io, gpa, arena, stdout, mns, main_args.items, out, deps.load_paths) catch |err| {
                     try stderr.print("build failed: {s}\n", .{@errorName(err)});
                     try stderr.flush();
                     std.process.exit(1);
                 };
             } else {
-                builder.buildFile(io, gpa, arena, in_path.?, out, deps.load_paths) catch |err| {
+                builder.buildFile(io, gpa, arena, stdout, in_path.?, out, deps.load_paths) catch |err| {
                     try stderr.print("build failed: {s}\n", .{@errorName(err)});
                     try stderr.flush();
                     std.process.exit(1);
@@ -316,10 +341,14 @@ fn dispatchArgsRest(
                 \\ClojureWasm v{s}
                 \\Usage: cljw [options] [<file.clj> | -]
                 \\  -e, --eval <expr>  Read, analyse, evaluate <expr>; print each result.
-                \\  <file.clj>         Run the named source file as a script (no result echo).
+                \\  <file.clj> [args]  Run the named source file as a script (no result echo);
+                \\                     trailing args bind to *command-line-args*
+                \\                     (a -cp <dirs> right after the file still
+                \\                     sets the classpath).
                 \\  -                  Run stdin as a script (no result echo; heredoc-friendly).
                 \\  -cp, --classpath <dirs>  Colon-separated dirs `require` searches
-                \\                     for `.clj`/`.cljc` libs (else $CLJW_PATH, else ".").
+                \\                     for `.cljw`/`.clj`/`.cljc` libs, in that order
+                \\                     (else $CLJW_PATH, else ".").
                 \\  -A:a1:a2           Select deps.edn aliases (their :extra-paths /
                 \\                     :extra-deps join the classpath).
                 \\  -M[:a] [main-opts] Run mode: the alias :main-opts + your args via
@@ -334,9 +363,13 @@ fn dispatchArgsRest(
                 \\  -h, --help         Show this help.
                 \\
                 \\Subcommands:
-                \\  repl               Start a terminal REPL.
-                \\  nrepl [--port N]   Start an nREPL server (default port 7888) for
-                \\                     CIDER and other editors.
+                \\  repl [-cp <dirs>] [-A:alias…]
+                \\                     Start a terminal REPL. Classpath resolves as
+                \\                     for a run: `-cp` wins, else $CLJW_PATH, else ".".
+                \\  nrepl [--port N] [-cp <dirs>] [-A:alias…]
+                \\                     Start an nREPL server (default port 7888) for
+                \\                     CIDER and other editors. Classpath resolves as
+                \\                     for a run: `-cp` wins, else $CLJW_PATH, else ".".
                 \\  build <in.clj> -o <out> [-cp <dirs>] [-A:alias…]
                 \\                     Compile a script (with the runtime) into one
                 \\                     self-contained native binary. Main-mode variant:
@@ -411,13 +444,43 @@ fn dispatchArgsRest(
             defer file.close(io);
             var file_buf: [4096]u8 = undefined;
             var file_reader = file.reader(io, &file_buf);
-            source_text = file_reader.interface.allocRemaining(arena, .unlimited) catch |err| {
+            source_text = file_io.readToEnd(&file_reader, arena) catch |err| {
                 try stderr.print("Error reading {s}: {s}\n", .{ arg, @errorName(err) });
                 try stderr.flush();
                 std.process.exit(1);
             };
             source_label = arg;
             print_results = false;
+            // `cljw script.clj a b` = `clojure script.clj a b`: every token after
+            // the script path is a script argument bound to *command-line-args*
+            // (clojure.main's script contract, same as the `-M script.clj a b`
+            // path, D-310), never another file or cljw option. The setter rides
+            // line 1 with no newline so script line numbers stay exact.
+            // Exception: `-cp` / `--classpath <dirs>` placed DIRECTLY after the
+            // script path stay cljw options (`cljw app.clj -cp lib` is the
+            // documented ADR-0135 shape); the first other token starts the
+            // script args, and every token from there on is an arg.
+            var script_args: std.ArrayList([]const u8) = .empty;
+            while (args.next()) |a| {
+                if (script_args.items.len == 0 and
+                    (std.mem.eql(u8, a, "-cp") or std.mem.eql(u8, a, "--classpath")))
+                {
+                    classpath_arg = args.next() orelse {
+                        try stderr.print("Error: -cp / --classpath requires an argument\n", .{});
+                        try stderr.flush();
+                        std.process.exit(1);
+                    };
+                    continue;
+                }
+                try script_args.append(arena, a);
+            }
+            if (script_args.items.len > 0) {
+                var aw: std.Io.Writer.Allocating = .init(arena);
+                try deps_run_mode.writeClArgsSetter(&aw.writer, script_args.items);
+                try aw.writer.writeAll(source_text.?);
+                source_text = try aw.toOwnedSlice();
+            }
+            break;
         }
     }
 
@@ -435,7 +498,7 @@ fn dispatchArgsRest(
     // D-309: a `-M`/`-X` (or bare `-m`) run mode supersedes the `-e`/file path —
     // it runs a `-main` / `:exec-fn` instead of printing eval results.
     if (run_mode) |mode| {
-        try deps_run_mode.run(io, gpa, arena, stdout, stderr, mode, deps.cfg, alias_names.items, run_args.items, deps.load_paths, fs_jail_root);
+        try deps_run_mode.run(io, gpa, arena, stdout, stderr, mode, deps.cfg, alias_names.items, run_args.items, deps.load_paths, compare_mode, fs_jail_root);
         return;
     }
 
@@ -449,7 +512,7 @@ fn dispatchArgsRest(
     }
 
     if (compare_mode) {
-        try runner.runSourceCompare(io, gpa, arena, stdout, stderr, source_text.?, source_label);
+        try runner.runSourceCompare(io, gpa, arena, stdout, stderr, source_text.?, source_label, deps.load_paths, fs_jail_root);
     } else {
         try runner.runSource(io, gpa, arena, stdout, stderr, source_text.?, source_label, deps.load_paths, print_results, fs_jail_root);
     }
@@ -491,15 +554,60 @@ fn loadDepsEdn(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, bas
     return .{ .load_paths = try merged.toOwnedSlice(arena), .cfg = cfg };
 }
 
-/// The default classpath for a no-`-cp` REPL entry (the `repl` subcommand + the
-/// bare no-args fallback): `$CLJW_PATH` (else cwd ".") split into roots, with a
-/// `./deps.edn` `:paths`/source-deps prepended. Mirrors `dispatchArgsRest`'s
-/// resolution minus the `-cp` flag + `-A` aliases, so the classpath-resolution
-/// behaviour lives in one place rather than duplicated per REPL entry (F-011).
-fn resolveDefaultClasspath(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, cljw_path_env: ?[]const u8, git_cache_base: ?[]const u8) ![]const []const u8 {
-    const base_paths = try splitClasspath(arena, cljw_path_env orelse ".");
-    const deps = try loadDepsEdn(io, arena, stderr, base_paths, &.{}, git_cache_base);
+/// Shared `-cp <dirs>` / `-A:alias…` arm for the subcommand arg loops
+/// (`repl` / `nrepl` / `build`): the classpath surface is one contract
+/// (ADR-0084 / D-322), so its spelling lives once. Returns true when `a`
+/// was consumed; the caller keeps its own flags and its unknown-arg
+/// diagnostic.
+fn consumeCpAliasArg(
+    arena: std.mem.Allocator,
+    stderr: *std.Io.Writer,
+    subcmd: []const u8,
+    a: []const u8,
+    args: anytype,
+    cp: *?[]const u8,
+    aliases: *std.ArrayList([]const u8),
+) !bool {
+    if (std.mem.eql(u8, a, "-cp") or std.mem.eql(u8, a, "--classpath")) {
+        cp.* = args.next() orelse {
+            try stderr.print("{s}: -cp requires an argument\n", .{subcmd});
+            try stderr.flush();
+            std.process.exit(1);
+        };
+        return true;
+    }
+    if (std.mem.startsWith(u8, a, "-A")) {
+        var it = std.mem.splitScalar(u8, a[2..], ':');
+        while (it.next()) |name| {
+            if (name.len > 0) try aliases.append(arena, name);
+        }
+        return true;
+    }
+    return false;
+}
+
+/// The classpath for a REPL-shaped entry (`repl`, `nrepl`, the bare no-args
+/// fallback), resolved by the ADR-0084 rule: `-cp` wins, else `$CLJW_PATH`,
+/// else cwd ".", split into roots with a `./deps.edn` `:paths`/source-deps
+/// prepended. Mirrors `dispatchArgsRest`'s resolution so the rule lives in one
+/// place rather than duplicated per entry point (F-011).
+fn resolveClasspath(
+    io: std.Io,
+    arena: std.mem.Allocator,
+    stderr: *std.Io.Writer,
+    classpath_arg: ?[]const u8,
+    cljw_path_env: ?[]const u8,
+    alias_names: []const []const u8,
+    git_cache_base: ?[]const u8,
+) ![]const []const u8 {
+    const base_paths = try splitClasspath(arena, classpath_arg orelse cljw_path_env orelse ".");
+    const deps = try loadDepsEdn(io, arena, stderr, base_paths, alias_names, git_cache_base);
     return deps.load_paths;
+}
+
+/// `resolveClasspath` for an entry that takes neither `-cp` nor `-A`.
+fn resolveDefaultClasspath(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, cljw_path_env: ?[]const u8, git_cache_base: ?[]const u8) ![]const []const u8 {
+    return resolveClasspath(io, arena, stderr, null, cljw_path_env, &.{}, git_cache_base);
 }
 
 /// Split a colon-separated classpath string into its directory roots, allocated

@@ -1,0 +1,82 @@
+(Long. "5")
+;;=> 5
+(Long. 5)
+;;=> 5
+(new Long "5")
+;;=> 5
+(new Long 5)
+;;=> 5
+(Integer. "5")
+;;=> 5
+(Integer. 5)
+;;=> 5
+(new Integer "5")
+;;=> 5
+(Double. "1.5")
+;;=> 1.5
+(Double. 1.5)
+;;=> 1.5
+(new Double 1.5)
+;;=> 1.5
+(Float. "1.5")
+;;=> 1.5
+(Float. 1.5)
+;;=> 1.5
+(Character. \a)
+;;=> \a
+(new Character \a)
+;;=> \a
+(Boolean. "true")
+;;=> true
+(Boolean. "false")
+;;=> false
+(Boolean. "yes")
+;;=> false
+(Boolean. "TRUE")
+;;=> true
+(Boolean. true)
+;;=> true
+(Boolean. nil)
+;;=> false
+(new Boolean "true")
+;;=> true
+(Short. "5")
+;;=> 5
+(Byte. "5")
+;;=> 5
+(+ 1 (Integer. 7))
+;;=> 8
+(= 7 (Long. 7))
+;;=> true
+(int (Integer. 7))
+;;=> 7
+(str (Integer. 7))
+;;=> "7"
+(str (Character. \a))
+;;=> "a"
+(inc (Long. "41"))
+;;=> 42
+(* 2 (Double. "1.5"))
+;;=> 3.0
+(= 1.5 (Float. "1.5"))
+;;=> true
+(Integer. "abc")
+;;=> <clj-error> NumberFormatException
+(Integer. 1.5)
+;;=> <clj-error> IllegalArgumentException
+(Character. "a")
+;;=> <clj-error> ClassCastException
+(Long. 1.5)
+;;=> <clj-error> IllegalArgumentException
+(Double. 5)
+;;=> <clj-error> IllegalArgumentException
+(Float. 5)
+;;=> <clj-error> IllegalArgumentException
+(Short. "99999")
+;;=> <clj-error> NumberFormatException
+(Byte. "300")
+;;=> <clj-error> NumberFormatException
+(Double. "x")
+;;=> <clj-error> NumberFormatException
+(Integer. 3000000000)
+;;=> <clj-error> ArithmeticException

@@ -1,0 +1,5 @@
+(defmulti mm identity)
+(println :class (class mm))
+(println :bare  (try (instance? MultiFn mm) (catch Throwable e (str "ERR:" (.getMessage e)))))
+(println :fq    (try (instance? clojure.lang.MultiFn mm) (catch Throwable e (str "ERR:" (.getMessage e)))))
+(println :report-is-multi (try (instance? MultiFn clojure.test/report) (catch Throwable e (str "ERR:" (.getMessage e)))))

@@ -1,0 +1,254 @@
+(do (defprotocol Area (area [s])) :ok)
+;;=> :ok
+(do (defrecord R [a] Area (area [_] :old-area)) :ok)
+;;=> :ok
+(do (def r (->R 1)) (def rc (class r)) :ok)
+;;=> :ok
+(do (defrecord R [a b] Area (area [_] :new-area)) :ok)
+;;=> :ok
+(:a r)
+;;=> 1
+(.-a r)
+;;=> 1
+(get r :b :missing)
+;;=> :missing
+(pr-str r)
+;;=> "#user.R{:a 1}"
+(pr-str (->R 1 2))
+;;=> "#user.R{:a 1, :b 2}"
+(instance? R r)
+;;=> false
+(instance? rc r)
+;;=> true
+(instance? user.R r)
+;;=> false
+(instance? R (->R 1 2))
+;;=> true
+(instance? rc (->R 1 2))
+;;=> false
+(.isInstance R r)
+;;=> false
+(.isInstance rc r)
+;;=> true
+(= rc R)
+;;=> false
+(identical? rc (class r))
+;;=> true
+(= r r)
+;;=> true
+(= r (->R 1 nil))
+;;=> false
+(= (->R 1 2) (->R 1 2))
+;;=> true
+(= (hash r) (hash r))
+;;=> true
+(integer? (hash r))
+;;=> true
+(area r)
+;;=> :old-area
+(area (->R 1 2))
+;;=> :new-area
+(satisfies? Area r)
+;;=> true
+(extends? Area rc)
+;;=> true
+(map? r)
+;;=> true
+(record? r)
+;;=> true
+(pr-str (assoc r :c 3))
+;;=> "#user.R{:a 1, :c 3}"
+(pr-str (assoc r :a 9))
+;;=> "#user.R{:a 9}"
+(pr-str (dissoc r :a))
+;;=> "{}"
+(keys r)
+;;=> (:a)
+(vals r)
+;;=> (1)
+(count r)
+;;=> 1
+(isa? rc R)
+;;=> false
+(isa? R rc)
+;;=> false
+(isa? rc rc)
+;;=> true
+(isa? rc Object)
+;;=> true
+(instance? Object r)
+;;=> true
+(do (defmulti f class) (defmethod f :default [_] :default) (defmethod f R [_] :new) :ok)
+;;=> :ok
+(f r)
+;;=> :default
+(f (->R 1 2))
+;;=> :new
+(do (defmethod f rc [_] :old) :ok)
+;;=> :ok
+(f r)
+;;=> :old
+(f (->R 1 2))
+;;=> :new
+(do (defprotocol P2 (p2 [x])) (extend-protocol P2 R (p2 [_] :new-p2)) :ok)
+;;=> :ok
+(satisfies? P2 r)
+;;=> false
+(satisfies? P2 (->R 1 2))
+;;=> true
+(extends? P2 rc)
+;;=> false
+(p2 (->R 1 2))
+;;=> :new-p2
+(do (derive rc ::old-kind) :ok)
+;;=> :ok
+(isa? rc ::old-kind)
+;;=> true
+(isa? R ::old-kind)
+;;=> false
+(do (defrecord S [a]) :ok)
+;;=> :ok
+(do (def s1 (->S 1)) :ok)
+;;=> :ok
+(do (defrecord S [a]) :ok)
+;;=> :ok
+(= s1 (->S 1))
+;;=> false
+(= (hash s1) (hash (->S 1)))
+;;=> true
+(instance? S s1)
+;;=> false
+(pr-str s1)
+;;=> "#user.S{:a 1}"
+(do (deftype T [x] Area (area [_] :old-t)) :ok)
+;;=> :ok
+(do (def t (T. 1)) (def tc (class t)) :ok)
+;;=> :ok
+(do (deftype T [x y]) :ok)
+;;=> :ok
+(.-x t)
+;;=> 1
+(.-x (T. 1 2))
+;;=> 1
+(.-y (T. 1 2))
+;;=> 2
+(instance? T t)
+;;=> false
+(instance? tc t)
+;;=> true
+(instance? T (T. 1 2))
+;;=> true
+(.isInstance T t)
+;;=> false
+(= tc T)
+;;=> false
+(= t t)
+;;=> true
+(= t (T. 1 2))
+;;=> false
+(= (hash t) (hash t))
+;;=> true
+(area t)
+;;=> :old-t
+(satisfies? Area t)
+;;=> true
+(satisfies? Area (T. 1 2))
+;;=> false
+(isa? tc T)
+;;=> false
+(isa? tc Object)
+;;=> true
+(f t)
+;;=> :default
+(do (defn mk [i] (reify Area (area [_] i))) :ok)
+;;=> :ok
+(reduce + (map area (map mk (range 1000))))
+;;=> 499500
+(let [xs (doall (map mk (range 200)))] (System/gc) (reduce + (map area xs)))
+;;=> 19900
+(let [a (mk 1)] [(instance? (class a) a) (.isInstance (class a) a) (isa? (class a) (class a)) (instance? Object a) (isa? (class a) Object)])
+;;=> [true true true true true]
+(do (dotimes [_ 300] (eval '(defrecord Churn [v]))) :ok)
+;;=> :ok
+(pr-str (->Churn 7))
+;;=> "#user.Churn{:v 7}"
+(let [olds (doall (for [i (range 50)] (do (eval '(defrecord Churn2 [v])) (eval (list '->Churn2 i)))))] (System/gc) [(reduce + (map :v olds)) (pr-str (first olds)) (pr-str (last olds)) (count (set (map class olds)))])
+;;=> [1225 "#user.Churn2{:v 0}" "#user.Churn2{:v 49}" 50]
+(let [olds (doall (for [i (range 20)] (do (eval '(defrecord Churn3 [v])) (eval (list '->Churn3 i)))))] (count (filter #(= (class %) (class (last olds))) olds)))
+;;=> 1
+(do (deftype Sorted []) :ok)
+;;=> :ok
+(sorted? (Sorted.))
+;;=> false
+(instance? clojure.lang.Sorted (Sorted.))
+;;=> false
+(isa? Sorted clojure.lang.Sorted)
+;;=> false
+(do (deftype Keyword []) :ok)
+;;=> :ok
+(ifn? (Keyword.))
+;;=> false
+(instance? clojure.lang.IFn (Keyword.))
+;;=> false
+(isa? Keyword clojure.lang.IFn)
+;;=> false
+(keyword? (Keyword.))
+;;=> false
+(do (deftype PersistentVector []) :ok)
+;;=> :ok
+(vector? (PersistentVector.))
+;;=> false
+(isa? PersistentVector clojure.lang.IFn)
+;;=> false
+(isa? PersistentVector clojure.lang.IPersistentVector)
+;;=> false
+(do (deftype BigInt []) :ok)
+;;=> :ok
+(number? (BigInt.))
+;;=> false
+(instance? Number (BigInt.))
+;;=> false
+(isa? BigInt Number)
+;;=> false
+(do (deftype Ratio []) :ok)
+;;=> :ok
+(isa? Ratio Number)
+;;=> false
+(rational? (Ratio.))
+;;=> false
+(do (deftype ExceptionInfo []) :ok)
+;;=> :ok
+(isa? ExceptionInfo Exception)
+;;=> false
+(instance? Throwable (ExceptionInfo.))
+;;=> false
+(do (deftype LazySeq []) :ok)
+;;=> :ok
+(isa? LazySeq clojure.lang.Seqable)
+;;=> false
+(seq? (LazySeq.))
+;;=> false
+(do (defmulti g class) (defmethod g Number [_] :number) (defmethod g clojure.lang.IFn [_] :ifn) (defmethod g :default [_] :default) :ok)
+;;=> :ok
+(g (BigInt.))
+;;=> :default
+(g (Keyword.))
+;;=> :default
+(g 1)
+;;=> :number
+(g :k)
+;;=> :ifn
+(do (defmulti mi identity) (defmethod mi 'R [_] :sym) (defmethod mi :R [_] :kw) (defmethod mi 'Area [_] :protocol) (defmethod mi :default [_] :default) :ok)
+;;=> :ok
+(mi (->R 1 2))
+;;=> :default
+(mi (mk 1))
+;;=> :default
+(mi r)
+;;=> :default
+(isa? (->R 1 2) 'R)
+;;=> false
+(isa? (->R 1 2) :R)
+;;=> false
+(isa? (mk 1) 'Area)
+;;=> false

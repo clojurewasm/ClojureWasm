@@ -1,7 +1,17 @@
 ;; SPDX-License-Identifier: EPL-2.0
-;; Copyright (c) the ClojureWasm authors. Licensed under EPL-2.0.
-;; Independently reimplements the clojure.set API (originally Rich Hickey; Clojure, EPL-1.0)
-;; for ClojureWasm; no upstream source text is reproduced.
+;;
+;;   Copyright (c) Rich Hickey. All rights reserved.
+;;   The use and distribution terms for this software are covered by the
+;;   Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php).
+;;   By using this software in any fashion, you are agreeing to be bound by the
+;;   terms of this license. You must not remove this notice, or any other, from
+;;   this software.
+;;
+;;   clojure/set.clj — the IMPLEMENTATION is an independent reimplementation for
+;;   ClojureWasm, but the docstrings are reproduced from Clojure's clojure.set
+;;   (by Rich Hickey), so this file carries the upstream notice rather than
+;;   claiming that no upstream text is reproduced (AD-059). Redistributed under
+;;   EPL-2.0 per EPL-1.0 §7. ClojureWasm changes (c) the ClojureWasm authors.
 
 ;; clojure.set — Phase 6.16.b-1 (.clj migration).
 ;;
@@ -15,10 +25,13 @@
 ;; (commit 6.16.b-1 + ADR-0035 in Phase 6.16.b-4 codifies this as a
 ;; proper `(ns ...)` macro).
 ;;
-;; **Variadic via [& sets] + internal arity discrimination**: union /
-;; intersection / difference accept 0/1/2/3+ args using a single
-;; rest-arg `fn*` form (no multi-arity dispatch needed). This sidesteps
-;; D-070 (multi-arity `fn*`) for these three vars.
+;; union / intersection / difference are multi-arity `defn`s matching
+;; upstream's arity sets. They were a single `[& sets]` rest-arg form until
+;; 2026-08-04, sidestepping D-070 (multi-arity `fn*`) — long after D-070 was
+;; discharged. That fossil cost two things: `:arglists` was nil for every var
+;; here (a `def` + `fn*` carries none), and the 0-arity that upstream does NOT
+;; define answered `nil` instead of raising, so `(intersection)` silently
+;; produced a non-set.
 ;;
 ;; Group C (`select` / `project` / `index` / `rename` / `join`) lands
 ;; at 6.16.b-3 after D-061 (`#{}` reader literal) + D-059 (map-literal
@@ -26,46 +39,41 @@
 
 (ns clojure.set (:refer-clojure))
 
-(def union
-  (fn* [& sets]
-    (if (= 0 (count sets))
-      (hash-set)
-      (reduce (fn* [acc s] (reduce conj acc s))
-              (first sets)
-              (rest sets)))))
+(defn union
+  "Return a set that is the union of the input sets"
+  ([] (hash-set))
+  ([s1] s1)
+  ([s1 s2] (reduce conj s1 s2))
+  ([s1 s2 & sets]
+   (reduce (fn* [acc s] (reduce conj acc s)) s1 (cons s2 sets))))
 
-(def intersection
-  (fn* [& sets]
-    (if (= 0 (count sets))
-      nil
-      (if (= 1 (count sets))
-        (first sets)
-        (reduce (fn* [s1 s2]
-                  (reduce (fn* [acc x]
-                            (if (contains? s2 x) acc (disj acc x)))
-                          s1
-                          s1))
-                (first sets)
-                (rest sets))))))
+(defn- intersect2
+  [s1 s2]
+  (reduce (fn* [acc x] (if (contains? s2 x) acc (disj acc x))) s1 s1))
 
-(def difference
-  (fn* [& sets]
-    (if (= 0 (count sets))
-      nil
-      (if (= 1 (count sets))
-        (first sets)
-        (reduce (fn* [s1 s2] (reduce disj s1 s2))
-                (first sets)
-                (rest sets))))))
+(defn intersection
+  "Return a set that is the intersection of the input sets"
+  ([s1] s1)
+  ([s1 s2] (intersect2 s1 s2))
+  ([s1 s2 & sets] (reduce intersect2 (intersect2 s1 s2) sets)))
 
-(def subset?
-  (fn* [s1 s2]
-    (if (<= (count s1) (count s2))
-      (every? (fn* [x] (contains? s2 x)) s1)
-      false)))
+(defn difference
+  "Return a set that is the first set without elements of the remaining sets"
+  ([s1] s1)
+  ([s1 s2] (reduce disj s1 s2))
+  ([s1 s2 & sets] (reduce (fn* [a b] (reduce disj a b)) (reduce disj s1 s2) sets)))
 
-(def superset?
-  (fn* [s1 s2] (subset? s2 s1)))
+(defn subset?
+  "Is set1 a subset of set2?"
+  [set1 set2]
+  (if (<= (count set1) (count set2))
+    (every? (fn* [x] (contains? set2 x)) set1)
+    false))
+
+(defn superset?
+  "Is set1 a superset of set2?"
+  [set1 set2]
+  (subset? set2 set1))
 
 ;; `(rename-keys m kmap)` — rebuild m by replacing each old key in
 ;; kmap with its new-key partner. Skips entries whose old key is not

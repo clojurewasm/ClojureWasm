@@ -29,6 +29,7 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const parse = @import("../../numeric/parse.zig");
 const promote = @import("../../numeric/promote.zig");
+const big_int = @import("../../numeric/big_int.zig");
 const string_mod = @import("../../collection/string.zig");
 
 /// Parse `s` as an i64 in `radix`, wrapping through `promote.wrapI64`
@@ -63,16 +64,45 @@ fn parseLong(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 }
 
 /// Implements `(Long/valueOf x)`. Spec: a String parses (like parseLong
-/// base-10); a number is returned as-is.
+/// base-10); a Long is returned as-is, including a heap Long past i48
+/// (D-165). nil selects the String overload and fails to parse
+/// (NumberFormatException). Anything else, a genuine BigInt or a Double among
+/// them, matches no `valueOf` overload: IllegalArgumentException, as in clj.
 /// JVM reference: java.lang.Long#valueOf.
 /// cw v1 tier: A (§A26 clj differential sweep).
 fn valueOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("Long/valueOf", args, 1, loc);
+    const v = args[0];
+    return switch (v.tag()) {
+        .string => parseI64(rt, string_mod.asString(v), 10, "Long/valueOf", loc),
+        .integer => v,
+        .nil => error_catalog.raise(.number_format_invalid, loc, .{ .fn_name = "Long/valueOf", .text = "null" }),
+        .big_int => if (big_int.originOf(v) == .long) v else unmatched(v, loc),
+        else => unmatched(v, loc),
+    };
+}
+
+fn unmatched(v: Value, loc: SourceLocation) anyerror {
+    const actual = if (v.tag() == .big_int) "BigInt" else @tagName(v.tag());
+    return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "Long/valueOf", .expected = "a Long or a String", .actual = actual });
+}
+
+/// `(Long. x)` / `(new Long x)`: a String parses base-10 (NumberFormatException
+/// when malformed), a Long is itself. Answers the plain cljw value, as every
+/// box ctor does: there is no boxed Long (ADR-0059). Any other argument
+/// matches no ctor. JVM reference: java.lang.Long#Long(long|String).
+fn ctor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("Long.", args, 1, loc);
     return switch (args[0].tag()) {
-        .string => parseI64(rt, string_mod.asString(args[0]), 10, "Long/valueOf", loc),
+        .string => parseI64(rt, string_mod.asString(args[0]), 10, "Long.", loc),
         .integer => args[0],
-        else => error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "Long/valueOf", .actual = @tagName(args[0].tag()) }),
+        .big_int => if (big_int.originOf(args[0]) == .long)
+            args[0]
+        else
+            error_catalog.raise(.ctor_unmatched, loc, .{ .class = "java.lang.Long" }),
+        else => error_catalog.raise(.ctor_unmatched, loc, .{ .class = "java.lang.Long" }),
     };
 }
 
@@ -307,6 +337,7 @@ fn initLong(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerro
         .{ "max", &BinOp2(.max, "max").call },
         .{ "min", &BinOp2(.min, "min").call },
         .{ "valueOf", &valueOf },
+        .{ "<init>", &ctor },
         .{ "toString", &toString },
         .{ "toBinaryString", &RadixString("b", "toBinaryString").call },
         .{ "toHexString", &RadixString("x", "toHexString").call },

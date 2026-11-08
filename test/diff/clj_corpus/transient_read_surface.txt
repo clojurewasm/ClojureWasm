@@ -1,0 +1,70 @@
+;; A LIVE transient is a first-class read target (D-199). `get` / `contains?` /
+;; `count` already accepted one; the CALL path and the keyword path did not, so
+;; `((transient m) :k)` raised value_not_callable and `(:k (transient m))` and
+;; `(get (transient #{x}) x)` quietly answered nil. Fixed 2026-09-10.
+;;
+;; The arities below are clj's and they are NOT uniform across the three
+;; transients, which is why each is pinned rather than inferred from its
+;; persistent sibling:
+;;   - a transient MAP and a transient SET both take an optional not-found
+;;     (clj's ATransientSet implements the 2-arity invoke), where a PERSISTENT
+;;     set is 1-arity only
+;;   - a transient VECTOR is 1-arity and THROWS on a bad index rather than
+;;     answering nil, sharing `vectorIndex` with the persistent vector so the
+;;     two cannot drift
+;;
+;; NOT pinned here, because they are error-NAME only (AD-007) or filed
+;; separately: `((transient [1 2 3]) 99)` and `-1` raise IndexOutOfBounds on
+;; both sides, `((transient v) 1 :d)` is an ArityException on both, and a
+;; non-integer index is [CLJW-VECFN-BADINDEX] (pre-existing, whole vector-as-fn
+;; surface).
+(nth (transient [1 2 3]) 1)
+;;=> 2
+(get (transient [1 2 3]) 1)
+;;=> 2
+(contains? (transient [1 2 3]) 1)
+;;=> true
+((transient [1 2 3]) 1)
+;;=> 2
+(count (transient [1 2 3]))
+;;=> 3
+(get (transient {:x 1 :y -1}) :x)
+;;=> 1
+(contains? (transient {:x 1 :y -1}) :x)
+;;=> true
+(:x (transient {:x 1 :y -1}))
+;;=> 1
+((transient {:x 1 :y -1}) :x)
+;;=> 1
+((transient {:x 1 :y -1}) :zz)
+;;=> nil
+((transient {:x 1 :y -1}) :zz :fallback)
+;;=> :fallback
+(count (transient {:x 1 :y -1}))
+;;=> 2
+(get (transient #{42 "life"}) 42)
+;;=> 42
+(contains? (transient #{42 "life"}) 42)
+;;=> true
+((transient #{42 "life"}) 42)
+;;=> 42
+((transient #{42 "life"}) 99)
+;;=> nil
+(count (transient #{42 "life"}))
+;;=> 2
+(get (transient #{42}) 99 :missing)
+;;=> :missing
+(get (transient [1 2 3]) 99 :missing)
+;;=> :missing
+(get (transient {:x 1}) :zz :missing)
+;;=> :missing
+(:x (transient #{:x}))
+;;=> :x
+(:zz (transient #{:x}))
+;;=> nil
+((transient #{42}) 42 :dflt)
+;;=> 42
+(get (transient #{42}) 42 :dflt)
+;;=> 42
+(nth (transient [1 2 3]) 99 :dflt)
+;;=> :dflt

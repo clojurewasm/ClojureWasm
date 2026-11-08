@@ -1,1 +1,0 @@
-.:/Users/shota.508/.gitlibs/libs/juxt/clip/277021436144abed02f4a987557b7d3e36483cde/src:/Users/shota.508/.m2/repository/org/clojure/clojure/1.12.4/clojure-1.12.4.jar:/Users/shota.508/.m2/repository/org/clojure/core.specs.alpha/0.4.74/core.specs.alpha-0.4.74.jar:/Users/shota.508/.m2/repository/org/clojure/spec.alpha/0.5.238/spec.alpha-0.5.238.jar

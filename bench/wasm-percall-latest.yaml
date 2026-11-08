@@ -1,0 +1,22 @@
+# Wasm per-crossing cost: one wasm/call, cljw-side loop, ns per call
+# Generated: 2026-09-06T04:01:47.697 by bench/wasm_percall.clj
+
+date: "2026-09-06"
+
+env:
+  machine: Linux amd64
+  cljw: ClojureWasm v1.14.1 (wasm)
+  tool: bench/wasm_percall.clj
+  calls_per_trial: 20000
+  trials: 7
+
+percall_ns:
+  auto-main: {median: 1222, min: 1167, max: 1983, sd: 314}
+  auto-worker: {median: 999, min: 879, max: 1113, sd: 90}
+  jit-main: {median: 1193, min: 885, max: 1843, sd: 417}
+  jit-worker: {median: 937, min: 863, max: 1073, sd: 81}
+  interp-main: {median: 355, min: 305, max: 363, sd: 22}
+  interp-worker: {median: 480, min: 401, max: 746, sd: 115}
+
+platform_constant_ns:
+  fn-call: {median: 140, min: 90, max: 213, sd: 44}

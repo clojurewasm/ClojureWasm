@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Zone dependency checker.
 #
-# Enforces the layering rules in .claude/rules/zone_deps.md:
+# Enforces the layering rules in memory 20260909235201-1eab3b17 (zone_deps):
 #   Layer 0 (runtime/) must NOT import from Layer 1+ (eval/, lang/, app/)
 #   Layer 1 (eval/)    must NOT import from Layer 2+ (lang/, app/)
 #   Layer 2 (lang/)    must NOT import from Layer 3 (app/)

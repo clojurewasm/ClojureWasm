@@ -32,7 +32,7 @@ const ByteList = std.ArrayList(u8);
 var sw_descriptor: ?*const type_descriptor.TypeDescriptor = null;
 
 fn listOf(recv: Value) *ByteList {
-    return @ptrFromInt(host_instance.asHostInstance(recv).state[0]);
+    return @ptrFromInt(@as(usize, @intCast(host_instance.asHostInstance(recv).state[0])));
 }
 
 /// `(java.io.StringWriter.)` — empty buffer (Java's int-capacity ctor is a
@@ -95,7 +95,7 @@ fn noOp(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyer
 }
 
 fn finaliseState(infra: std.mem.Allocator, state: *[host_instance.STATE_WORDS]u64) void {
-    const lp: *ByteList = @ptrFromInt(state[0]);
+    const lp: *ByteList = @ptrFromInt(@as(usize, @intCast(state[0])));
     lp.deinit(infra);
     infra.destroy(lp);
 }

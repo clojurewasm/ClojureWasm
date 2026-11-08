@@ -33,7 +33,7 @@ row exists (the main loop creates it — this file does not edit `debt.yaml`).
 | clojure_repl.zig             | clojure.repl               | MISSING   | D-232     | listed in D-232 FRONTIER ("whole missing namespaces"); `doc`/`source`/`dir`/`apropos` absent. Cross-ref D-237/D-247 (REPL introspection, ADR-level).                                                       |
 | clojure_repl_deps.zig        | clojure.repl.deps          | MISSING   | NEEDS-ROW | `add-lib`/`add-libs`/`sync-deps` (gated on deps.edn resolution).                                                                                                                                           |
 | clojure_java_io.zig          | clojure.java.io            | present   | —        | backfilled by 2026-06-10; `(file "x")` verified 2026-06-12. The broader Java-tier `clojure.java.{shell,process,browse}` stay separate MISSING rows.                                                        |
-| clojure_java_shell.zig       | clojure.java.shell         | MISSING   | NEEDS-ROW | gated on Stage-0.3 Java-tier decision.                                                                                                                                                                     |
+| clojure_java_shell.zig       | clojure.java.shell         | present   | —        | landed 2026-09-25 (ADR-0199): `sh` / `with-sh-dir` / `with-sh-env` over the native `cljw.process/run`.                                                                                                     |
 | clojure_java_process.zig     | clojure.java.process       | MISSING   | NEEDS-ROW | gated on Stage-0.3 Java-tier decision.                                                                                                                                                                     |
 | clojure_java_browse.zig      | clojure.java.browse        | MISSING   | NEEDS-ROW | `browse-url`.                                                                                                                                                                                              |
 | clojure_core_protocols.zig   | clojure.core.protocols     | present   | —        | backfilled by 2026-06-10; `require` verified 2026-06-12 (`CollReduce`/`IKVReduce` substrate landed; unblocks D-282 priority-map kv-reduce).                                                                |
@@ -90,7 +90,7 @@ row exists (the main loop creates it — this file does not edit `debt.yaml`).
 ### MISSING / partial with no dedicated debt row (NEEDS-ROW — main loop creates)
 
 1. `clojure.repl.deps` (`add-lib!`/`add-libs`/`sync-deps`)
-2. `clojure.java.shell`
+2. ~~`clojure.java.shell`~~ landed 2026-09-25 (ADR-0199)
 3. `clojure.java.process`
 4. `clojure.java.browse`
 5. `clojure.core.server`

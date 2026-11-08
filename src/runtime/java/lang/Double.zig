@@ -93,6 +93,26 @@ fn valueOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return Value.initFloat(try error_catalog.expectNumber(args[0], "Double/valueOf", loc));
 }
 
+/// `(Double. x)` / `(new Double x)`: a String parses (NumberFormatException
+/// when malformed), a float is itself. Answers the plain cljw value
+/// (ADR-0059). An integer matches no ctor, as in clj, where `(Double. 5)`
+/// finds no `Double(long)`. JVM reference: java.lang.Double#Double(double|String).
+fn ctor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("Double.", args, 1, loc);
+    return switch (args[0].tag()) {
+        .string => blk: {
+            const s = string_mod.asString(args[0]);
+            const f = parse.parseFloat(s) catch
+                return error_catalog.raise(.number_format_invalid, loc, .{ .fn_name = "Double.", .text = s });
+            break :blk Value.initFloat(f);
+        },
+        .float => args[0],
+        else => error_catalog.raise(.ctor_unmatched, loc, .{ .class = "java.lang.Double" }),
+    };
+}
+
 /// JVM `Double.doubleToLongBits` total order: all NaNs collapse to one
 /// canonical bit pattern; -0.0 sorts below +0.0. Used by `compare`.
 fn doubleToLongBits(x: f64) i64 {
@@ -185,6 +205,7 @@ fn initDouble(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyer
         .{ "isFinite", &Predicate("isFinite", isFiniteF).call },
         .{ "toString", &toString },
         .{ "valueOf", &valueOf },
+        .{ "<init>", &ctor },
         .{ "compare", &FBinOp2(.compare, "compare").call },
         .{ "max", &FBinOp2(.max, "max").call },
         .{ "min", &FBinOp2(.min, "min").call },

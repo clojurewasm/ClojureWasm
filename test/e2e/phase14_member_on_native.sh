@@ -44,7 +44,7 @@ EOF
 
 # --- Case 3: a .member miss on a NON-collection still raises (guard holds) ---
 out=$("$BIN" -e '(.valAt 42 :a)' 2>&1 || true)
-echo "$out" | grep -q "member" || fail "case3: expected a <.member> error on (.valAt 42 :a), got '$out'"
+grep -q "member" <<<"$out" || fail "case3: expected a <.member> error on (.valAt 42 :a), got '$out'"
 
 # --- Case 4: java.util.List value-search trio on sequentials (clj-verbatim) ---
 # JVM semantics: .indexOf/.lastIndexOf return -1 when absent (NOT nil);
@@ -70,6 +70,6 @@ EOF
 # --- Case 5: .contains on a MAP raises like clj (java.util.Map has no
 # .contains; clj throws IllegalArgumentException — key lookup is .containsKey) ---
 out=$("$BIN" -e '(.contains {:a 1} :a)' 2>&1 || true)
-echo "$out" | grep -q "member" || fail "case5: expected a <.member> error on (.contains {:a 1} :a), got '$out'"
+grep -q "member" <<<"$out" || fail "case5: expected a <.member> error on (.contains {:a 1} :a), got '$out'"
 
 echo "PASS phase14_member_on_native (5 cases)"

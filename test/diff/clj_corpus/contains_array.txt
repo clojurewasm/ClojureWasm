@@ -1,0 +1,26 @@
+;; `(contains? array i)` tests INDEX validity — a Java array is Indexed, so an
+;; integer key reports whether 0 <= i < length (B2 sweep). cljw used to raise
+;; "No implementation of -contains-key? on Associative for type 'array'". The
+;; non-integer-key case (an array is not Associative, so clj THROWS rather than
+;; returning false) is covered by the collection.zig unit test, not here — a
+;; both-throw case is not a value the corpus can compare. Vector/string index
+;; validity is included as the regression baseline.
+
+(contains? (to-array [10 20 30]) 0)
+;;=> true
+(contains? (to-array [10 20 30]) 2)
+;;=> true
+(contains? (to-array [10 20 30]) 3)
+;;=> false
+(contains? (to-array [10 20 30]) -1)
+;;=> false
+(contains? (to-array []) 0)
+;;=> false
+(contains? (into-array Long [1 2 3]) 1)
+;;=> true
+(contains? [10 20 30] 0)
+;;=> true
+(contains? [10 20 30] :x)
+;;=> false
+(contains? "abc" 1)
+;;=> true

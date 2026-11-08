@@ -75,6 +75,15 @@ pub fn contains(v: Value, e: Value) !bool {
     };
 }
 
+/// The STORED element `=` to `e` (clj `PersistentHashSet.get`), or null.
+/// `(get #{1N} 1)` is 1N, not the probe 1.
+pub fn get(v: Value, e: Value) !?Value {
+    return switch (v.tag()) {
+        .hash_set => if (try map_mod.entryAt(v.decodePtr(*const PersistentHashSet).map, e)) |en| en.key else null,
+        else => null,
+    };
+}
+
 /// Content hash of a set as a key (rt-free, order-independent) — folds
 /// element hashes over the backing map's keys. Partner of
 /// `equal.valueHash` / `equal.keyEqValue` set arms (D-092).

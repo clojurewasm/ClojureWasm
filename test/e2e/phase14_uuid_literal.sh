@@ -56,6 +56,12 @@ assert_eq 'java_random_is_uuid' "$("$BIN" -e '(uuid? (java.util.UUID/randomUUID)
 
 # --- Case 8: parse-uuid returns nil on bad input (never throws) ---
 assert_eq 'parse_uuid_bad_nil' "$("$BIN" -e '(parse-uuid "not-a-uuid")')" 'nil'
+# JVM UUID.fromString accepts legacy abbreviated groups, leading plus signs,
+# and truncates an overlong group to its field width.
+assert_eq 'parse_uuid_legacy_short' "$("$BIN" -e '(str (parse-uuid "1-2-3-4-5"))')" '"00000001-0002-0003-0004-000000000005"'
+assert_eq 'parse_uuid_legacy_overlong' "$("$BIN" -e '(str (parse-uuid "123456789-1-1-1-123456789abcdef"))')" '"23456789-0001-0001-0001-456789abcdef"'
+assert_eq 'parse_uuid_legacy_plus' "$("$BIN" -e '(str (java.util.UUID/fromString "+1-1-1-1-+1"))')" '"00000001-0001-0001-0001-000000000001"'
+assert_eq 'parse_uuid_bad_group' "$("$BIN" -e '(parse-uuid "1--1-1-1-1")')" 'nil'
 
 # --- Case 9: a malformed #uuid literal raises "Invalid UUID string" ---
 if out=$("$BIN" -e '#uuid "not-a-uuid"' 2>&1); then

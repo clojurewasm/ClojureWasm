@@ -126,19 +126,19 @@ expected='1
 [1 2]'
 assert_eq 'postwalk_demo_traversal_order' "$got" "$expected"
 
-# --- Group E: macroexpand-all transient stub ---
+# --- Group E: macroexpand-all ---
 
-# --- (18) macroexpand-all raises (user-thrown ex-info → exit 1) ---
-# Input shape doesn't matter for the stub — use a vector to avoid
-# the F-004 quoted-symbol gap in the eval path. The ex-info message
-# "macroexpand-all is not yet supported" is now surfaced at the CLI
-# tail (ADR-0055 am2 / D-144); we still only assert non-zero exit +
-# the surface symbol resolved (= analyzer pass succeeded), matching
-# the existing pattern from test/e2e/phase4_exit_codes.sh.
-if "$BIN" -e '(clojure.walk/macroexpand-all [1 2 3])' >/dev/null 2>&1; then
-    fail "macroexpand_all_stub: expected non-zero exit, got success"
+# --- (18) macroexpand-all runs (the transient stub was discharged) ---
+# This asserted a NON-ZERO exit while macroexpand-all was a throw-stub
+# ("macroexpand-all is not yet supported"). The stub's own barrier — that
+# `macroexpand` be callable at runtime — had long since dissolved, so it now
+# ships clojure.walk's real definition and this case asserts the CLI exit
+# path succeeds. The expansion behaviour itself is pinned against the clj
+# oracle in test/diff/clj_corpus/macroexpand_all.txt.
+if ! "$BIN" -e '(clojure.walk/macroexpand-all [1 2 3])' >/dev/null 2>&1; then
+    fail "macroexpand_all: expected success, got non-zero exit"
 fi
-echo "PASS macroexpand_all_transient_stub_raises"
+echo "PASS macroexpand_all_runs"
 
 echo ""
 echo "=== phase6_16_c_walk_pattern_a: all assertions passed ==="

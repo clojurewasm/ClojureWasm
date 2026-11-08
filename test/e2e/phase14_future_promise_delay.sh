@@ -18,17 +18,11 @@ cd "$(dirname "$0")/../.."
 BIN="zig-out/bin/cljw"
 [ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 
-# Whole-suite gate: every section spawns real OS-thread futures, and on <4-CPU
-# hosts (the 3-vCPU hosted mac runner) the OPEN D-418/D-258 race family
-# SIGABRTs a ROAMING case (D-548: run 28574985879 aborted
-# delay_once_under_concurrency; run 28577245733 — with that case gated —
-# aborted the next future case instead). Per-case gating cannot converge, so
-# skip the suite; the 4-vCPU linux leg and the local dev gate run it in full.
-ncpu=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)
-if [ "$ncpu" -lt 4 ]; then
-    echo "SKIP phase14_future_promise_delay (ncpu=$ncpu < 4 — D-418/D-258 low-core SIGABRT, D-548)"
-    exit 0
-fi
+# The former ncpu<4 whole-suite gate (the D-548(a) roaming SIGABRT) is REMOVED
+# per ADR-0176: the abort was the process-teardown vs detached-worker race
+# (glibc heap corruption under rt.deinit), root-caused + fixed by the
+# live-worker teardown guard. The suite runs everywhere again; the
+# exit_teardown_* cases below are its standing regression canaries.
 
 fail() { echo "FAIL $1" >&2; exit 1; }
 last_line() { tail -n 1; }
@@ -80,6 +74,34 @@ assert_eq 'future_shared_atom_identity' "$got" '1'
 # The worker allocates on the shared GC heap (a vector + range) and returns it.
 got=$("$BIN" -e '(deref (future (vec (range 5))))' 2>/dev/null | last_line)
 assert_eq 'future_worker_allocates' "$got" '[0 1 2 3 4]'
+
+# --- Binding conveyance (clj parity, CLJW-FUTURE-BINDINGS) ---
+# A future re-establishes the CREATING thread's dynamic bindings in the worker
+# (clj's binding-conveyor-fn). Without it a `(binding […] (future …))` sees the
+# var's root, silently dropping the caller's dynamic environment.
+got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
+(def ^:dynamic *cv* :unset)
+(prn (binding [*cv* :caller] @(future *cv*)))
+EOF
+)
+assert_eq 'future_conveys_bindings' "$got" ':caller'
+
+# A future created OUTSIDE any binding sees the var's ROOT — conveyance captures
+# the frame at creation time, it does not invent one.
+got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
+(def ^:dynamic *cv* :unset)
+(prn @(future *cv*))
+EOF
+)
+assert_eq 'future_no_conveyance_sees_root' "$got" ':unset'
+
+# pmap runs each (f x) on its own future, so conveyance flows through it too.
+got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
+(def ^:dynamic *cv* :unset)
+(prn (binding [*cv* :caller] (doall (pmap (fn [_] *cv*) [1 2 3]))))
+EOF
+)
+assert_eq 'pmap_conveys_bindings' "$got" '(:caller :caller :caller)'
 
 # --- Promise ---
 got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
@@ -200,6 +222,27 @@ got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
 EOF
 )
 assert_eq 'future_cancel_done_false' "$got" '[false false]'
+
+# --- ADR-0176 / D-548(a) — exit-teardown discipline -------------------------
+# Portable bounded run (timeout → gtimeout → unbounded), mirroring
+# phase16_gc_torture.sh: a guard regression here would HANG or abort, so bound.
+run_bounded() { local s="$1"; shift; if command -v timeout >/dev/null 2>&1; then timeout "$s" "$@"; elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$s" "$@"; else "$@"; fi; }
+
+# AD-056 pin: a RUNNING fire-and-forget future at main-exit does NOT keep the
+# process alive (JVM would wait / hang) — cljw hard-exits promptly + safely.
+got=$(run_bounded 15 "$BIN" -e '(do (future (Thread/sleep 60000)) :ok)' | last_line)
+assert_eq 'exit_pending_future' "$got" ':ok'
+
+# Teardown-window fault injection (CLJW_TORTURE_TEARDOWN_DELAY_MS widens the
+# deinit-vs-worker window AFTER the guard): a still-RUNNING allocating worker
+# must trigger the hard-exit branch (never a teardown under its feet — the
+# pre-ADR-0176 roaming glibc malloc abort) …
+got=$(CLJW_TORTURE_TEARDOWN_DELAY_MS=80 run_bounded 15 "$BIN" -e '(do (future (loop [] (str "x" "y") (recur))) :ok)' | last_line)
+assert_eq 'exit_teardown_injected_running' "$got" ':ok'
+# … and a COMPLETED worker's epilogue must fully quiesce BEFORE the widened
+# teardown frees (catches a counter-decremented-too-early regression).
+got=$(CLJW_TORTURE_TEARDOWN_DELAY_MS=80 run_bounded 15 "$BIN" -e '(do (future 1) :ok)' | last_line)
+assert_eq 'exit_teardown_fireforget_epilogue' "$got" ':ok'
 
 echo
 echo "Phase 14 row 14.8 future/promise/delay e2e: all green."

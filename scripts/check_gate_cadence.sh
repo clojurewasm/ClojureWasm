@@ -2,7 +2,7 @@
 # scripts/check_gate_cadence.sh
 #
 # PreToolUse hook on `git commit`. Mechanically enforces the gate-cadence
-# policy (.claude/rules/gate_cadence.md) so it is law, not just prose:
+# policy (memory 20260909234752-16ad5476 (gate_cadence)) so it is law, not just prose:
 #
 #   - NON-SOURCE commit (docs / .dev / .claude / scripts only, no src|test|
 #     build.zig*): exempt. Never blocked, never counted.
@@ -33,7 +33,7 @@ GATE_MAX_BATCH="${GATE_MAX_BATCH:-5}"
 PASS_FILE=".dev/.gate_pass"
 SMOKE_FILE=".dev/.smoke_pass"
 COUNT_FILE=".dev/.gate_cadence"
-RULE=".claude/rules/gate_cadence.md"
+RULE="memory 20260909234752-16ad5476 (gate_cadence)"
 
 # --- 1. classify the working-tree change vs HEAD (staging-independent) ------
 # Classify from `git diff HEAD` + an untracked listing, NOT `git diff

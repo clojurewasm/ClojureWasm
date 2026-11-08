@@ -44,16 +44,12 @@ fn initBigInteger(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     }
     if (java_array.isArray(a)) {
         const arr = java_array.asArray(a);
+        if (arr.kind != .byte)
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.math.BigInteger.", .expected = "byte array", .actual = @tagName(arr.kind) });
         const n = arr.len;
         if (n == 0)
             return error_catalog.raise(.number_format_invalid, loc, .{ .fn_name = "java.math.BigInteger.", .text = "" });
-        const bytes = try rt.gpa.alloc(u8, n);
-        defer rt.gpa.free(bytes);
-        for (arr.items(), 0..) |item, i| {
-            if (item.tag() != .integer)
-                return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.math.BigInteger.", .expected = "byte array", .actual = @tagName(item.tag()) });
-            bytes[i] = @intCast(item.asInteger() & 0xFF);
-        }
+        const bytes = arr.bytes();
         const bit_count = n * 8;
         var m = try std.math.big.int.Managed.init(rt.gc.infra);
         defer m.deinit();

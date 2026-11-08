@@ -1,0 +1,26 @@
+(mapv (fn [tail] (let [s (cons 1 tail)] [(vec s) (list? s) (count s) (next s)])) [nil "" '() #{} {} []])
+;;=> [[[1] true 1 nil] [[1] false 1 nil] [[1] false 1 nil] [[1] false 1 nil] [[1] false 1 nil] [[1] false 1 nil]]
+(let [s (concat) before (realized? s)] [before (empty? s) (realized? s)])
+;;=> [false true true]
+(let [seen (atom []) s (mapcat (fn [x] (swap! seen conj x) [x]) (iterate inc 0))] [@seen (vec (take 5 s))])
+;;=> [[0 1 2 3] [0 1 2 3 4]]
+(let [f (fn ([] :zero) ([a] [:one a]) ([a b] [:two a b]) ([a b & xs] [:many a b (vec (take 2 xs))]))] [(mapv (fn [n] (apply f (take n (iterate inc 0)))) (range 5)) (apply f 1 2 nil)])
+;;=> [[:zero [:one 0] [:two 0 1] [:many 0 1 [2]] [:many 0 1 [2 3]]] [:two 1 2]]
+(let [seen (atom []) result (apply (fn [a b & xs] [a b (first xs)]) (map (fn [x] (swap! seen conj x) x) (iterate inc 0)))] [result @seen])
+;;=> [[0 1 2] [0 1 2 3]]
+(let [seen (atom 0) result (apply (fn [a & xs] a) 1 2 3 (map (fn [x] (swap! seen inc) x) (iterate inc 0)))] [result @seen])
+;;=> [1 0]
+(mapv (fn [xs] (apply (fn [a & tail] [a (vec tail) (seq? tail)]) xs)) [[1 2 3] (range 3) "abc"])
+;;=> [[1 [2 3] true] [0 [1 2] true] [\a [\b \c] true]]
+(apply (fn [a b & xs] (System/gc) [a b (first xs)]) (map (fn [x] (System/gc) [x]) (iterate inc 0)))
+;;=> [[0] [1] [2]]
+(apply (fn [a b c] (System/gc) [a b c]) (map (fn [x] (System/gc) [x]) (take 3 (iterate inc 0))))
+;;=> [[0] [1] [2]]
+[(nthnext nil nil) (select-keys 1 []) (select-keys #{1} nil) (vec (repeat 2.9 :x)) (vec (take 5 (cycle [1 2])))]
+;;=> [nil {} {} [:x :x] [1 2 1 2 1]]
+(mapv (fn [x] (try (subvec x 0 0) :accepted (catch NullPointerException e :null) (catch ClassCastException e :cast))) [nil '(1 2) "abc" #{} {}])
+;;=> [:null :cast :cast :cast :cast]
+(mapv (fn [x] (try (shuffle x) :accepted (catch NullPointerException e :null) (catch ClassCastException e :cast))) [nil "abc" {}])
+;;=> [:null :cast :cast]
+(count (take 10000 (interleave (range) (range))))
+;;=> 10000

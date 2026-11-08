@@ -1,0 +1,8 @@
+(def a (atom 0))
+(prn (swap! a inc) (swap! a + 10) @a (reset! a :done) @a)
+(def v (volatile! 1))
+(prn (vswap! v inc) @v)
+(def d (delay (do (println "forced once") 42)))
+(prn (force d) (force d) (realized? d))
+(prn @(future (+ 1 2)))
+(let [p (promise)] (deliver p :val) (prn @p))

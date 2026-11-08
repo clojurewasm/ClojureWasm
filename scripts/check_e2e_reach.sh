@@ -33,8 +33,24 @@ allowed() {
 }
 
 runner="test/run_all.sh"
+# The subject is what the REPOSITORY gates, so enumerate INDEXED e2e (tracked
+# or staged) rather than everything on disk: an untracked script is not
+# coverage anyone else can run, gates nothing in CI, and — in a checkout shared
+# by several sessions — turns one session's in-flight file into a red step on
+# every other session's gate run, which is how a real failure gets waved
+# through. `git add` is the moment a script becomes the repo's claim, and that
+# is the moment this guard starts holding it. Falls back to the on-disk glob
+# outside a git worktree (tarball / vendored checkout).
+list_e2e() {
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git ls-files --cached -- 'test/e2e/*.sh'
+    else
+        ls test/e2e/*.sh 2>/dev/null
+    fi
+}
+
 orphans=0
-for f in test/e2e/*.sh; do
+for f in $(list_e2e); do
     b="$(basename "$f")"
     if grep -q -- "$b" "$runner"; then continue; fi
     if allowed "$b"; then

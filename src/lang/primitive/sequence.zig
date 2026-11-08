@@ -38,35 +38,41 @@ const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
+const class_name = @import("../../runtime/class_name.zig");
 
 const list = @import("../../runtime/collection/list.zig");
 const vector = @import("../../runtime/collection/vector.zig");
 const map = @import("../../runtime/collection/map.zig");
-const map_entry = @import("../../runtime/collection/map_entry.zig");
-const keyword_mod = @import("../../runtime/keyword.zig");
 const persistent_queue = @import("../../runtime/collection/persistent_queue.zig");
 const sorted = @import("../../runtime/collection/sorted.zig");
 const set = @import("../../runtime/collection/set.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const chunked_cons = @import("../../runtime/collection/chunked_cons.zig");
+const chunked_seq = @import("../../runtime/collection/chunked_seq.zig");
 const chunk_transform = @import("chunk_transform.zig");
 const range = @import("../../runtime/collection/range.zig");
+const array_seq = @import("../../runtime/collection/array_seq.zig");
+const sub_vector = @import("../../runtime/collection/sub_vector.zig");
+const string_seq = @import("../../runtime/collection/string_seq.zig");
 const java_array = @import("../../runtime/collection/java_array.zig");
 const transient_vector = @import("../../runtime/collection/transient/transient_vector.zig");
 const transient_array_map = @import("../../runtime/collection/transient/transient_array_map.zig");
 const transient_hash_set = @import("../../runtime/collection/transient/transient_hash_set.zig");
 const lazy_seq = @import("../../runtime/lazy_seq.zig");
+const seqable = @import("../../runtime/seqable.zig");
+const char_sequence = @import("../../runtime/char_sequence.zig");
 const charset = @import("../../runtime/charset.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
 const root_set = @import("../../runtime/gc/root_set.zig");
+const equal_mod = @import("../../runtime/equal.zig");
+const meta_mod = @import("../../runtime/meta.zig");
 
 /// Protocol fqcns the hybrid slow-paths match against `MethodEntry.protocol_name`.
 /// Bootstrap declares each protocol in `lang/clj/clojure/core.clj` so the fqcn
 /// `allocFqcn` stores at extend-type time is the bare symbol name (see
 /// `lang/primitive/protocol.zig:41-51`). Per ADR-0008 amendment 4 (row 7.7).
 const IPC_FQCN: []const u8 = "IPersistentCollection";
-const SEQABLE_FQCN: []const u8 = "Seqable";
-const ISEQ_FQCN: []const u8 = "ISeq";
+const ISEQ_FQCN = seqable.ISEQ;
 
 // --- count ---
 
@@ -97,6 +103,7 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             break :blk Value.initInteger(@intCast(n));
         },
         .vector => Value.initInteger(@intCast(vector.count(coll))),
+        .sub_vector => Value.initInteger(@intCast(sub_vector.count(coll))),
         .array => Value.initInteger(@intCast(java_array.alength(coll))), // ADR-0105
         .map_entry => Value.initInteger(2), // a MapEntry is a 2-vector (D-209)
         .array_map, .hash_map => Value.initInteger(@intCast(map.count(coll))),
@@ -117,9 +124,19 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             try transient_hash_set.ensureLive(coll, "count", loc);
             break :blk Value.initInteger(@intCast(transient_hash_set.count(coll)));
         },
-        .chunked_cons => Value.initInteger(@intCast(chunked_cons.count(coll))),
-        // PERF: O(1) precomputed range length, no element walk [refs: O-001]
-        .range => Value.initInteger(range.countOf(coll)),
+        // PERF: O(1) precomputed range length, no element walk [refs: O-001].
+        // Boxed through range's `wrapI64` lever — a virtual count past i48 is a
+        // heap Long, not a float (ADR-0063 amendment; the range aggregate owns
+        // all its i64→Value projections).
+        .range => try range.countValue(rt, coll),
+        // PERF: a vector view counts by subtraction — backing count minus the
+        // read cursor — where the eager list copy it replaced had to allocate
+        // n cells before it could answer. [refs: O-058]
+        .array_seq => Value.initInteger(@intCast(array_seq.countOf(coll))),
+        // A string view counts by scanning its remaining bytes: UTF-8 gives no
+        // length/element identity to subtract, so this is a walk where the
+        // vector view is arithmetic. It still allocates nothing. [refs: D-179]
+        .string_seq => Value.initInteger(@intCast(string_seq.countOf(coll))),
         // deftype/reify share one arm (rseq's pattern): clj RT.count routes BOTH
         // by the same rules, so a reify must not bypass the deftype logic (D-422
         // twin). A defrecord counts by field_count (with a -count override honoured
@@ -140,48 +157,64 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
                 const ext_n: i64 = if (inst.extmap.isNil()) 0 else @intCast(map.count(inst.extmap));
                 break :blk Value.initInteger(@as(i64, inst.field_count) + ext_n);
             }
-            if (desc.isCounted()) {
+            if (class_name.implementsInterface(coll, "Counted")) {
                 var cs: dispatch.CallSite = .{};
                 if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPC_FQCN, "-count", args, loc)) |v| break :blk v;
                 // declared Counted but no -count body resolved → fall through to walk.
             }
-            if (desc.isPersistentCollection()) break :blk try countBySeqWalk(rt, env, coll, loc);
+            if (class_name.implementsInterface(coll, "IPersistentCollection")) break :blk try countBySeqWalk(rt, env, coll, loc);
             // clj RT.countFrom: a non-collection CharSequence counts by
-            // .length() — instaparse's Segment deftype (D-430). The
-            // CharSequence remap registers `length` as -cs-length
-            // (host_interface.zig CHAR_SEQUENCE), so a null here means the
-            // type is not a CharSequence (or declared it method-less).
-            {
-                var cs: dispatch.CallSite = .{};
-                if (try dispatch.dispatchOrNull(rt, env, &cs, coll, "CharSequence", "-cs-length", args, loc)) |v| break :blk v;
-            }
+            // .length() — instaparse's Segment deftype (D-430). A null here
+            // means the type is not a CharSequence (or declared it
+            // method-less).
+            if (try char_sequence.lengthOrNull(rt, env, coll, loc)) |v| break :blk v;
             return error_catalog.raise(.protocol_no_satisfies, loc, .{
                 .protocol = IPC_FQCN,
                 .method = "-count",
                 .type_name = desc.fqcn orelse "<anonymous>",
             });
         },
-        .list, .cons, .lazy_seq => {
-            // O(n) generic walk. A `.list` cons may hold a non-list seq as
-            // its rest (a "Cons over a seq", e.g. `(cons x (map …))` /
-            // `(conj (range 3) 99)`), so the O(1) `.count` field is a lie
-            // for mixed chains — walk instead, forcing lazy layers and
-            // advancing through whatever tag the rest takes. Pure-list O(1)
-            // count is the F-004 finished form once the `.list` / `.cons`
-            // tags split (PersistentList vs Cons); see debt D-178.
+        // `.chunked_cons` shares this arm: its tail is frequently an
+        // unrealized lazy seq, so counting only the chunked prefix answers the
+        // first chunk's size (32) for every longer seq. The walk below skips
+        // whole chunks and realizes the tail, so it is chunk-fast AND total.
+        .list, .cons, .lazy_seq, .chunked_cons => {
+            // PERF: a PURE `.list` chain carries an exact O(1) count, so
+            // return it without walking. The walk below stays for the mixed
+            // chain a `.list` cell can head — a "Cons over a seq"
+            // (`(cons x (map …))` / `(conj (range 3) 99)`) — where the stored
+            // count would describe the `.list` prefix only. `exactCountOf`
+            // reports which case this is instead of the caller guessing, so
+            // no D-178 `.list`/`.cons` tag split is needed to get the fast
+            // path. [refs: O-057]
+            if (list.exactCountOf(coll)) |n| return Value.initInteger(@intCast(n));
             var n: i64 = 0;
-            var cur = try lazy_seq.seq(rt, env, coll);
+            var cur = try seqable.seq(rt, env, coll, loc);
             while (!cur.isNil()) {
-                // PERF: when the walk lands on a chunk, add the whole chunk's
-                // remaining count and skip to its tail — O(chunks) not
-                // O(elements) for a chunked source (range seq, chunk-aware
-                // map/filter). [refs: O-004, D-163]
-                if (cur.tag() == .chunked_cons) {
-                    n += @intCast(chunked_cons.currentChunkCount(cur));
-                    cur = try lazy_seq.seq(rt, env, chunked_cons.chunkRest(cur));
-                } else {
-                    n += 1;
-                    cur = try seqNext(rt, env, cur);
+                switch (cur.tag()) {
+                    // PERF: when the walk lands on a chunk, add the whole chunk's
+                    // remaining count and skip to its tail — O(chunks) not
+                    // O(elements) for a chunked source (range seq, chunk-aware
+                    // map/filter). [refs: O-004, D-163]
+                    .chunked_cons => {
+                        n += @intCast(chunked_cons.currentChunkCount(cur));
+                        cur = try seqable.seq(rt, env, chunked_cons.chunkRest(cur), loc);
+                    },
+                    // PERF: a lazy body that realized to a view (a string, a
+                    // vector, a Java array) answers its remainder without a
+                    // walk. [refs: O-058, D-179]
+                    .array_seq => return Value.initInteger(n + @as(i64, array_seq.countOf(cur))),
+                    .string_seq => return Value.initInteger(n + @as(i64, string_seq.countOf(cur))),
+                    // A custom ISeq terminal counts through the rooted instance
+                    // walk (its `-next` mints fresh instances).
+                    .typed_instance, .reified_instance => {
+                        const tail = try countFn(rt, env, &.{cur}, loc);
+                        return Value.initInteger(n + @as(i64, tail.asInteger()));
+                    },
+                    else => {
+                        n += 1;
+                        cur = try seqable.next(rt, env, cur, loc);
+                    },
                 }
             }
             return Value.initInteger(n);
@@ -191,10 +224,14 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             // `clojure.core/IPersistentCollection -count`. Reaches
             // `(extend-type LongTag IPersistentCollection -count …)` style
             // native-Tag overrides via the row 7.3 per-Tag descriptor
-            // registry; raises protocol_no_satisfies when no MethodEntry
-            // is registered (cleaner JVM-parity diagnostic than the
-            // pre-7.7 type_arg_invalid).
+            // registry. A host CharSequence with no -count
+            // (java.lang.StringBuilder) counts by .length(), clj
+            // RT.countFrom; anything else raises protocol_no_satisfies
+            // (cleaner JVM-parity diagnostic than the pre-7.7
+            // type_arg_invalid).
             var cs: dispatch.CallSite = .{};
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPC_FQCN, "-count", args, loc)) |v| break :blk v;
+            if (try char_sequence.lengthOrNull(rt, env, coll, loc)) |v| break :blk v;
             break :blk try dispatch.dispatch(rt, env, &cs, coll, IPC_FQCN, "-count", args, loc);
         },
     };
@@ -219,8 +256,8 @@ fn countBySeqWalk(rt: *Runtime, env: *Env, coll: Value, loc: SourceLocation) any
     defer root_set.eval_frame_head = gc_frame.parent;
     var n: i64 = 0;
     while (cur.tag() == .typed_instance or cur.tag() == .reified_instance) {
-        const desc = instanceDescriptor(cur);
-        if (desc.kind == .defrecord or desc.isCounted()) {
+        // A defrecord is Counted too (it is an IPersistentMap).
+        if (class_name.implementsInterface(cur, "Counted")) {
             const tail = try countFn(rt, env, &.{cur}, loc);
             return Value.initInteger(n + tail.asInteger());
         }
@@ -238,97 +275,15 @@ fn countBySeqWalk(rt: *Runtime, env: *Env, coll: Value, loc: SourceLocation) any
 
 // --- seq ---
 
-/// Build an array_map of a defrecord's declared fields (in declaration order),
-/// so `seq`/`into {}`/`vec` over a record yield its `[k v]` map entries like a
-/// map — JVM records are Seqable as their entry seq. (cljw has no `__extmap`
-/// yet — D-086 — so only declared fields participate.)
-/// `map.forEachEntry` accumulator: assoc each extmap entry into the demoted map
-/// (D-086 — a record's full associative view is declared fields then extmap).
-const RecordMapExtCtx = struct {
-    rt: *Runtime,
-    m: *Value,
-    fn cb(ctx: *RecordMapExtCtx, k: Value, v: Value) anyerror!void {
-        ctx.m.* = try map.assoc(ctx.rt, ctx.m.*, k, v);
-    }
-};
-
-fn recordToMap(rt: *Runtime, inst: *const td_mod.TypedInstance) !Value {
-    const layout = inst.descriptor.field_layout orelse return map.empty();
-    const vals = inst.fields();
-    var m = map.empty();
-    for (layout, 0..) |f, i| {
-        const kw = try keyword_mod.intern(rt, null, f.name);
-        m = try map.assoc(rt, m, kw, vals[i]);
-    }
-    // D-086 / ADR-0154: append the extmap entries (non-declared keys) so `seq`
-    // (and any `recordToMap` consumer) sees `([:declared v]… [:extra v]…)`.
-    if (!inst.extmap.isNil()) {
-        var ctx = RecordMapExtCtx{ .rt = rt, .m = &m };
-        try map.forEachEntry(inst.extmap, &ctx, RecordMapExtCtx.cb);
-    }
-    return m;
-}
-
 /// Implements clojure.core/seq.
 /// Spec: `(seq coll)` returns a seq view of `coll`, or `nil` if empty.
-///   - nil:         nil
-///   - empty coll:  nil (NOT empty seq)
-///   - non-empty:   list-shape ISeq view
+/// The arity check over the Layer-0 boundary (`runtime/seqable.zig`,
+/// ADR-0197), which owns the tag table and the `Seqable/-seq` dispatch.
 /// JVM reference: clojure.lang.RT.seq
 /// cw v1 tier: A (Phase 6.16.a-1)
 pub fn seqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("seq", args, 1, loc);
-    const coll = args[0];
-    if (coll.isNil()) return .nil_val;
-    return switch (coll.tag()) {
-        .string => {
-            // Empty string → nil; non-empty → codepoint seq (eager list build).
-            const s = string_collection.asString(coll);
-            if (s.len == 0) return .nil_val;
-            return try stringToList(rt, s);
-        },
-        .list, .cons => list.seq(coll),
-        .vector => if (vector.count(coll) > 0) try vectorToList(rt, coll) else .nil_val,
-        // ADR-0105: a Java array is Seqable (clj parity), eager element seq.
-        .array => if (java_array.alength(coll) > 0) try arrayToList(rt, coll) else .nil_val,
-        // A MapEntry seqs as `(key val)` (D-209 / ADR-0078).
-        .map_entry => try list.consHeap(rt, map_entry.keyOf(coll), try list.consHeap(rt, map_entry.valOf(coll), .nil_val)),
-        .array_map, .hash_map => if (map.count(coll) > 0) try map.seq(rt, coll) else .nil_val,
-        .sorted_map, .sorted_set => if (sorted.count(coll) > 0) try sorted.seq(rt, coll) else .nil_val,
-        .persistent_queue => try persistent_queue.seqOf(rt, coll),
-        .hash_set => if (set.count(coll) > 0) try set.seq(rt, coll) else .nil_val,
-        .chunked_cons => coll,
-        // A range's seq view is a chunked_cons (≤32 materialised + a smaller
-        // `.range` tail) — generic walkers then pay 1 alloc / 32 elements.
-        .range => try range.seqChunk(rt, coll),
-        .lazy_seq => try lazy_seq.seq(rt, env, coll),
-        .typed_instance => blk: {
-            // A user `(extend-type X Seqable (-seq …))` override wins; otherwise
-            // a defrecord is Seqable by default as its `[k v]` entry seq (JVM
-            // parity), and a deftype with no override raises.
-            var cs: dispatch.CallSite = .{};
-            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, SEQABLE_FQCN, "-seq", args, loc)) |v| break :blk v;
-            const inst = coll.decodePtr(*const td_mod.TypedInstance);
-            if (inst.descriptor.kind == .defrecord) {
-                const m = try recordToMap(rt, inst);
-                break :blk if (map.count(m) > 0) try map.seq(rt, m) else .nil_val;
-            }
-            return error_catalog.raise(.protocol_no_satisfies, loc, .{
-                .protocol = SEQABLE_FQCN,
-                .method = "-seq",
-                .type_name = inst.descriptor.fqcn orelse "<anonymous>",
-            });
-        },
-        else => blk: {
-            // Row 7.7 cycle 2: outer-else routes through dispatch against
-            // `Seqable -seq`, reaching `(extend-type X Seqable -seq …)`
-            // overrides on native Tags via the row 7.3 per-Tag descriptor
-            // registry. Raises protocol_no_satisfies when no MethodEntry is
-            // registered (supersedes the pre-7.7 type_arg_invalid raise).
-            var cs: dispatch.CallSite = .{};
-            break :blk try dispatch.dispatch(rt, env, &cs, coll, SEQABLE_FQCN, "-seq", args, loc);
-        },
-    };
+    return seqable.seq(rt, env, args[0], loc);
 }
 
 /// Implements clojure.core/rseq.
@@ -343,6 +298,9 @@ pub fn rseqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     const coll = args[0];
     return switch (coll.tag()) {
         .vector => if (vector.count(coll) > 0) try vectorToRevList(rt, coll) else .nil_val,
+        // A subvec is never empty (`make` returns [] for an empty range), so it
+        // always has a reverse seq; `vectorToRevList` handles the `.sub_vector` tag.
+        .sub_vector => try vectorToRevList(rt, coll),
         .sorted_map, .sorted_set => if (sorted.count(coll) > 0) try sorted.rseq(rt, coll) else .nil_val,
         // A deftype/reify implementing Reversible `-rseq` (D-280d3; clojure.lang.Reversible
         // host-interface remap) — consult its impl before erroring.
@@ -364,11 +322,12 @@ pub fn rseqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 }
 
 fn vectorToRevList(rt: *Runtime, vec: Value) !Value {
-    const n = vector.count(vec);
+    const is_sub = vec.tag() == .sub_vector;
+    const n = if (is_sub) sub_vector.count(vec) else vector.count(vec);
     var acc: Value = .nil_val;
     var i: u32 = 0;
     while (i < n) : (i += 1) {
-        const elt = try vector_nth_safe(vec, i, .{ .line = 0, .column = 0 });
+        const elt = if (is_sub) sub_vector.nth(vec, i) else try vector_nth_safe(vec, i, .{ .line = 0, .column = 0 });
         acc = try list.consHeap(rt, elt, acc);
     }
     return acc;
@@ -378,43 +337,12 @@ fn vectorToRevList(rt: *Runtime, vec: Value) !Value {
 
 /// Implements clojure.core/first.
 /// Spec: `(first coll)` returns the first item, or `nil` if empty.
+/// The arity check over `seqable.first` (ADR-0197).
 /// JVM reference: clojure.lang.RT.first → seq().first()
 /// cw v1 tier: A (Phase 6.16.a-1)
 pub fn firstFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("first", args, 1, loc);
-    const coll = args[0];
-    if (coll.isNil()) return .nil_val;
-    return switch (coll.tag()) {
-        .list, .cons => list.first(coll),
-        .vector => if (vector.count(coll) > 0)
-            try vector_nth_safe(coll, 0, loc)
-        else
-            .nil_val,
-        .map_entry => map_entry.keyOf(coll), // first of `[k v]` is k (D-209)
-        .persistent_queue => persistent_queue.peek(coll), // first = oldest = peek
-        .chunked_cons => chunked_cons.first(coll),
-        // PERF: O(1) head (start), no chunk materialised for just first [refs: O-001]
-        .range => range.first(coll),
-        .lazy_seq => try lazy_seq.first(rt, env, coll),
-        .string => firstStringCodepoint(coll),
-        .array_map, .hash_map, .hash_set => blk: {
-            const sv = try seqFn(rt, env, args, loc);
-            if (sv.isNil()) break :blk .nil_val;
-            break :blk try firstOfSeq(rt, env, sv, loc);
-        },
-        else => blk: {
-            // D-089: route unknown receivers through ISeq `-first`. D-189:
-            // when the receiver implements Seqable but NOT ISeq (e.g. an
-            // Eduction), coerce via `seq` first — JVM `RT.first` →
-            // `seq().first()`. `dispatchOrNull` returns null when no ISeq
-            // `-first` MethodEntry is registered.
-            var cs: dispatch.CallSite = .{};
-            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ISEQ_FQCN, "-first", args, loc)) |v| break :blk v;
-            const sv = try seqFn(rt, env, args, loc);
-            if (sv.isNil()) break :blk .nil_val;
-            break :blk try firstOfSeq(rt, env, sv, loc);
-        },
-    };
+    return seqable.first(rt, env, args[0], loc);
 }
 
 // --- rest ---
@@ -422,116 +350,24 @@ pub fn firstFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 /// Implements clojure.core/rest.
 /// Spec: `(rest coll)` returns a possibly-empty seq of items after the
 /// first. Always returns a seq — `()` (the interned empty list), never
-/// nil, for any non-list / empty / nil input where JVM `RT.more` also
-/// yields `()`. `(rest nil)` → `()`, `(rest '(1))` → `()`.
+/// nil (D-164 / clj-parity C1; the lift lives at the boundary's one exit).
 /// JVM reference: clojure.lang.RT.more
 /// cw v1 tier: A (Phase 6.16.a-1)
-///
-/// D-164 / clj-parity C1: a raw nil result (chain tail, empty coll, nil
-/// arg) is lifted to `rt.empty_list` at one exit (F-011 commonisation).
-/// `next` keeps returning nil for the same cases — the JVM `more`/`next`
-/// asymmetry (see `nextFn`).
 pub fn restFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("rest", args, 1, loc);
-    const coll = args[0];
-    const raw: Value = if (coll.isNil()) .nil_val else switch (coll.tag()) {
-        .list, .cons => list.rest(coll),
-        .vector => if (vector.count(coll) > 1) try vectorTailAsList(rt, coll, 1) else .nil_val,
-        .map_entry => try list.consHeap(rt, map_entry.valOf(coll), .nil_val), // (rest [k v]) → (v)
-        .persistent_queue => blk: {
-            const s = try persistent_queue.seqOf(rt, coll);
-            break :blk if (s.isNil()) .nil_val else list.rest(s);
-        },
-        .chunked_cons => try chunked_cons.rest(rt, coll),
-        .lazy_seq => try lazy_seq.rest(rt, env, coll),
-        // A string seqs to a char list (codepoints, not a substring): D-174
-        // `(rest "abc")` is a char-seq, not a String. Route through seqFn so
-        // `(string? (rest s))` is false and `(seq? …)` is true (one mechanism
-        // with the map/set/range arm; the lazy `.string_seq` substrate is the
-        // F-004 finished form, D-179).
-        .string, .array_map, .hash_map, .hash_set, .range => blk: {
-            const sv = try seqFn(rt, env, args, loc);
-            if (sv.isNil()) break :blk .nil_val;
-            break :blk try restOfSeq(rt, env, sv, loc);
-        },
-        else => blk: {
-            // D-089: ISeq -rest slow-path. D-189: Seqable→seq coercion
-            // fallback for a Seqable-only deftype (e.g. Eduction).
-            var cs: dispatch.CallSite = .{};
-            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ISEQ_FQCN, "-rest", args, loc)) |v| break :blk v;
-            const sv = try seqFn(rt, env, args, loc);
-            if (sv.isNil()) break :blk .nil_val;
-            break :blk try restOfSeq(rt, env, sv, loc);
-        },
-    };
-    return if (raw.isNil()) try list.emptyList(rt) else raw;
+    return seqable.rest(rt, env, args[0], loc);
 }
 
 // --- next ---
 
 /// Implements clojure.core/next.
 /// Spec: `(next coll)` returns the seq of items after the first, or
-///   nil if there are no more items. Distinct from `rest` only in
-///   that JVM returns nil instead of an empty seq.
+///   nil if there are no more items: `(seq (rest coll))` at the boundary.
 /// JVM reference: clojure.lang.RT.next → seq().next()
 /// cw v1 tier: A (Phase 8 row 8.6 cycle 1)
 pub fn nextFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("next", args, 1, loc);
-    const coll = args[0];
-    if (coll.isNil()) return .nil_val;
-    return switch (coll.tag()) {
-        .list, .cons => blk: {
-            const r = list.rest(coll);
-            // The tail may be a `.lazy_seq` (a lazy producer like `map`
-            // cons'd a lazy tail onto a head); `next` must seq it so an
-            // empty lazy tail collapses to nil (else a seq-walk that
-            // advances via `next` appends a spurious trailing nil).
-            // For an explicit-nil tail, seqFn(nil) is nil — unchanged.
-            break :blk try seqFn(rt, env, &.{r}, loc);
-        },
-        .vector => if (vector.count(coll) > 1) try vectorTailAsList(rt, coll, 1) else .nil_val,
-        .map_entry => try list.consHeap(rt, map_entry.valOf(coll), .nil_val), // (next [k v]) → (v)
-        .persistent_queue => blk: {
-            const s = try persistent_queue.seqOf(rt, coll);
-            if (s.isNil()) break :blk .nil_val;
-            const r = list.rest(s);
-            break :blk if (list.isEmpty(r)) .nil_val else r;
-        },
-        .chunked_cons => blk: {
-            const r = try chunked_cons.rest(rt, coll);
-            // Match JVM next: nil for empty rest. seq the tail so a
-            // chunk-boundary `next` set to an unrealized empty lazy_seq
-            // (chunk-aware map/filter) forces to nil rather than trailing
-            // a spurious nil. Within-chunk rest is a chunked_cons (no-op).
-            break :blk try seqFn(rt, env, &.{r}, loc);
-        },
-        .lazy_seq => blk: {
-            const r = try lazy_seq.rest(rt, env, coll);
-            // seq the tail so an EMPTY lazy rest collapses to nil — matching
-            // the .list / .chunked_cons arms above. Without this, `(next
-            // (map identity [1]))` returns a non-nil empty lazy_seq (prints
-            // as nil yet `nil?`→false), and any seq-walk advancing via `next`
-            // (incl. `apply`'s eager spread) appends a spurious trailing nil.
-            break :blk try seqFn(rt, env, &.{r}, loc);
-        },
-        // A string seqs to a char list (D-174): `(next "abc")` is a char-seq,
-        // not a substring. Same seqFn route + nil-empty as the map/set/range arm.
-        .string, .array_map, .hash_map, .hash_set, .range => blk: {
-            const sv = try seqFn(rt, env, args, loc);
-            if (sv.isNil()) break :blk .nil_val;
-            break :blk try restOfSeq(rt, env, sv, loc);
-        },
-        else => blk: {
-            // D-089: ISeq -next slow-path. D-189: Seqable→seq coercion
-            // fallback (cljw rest≡next: nil for empty) for a Seqable-only
-            // deftype (e.g. Eduction).
-            var cs: dispatch.CallSite = .{};
-            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ISEQ_FQCN, "-next", args, loc)) |v| break :blk v;
-            const sv = try seqFn(rt, env, args, loc);
-            if (sv.isNil()) break :blk .nil_val;
-            break :blk try restOfSeq(rt, env, sv, loc);
-        },
-    };
+    return seqable.next(rt, env, args[0], loc);
 }
 
 // --- cons ---
@@ -556,11 +392,11 @@ pub fn consFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         // `.lazy_seq` tail is kept UNFORCED — `(cons x (lazy-seq …))`
         // must not realize the tail, else lazy producers (e.g. iterate)
         // recurse infinitely at cons time (ADR-0054 cycle 1).
-        .list, .cons, .lazy_seq => try list.consHeap(rt, head, tail),
+        .list, .cons, .lazy_seq => try list.consSeqHeap(rt, head, tail),
         else => blk: {
             // Cons over a seq view of the tail (JVM's RT.cons fallback).
             const sv = try seqFn(rt, env, args[1..2], loc);
-            break :blk try list.consHeap(rt, head, sv);
+            break :blk try list.consSeqHeap(rt, head, sv);
         },
     };
 }
@@ -585,17 +421,44 @@ pub fn emptyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     try error_catalog.checkArity("empty", args, 1, loc);
     const coll = args[0];
     if (coll.isNil()) return .nil_val;
+    // clj's persistent collections carry their metadata onto `empty`
+    // (`EMPTY.withMeta(meta())` for vector/subvec/map/set/sorted/queue/
+    // PersistentList); a generic ISeq (Cons, LazySeq, range, …) empties to a
+    // meta-less `()`.
+    switch (coll.tag()) {
+        .vector, .sub_vector, .array_map, .hash_map, .hash_set, .sorted_map, .sorted_set, .persistent_queue, .list => {
+            const m = try meta_mod.metaOf(rt, env, coll, loc);
+            if (!m.isNil()) {
+                // ADR-0150: the fresh empty is unrooted across the with-meta
+                // copy; `m` stays reachable through the rooted `coll` arg.
+                rt.gc.enterFabrication();
+                defer rt.gc.exitFabrication();
+                const e = try emptyBare(rt, env, coll, args, loc);
+                return (try meta_mod.withMetaOrNull(rt, env, e, m, loc)) orelse e;
+            }
+        },
+        else => {},
+    }
+    return emptyBare(rt, env, coll, args, loc);
+}
+
+fn emptyBare(rt: *Runtime, env: *Env, coll: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
     return switch (coll.tag()) {
-        .vector => vector.empty(),
+        .vector, .sub_vector => vector.empty(),
         .array_map, .hash_map => map.empty(),
         .hash_set => set.empty(),
         // Sorted variants keep their comparator (clj PersistentTreeMap.empty()
         // returns an empty tree with the same comp) — data.priority-map's
         // `(empty priority->set-of-items)` relies on it.
-        .sorted_map => try sorted.emptyMapBy(rt, coll.decodePtr(*const sorted.SortedMap).comparator),
-        .sorted_set => try sorted.emptySetBy(rt, coll.decodePtr(*const sorted.SortedSet).map.decodePtr(*const sorted.SortedMap).comparator),
+        .sorted_map => try sorted.emptyMapBy(rt, coll.decodePtr(*const sorted.SortedMap).comparator), // repr-decode-ok: comparator field read; sorted_map has a single backing
+        .sorted_set => try sorted.emptySetBy(rt, coll.decodePtr(*const sorted.SortedSet).map.decodePtr(*const sorted.SortedMap).comparator), // repr-decode-ok: comparator field read; sorted_set has a single backing
         .persistent_queue => try persistent_queue.emptyQueue(rt), // (empty q) → EMPTY
-        .list, .cons => try list.emptyList(rt), // (empty '(1 2)) → () (D-164)
+        // Every ISeq empties to `()`, not just a cons chain: clj's `ASeq.empty()`
+        // returns `PersistentList.EMPTY` for a range / lazy seq / chunked seq /
+        // vector view alike. `.range`, `.lazy_seq` and `.chunked_cons` were
+        // reaching the `else` dispatch and raising, which is a pre-existing gap
+        // this arm closes alongside `.array_seq`. (D-164)
+        .list, .cons, .range, .lazy_seq, .chunked_cons, .array_seq, .string_seq => try list.emptyList(rt),
         // JVM Clojure: (empty "hi") → nil (String is not a Clojure
         // collection per IPersistentCollection contract). cw v1
         // follows the same semantic; a 0-length string is not what
@@ -604,143 +467,46 @@ pub fn emptyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         else => blk: {
             // D-089 row 8.6 cycle 1: IPC -empty slow-path.
             var cs: dispatch.CallSite = .{};
-            // clj's RT.empty returns nil for a non-emptyable value (e.g. a
-            // java.util.HashMap/HashSet — it is not a Clojure collection). cljw
-            // matches by falling back to nil when -empty is unimplemented on a
-            // host_instance, rather than raising (D-431). deftype/reify keep the
-            // raising dispatch (a collection deftype is expected to wire -empty).
-            if (coll.tag() == .host_instance)
-                break :blk (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPC_FQCN, "-empty", args, loc)) orelse .nil_val;
-            break :blk try dispatch.dispatch(rt, env, &cs, coll, IPC_FQCN, "-empty", args, loc);
+            // clj's `(empty x)` returns nil for ANY value that is not an
+            // IPersistentCollection — a Long, char, keyword, float, java array,
+            // host instance, … all yield nil, never a raise. cljw matches via
+            // the nil-fallback dispatch for every such type (D-431, B2 sweep).
+            // A deftype/reify keeps the RAISING dispatch: a type that declares
+            // itself a collection is expected to wire -empty, so a missing impl
+            // there is a developer error, not a silent nil.
+            if (coll.tag() == .typed_instance or coll.tag() == .reified_instance)
+                break :blk try dispatch.dispatch(rt, env, &cs, coll, IPC_FQCN, "-empty", args, loc);
+            break :blk (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPC_FQCN, "-empty", args, loc)) orelse .nil_val;
         },
     };
 }
 
 // --- helpers ---
 
-/// vector → eager list build (head-to-tail copy).
-fn vectorToList(rt: *Runtime, vec: Value) !Value {
-    return try vectorTailAsList(rt, vec, 0);
-}
-
-/// Java array → eager list view (ADR-0105). Built head-to-tail so generic seq
-/// walkers (vec / map / reduce / into) see the array elements in order.
-fn arrayToList(rt: *Runtime, arr: Value) !Value {
-    const items = java_array.asArray(arr).items();
-    var acc: Value = .nil_val;
-    var i = items.len;
-    while (i > 0) {
-        i -= 1;
-        acc = try list.consHeap(rt, items[i], acc);
-    }
-    return acc;
-}
-
-/// vector[start..] → list view, built eager (head-to-tail).
-fn vectorTailAsList(rt: *Runtime, vec: Value, start: u32) !Value {
-    const n = vector.count(vec);
-    if (n <= start) return .nil_val;
-    var acc: Value = .nil_val;
-    var i = n;
-    while (i > start) {
-        i -= 1;
-        const elt = try vector_nth_safe(vec, i, .{ .line = 0, .column = 0 });
-        acc = try list.consHeap(rt, elt, acc);
-    }
-    return acc;
-}
-
-/// string → eager char list build. Elements are `.char` Values (JVM
-/// parity: `(seq "abc")` → `(\a \b \c)`, chars not 1-char strings).
-fn stringToList(rt: *Runtime, s: []const u8) !Value {
-    const cp_count = try charset.codepointCount(s);
-    if (cp_count == 0) return .nil_val;
-    var i: usize = cp_count;
-    var acc: Value = .nil_val;
-    while (i > 0) {
-        i -= 1;
-        const cp = charset.codepointAt(s, i) catch return error.InvalidUtf8;
-        acc = try list.consHeap(rt, Value.initChar(@intCast(cp)), acc);
-    }
-    return acc;
-}
-
-/// Helper: first codepoint of a string as a `.char` Value (JVM parity:
-/// `(first "abc")` → `\a`, a Character, not a 1-char String).
-fn firstStringCodepoint(s: Value) Value {
-    const bytes = string_collection.asString(s);
-    if (bytes.len == 0) return .nil_val;
-    const cp = charset.codepointAt(bytes, 0) catch return .nil_val;
-    return Value.initChar(@intCast(cp));
-}
-
-/// nth over a seq by walking (clojure.lang.RT.nth's seq path): force the
-/// head, advance `idx` steps via `seqNext`, return the element — or null
-/// when `idx` is negative or past the end (the caller maps null to the
-/// `nth` default / index-out-of-range). Forces lazy layers as it walks, so
-/// `(nth (range n) i)` / `(nth (map f xs) i)` / `(rand-nth (range n))`
-/// index like JVM seqs. Shared by `collection.zig::nthFn` (F-011) so the
-/// seq-walk lives next to `seqNext` / `firstOfSeq`.
+/// nth over a seq by walking (clojure.lang.RT.nth's seq path): seq the
+/// head, advance `idx` steps via the boundary's `next`, return the element —
+/// or null when `idx` is negative or past the end (the caller maps null to
+/// the `nth` default / index-out-of-range). Forces lazy layers as it walks,
+/// so `(nth (range n) i)` / `(nth (map f xs) i)` / `(rand-nth (range n))`
+/// index like JVM seqs. Shared by `collection.zig::nthFn` (F-011).
 pub fn nthSeq(rt: *Runtime, env: *Env, coll: Value, idx: i64, loc: SourceLocation) anyerror!?Value {
     if (idx < 0) return null;
-    var cur = try lazy_seq.seq(rt, env, coll);
+    var cur = try seqable.seq(rt, env, coll, loc);
+    // GC-ROOT: single-slot manual frame for the walk cursor — `next` re-enters
+    // eval (a lazy tail's thunk, an ISeq `-next`) [ref: .dev/gc_rooting.md §A]
+    var gc_roots: [1]Value = .{cur};
+    var gc_sp: u16 = 1;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &gc_roots, .sp = &gc_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
     var remaining = idx;
     while (remaining > 0) : (remaining -= 1) {
-        cur = try seqNext(rt, env, cur);
         if (cur.isNil()) return null;
+        cur = try seqable.next(rt, env, cur, loc);
+        gc_roots[0] = cur;
     }
     if (cur.isNil()) return null;
-    return try firstOfSeq(rt, env, cur, loc);
-}
-
-/// First-of-seq: assumes input is already a seq (list / cons / etc).
-fn firstOfSeq(rt: *Runtime, env: *Env, sv: Value, loc: SourceLocation) anyerror!Value {
-    return switch (sv.tag()) {
-        .list, .cons => list.first(sv),
-        .chunked_cons => chunked_cons.first(sv),
-        .range => range.first(sv),
-        .lazy_seq => try lazy_seq.first(rt, env, sv),
-        else => return error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "first",
-            .expected = "seq",
-            .actual = @tagName(sv.tag()),
-        }),
-    };
-}
-
-/// Rest-of-seq: assumes input is already a seq.
-fn restOfSeq(rt: *Runtime, env: *Env, sv: Value, loc: SourceLocation) anyerror!Value {
-    return switch (sv.tag()) {
-        .list, .cons => list.rest(sv),
-        .chunked_cons => try chunked_cons.rest(rt, sv),
-        .range => try chunked_cons.rest(rt, try range.seqChunk(rt, sv)),
-        .lazy_seq => try lazy_seq.rest(rt, env, sv),
-        else => return error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "rest",
-            .expected = "seq",
-            .actual = @tagName(sv.tag()),
-        }),
-    };
-}
-
-/// Helper: walk seq one step (used in count for lazy_seq).
-fn seqNext(rt: *Runtime, env: *Env, cur: Value) anyerror!Value {
-    return switch (cur.tag()) {
-        // seq the rest so a lazy tail (e.g. `(cons x (lazy-seq …))` from
-        // a lazy producer) is forced to nil when empty — else a count /
-        // walk over a lazy seq over-counts by one (the unforced lazy
-        // tail reads as non-nil). Mirrors the `next` fix in `nextFn`.
-        .list, .cons => try lazy_seq.seq(rt, env, list.rest(cur)),
-        // seq the chunk-boundary tail too: chunk-aware map/filter sets a
-        // chunk's `next` to an unrealized `(map f (chunk-rest s))` lazy_seq
-        // that may force to nil, so the raw rest must be seq'd or a
-        // count/walk over-counts by one (an unforced empty lazy tail reads
-        // as non-nil). Within-chunk rest is a chunked_cons → seq is a no-op.
-        .chunked_cons => try lazy_seq.seq(rt, env, try chunked_cons.rest(rt, cur)),
-        .range => try lazy_seq.seq(rt, env, try chunked_cons.rest(rt, try range.seqChunk(rt, cur))),
-        .lazy_seq => try lazy_seq.next(rt, env, cur),
-        else => .nil_val,
-    };
+    return try seqable.first(rt, env, cur, loc);
 }
 
 /// vector_nth — wraps vector.nth with a type-safe loc-less error path
@@ -758,28 +524,27 @@ fn chunkedSeqQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     _ = rt;
     _ = env;
     try error_catalog.checkArity("chunked-seq?", args, 1, loc);
-    return if (chunked_cons.isChunked(args[0])) Value.true_val else Value.false_val;
+    return if (chunked_seq.isChunked(args[0])) Value.true_val else Value.false_val;
 }
 
 fn chunkCountFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("__chunk-count", args, 1, loc);
-    return Value.initInteger(@intCast(chunked_cons.currentChunkCount(args[0])));
+    return Value.initInteger(@intCast(chunked_seq.chunkCount(args[0])));
 }
 
 fn chunkNthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("__chunk-nth", args, 2, loc);
-    return chunked_cons.currentChunkNth(args[0], @intCast(args[1].asInteger()));
+    return chunked_seq.chunkNth(args[0], @intCast(args[1].asInteger()));
 }
 
 fn chunkRestFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("chunk-rest", args, 1, loc);
-    return chunked_cons.chunkRest(args[0]);
+    return try chunked_seq.chunkRest(rt, args[0]);
 }
 
 fn chunkBufferFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -829,6 +594,7 @@ const ENTRIES = [_]Entry{
     // O-032: in-Zig chunk-map/filter drain (chunk_transform.zig) — the
     // producer-side analogue of reduceFn's O-004 chunk drain.
     .{ .name = "__chunk-map-step", .f = &chunk_transform.chunkMapStepFn },
+    .{ .name = "__dorun", .f = &chunk_transform.dorunFn },
     .{ .name = "__chunk-filter-step", .f = &chunk_transform.chunkFilterStepFn },
 };
 
@@ -889,6 +655,45 @@ test "count: string returns codepoint count (not byte count) — DIVERGENCE D1" 
     try testing.expectEqual(@as(i64, 4), r.asInteger()); // 4 codepoints (NOT 5 bytes)
 }
 
+test "=: a chunked seq is equal to the vector holding the same elements" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    const loc: SourceLocation = .{ .line = 0, .column = 0 };
+    // `sequential?` answers true for a `.chunked_cons`; if `=` disagrees, the
+    // value is Sequential that is equal to nothing — the two answers must come
+    // from ONE definition (class_name.implementsInterface over Sequential).
+    const r = try range.make(&fix.rt, 0, 1, 40);
+    const s = try seqFn(&fix.rt, &fix.env, &.{r}, loc);
+    try testing.expectEqual(Value.Tag.chunked_cons, s.tag());
+    var v = vector.empty();
+    var i: i64 = 0;
+    while (i < 40) : (i += 1) v = try vector.conj(&fix.rt, v, Value.initInteger(i));
+    try testing.expect(try equal_mod.valueEqual(&fix.rt, &fix.env, s, v));
+    try testing.expect(try equal_mod.valueEqual(&fix.rt, &fix.env, v, s));
+}
+
+test "count: a chunked seq counts EVERY element, not just its realized chunk" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    const loc: SourceLocation = .{ .line = 0, .column = 0 };
+    // `(seq (range 40))` heads a 32-element chunk over an unrealized tail.
+    // Counting the chunk alone answers 32 for every n >= 32 — a wrong number,
+    // returned without an error.
+    const r40 = try range.make(&fix.rt, 0, 1, 40);
+    const s40 = try seqFn(&fix.rt, &fix.env, &.{r40}, loc);
+    try testing.expectEqual(Value.Tag.chunked_cons, s40.tag());
+    const c40 = try countFn(&fix.rt, &fix.env, &.{s40}, loc);
+    try testing.expectEqual(@as(i64, 40), c40.asInteger());
+
+    // Two chunk boundaries out, so a single-chunk-plus-one answer cannot pass.
+    const r100 = try range.make(&fix.rt, 0, 1, 100);
+    const s100 = try seqFn(&fix.rt, &fix.env, &.{r100}, loc);
+    const c100 = try countFn(&fix.rt, &fix.env, &.{s100}, loc);
+    try testing.expectEqual(@as(i64, 100), c100.asInteger());
+}
+
 test "seq: empty vector returns nil" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
@@ -920,8 +725,20 @@ test "cons: prepend onto nil yields one-element list" {
     try fix.init(testing.allocator);
     defer fix.deinit();
     const r = try consFn(&fix.rt, &fix.env, &.{ Value.initInteger(42), Value.nil_val }, .{ .line = 0, .column = 0 });
-    try testing.expect(r.tag() == .list or r.tag() == .cons);
+    try testing.expectEqual(Value.Tag.list, r.tag());
     try testing.expectEqual(@as(i64, 42), list.first(r).asInteger());
+}
+
+test "cons: prepend onto a non-nil seq yields clojure.lang.Cons" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    const tail = try list.consHeap(&fix.rt, Value.initInteger(2), .nil_val);
+    const r = try consFn(&fix.rt, &fix.env, &.{ Value.initInteger(1), tail }, .{});
+    try testing.expectEqual(Value.Tag.cons, r.tag());
+    try testing.expectEqual(@as(i64, 1), list.first(r).asInteger());
+    try testing.expectEqual(tail, list.rest(r));
+    try testing.expectEqual(@as(u32, 2), list.countOf(r));
 }
 
 test "empty: vector returns empty vector" {
@@ -934,3 +751,8 @@ test "empty: vector returns empty vector" {
     try testing.expect(r.tag() == .vector);
     try testing.expectEqual(@as(u32, 0), vector.count(r));
 }
+// `(empty <non-collection>)` → nil is verified at the integration layer
+// (test/diff/clj_corpus/empty_noncoll.txt, run by corpus_regression), NOT here:
+// the non-collection path runs through protocol dispatch (resolveDescriptor +
+// the fn vtable), which the minimal unit-test Runtime does not bootstrap — a
+// unit test would exercise the fixture, not the behaviour.

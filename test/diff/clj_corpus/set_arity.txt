@@ -1,0 +1,34 @@
+(clojure.set/union)
+;;=> #{}
+(sort (clojure.set/intersection #{1 2 3}))
+;;=> (1 2 3)
+(sort (clojure.set/intersection #{1 2 3} #{2 3 4}))
+;;=> (2 3)
+(sort (clojure.set/intersection #{1 2 3} #{2 3 4} #{3 4 5}))
+;;=> (3)
+(sort (clojure.set/difference #{1 2 3}))
+;;=> (1 2 3)
+(sort (clojure.set/difference #{1 2 3} #{2}))
+;;=> (1 3)
+(sort (clojure.set/difference #{1 2 3 4} #{2} #{4}))
+;;=> (1 3)
+(clojure.set/subset? #{1} #{1 2})
+;;=> true
+(clojure.set/subset? #{1 5} #{1 2})
+;;=> false
+(clojure.set/superset? #{1 2} #{1})
+;;=> true
+(clojure.set/superset? #{1} #{1 2})
+;;=> false
+(:arglists (meta (resolve 'clojure.set/union)))
+;;=> ([] [s1] [s1 s2] [s1 s2 & sets])
+(:arglists (meta (resolve 'clojure.set/intersection)))
+;;=> ([s1] [s1 s2] [s1 s2 & sets])
+(:doc (meta (resolve 'clojure.set/difference)))
+;;=> "Return a set that is the first set without elements of the remaining sets"
+(sort (clojure.set/select odd? #{1 2 3 4}))
+;;=> (1 3)
+(clojure.set/map-invert {:a 1 :b 2})
+;;=> {1 :a, 2 :b}
+(clojure.set/rename-keys {:a 1 :b 2} {:a :x})
+;;=> {:b 2, :x 1}

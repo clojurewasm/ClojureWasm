@@ -4,8 +4,8 @@
 # Phase 8 §9.10 row 8.4 — `cljw --compare` CLI flag end-to-end.
 # Per ADR-0005 + ADR-0044 full-bench remit (ADR-0044 = bench schema,
 # was ADR-0027 pre-audit; renumbered Phase 8 → 9): runs source through
-# BOTH backends via `eval/evaluator.compare` + prints `OK <value>`
-# on parity, `MISMATCH` (exit 1) on divergence.
+# BOTH backends in isolated runtimes + prints `OK <value/error>` when
+# value/error and stdout agree, `MISMATCH` (exit 1) on divergence.
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -47,19 +47,20 @@ EOF
 )
 assert_eq 'defrecord_methodcall_parity' "$got" 'OK 15'
 
-# --- exit-code: when source raises, both backends should error;
-#     compare's `equal: false` triggers exit 1 ---
-diag=$("$BIN" --compare -e '(/ 1 0)' 2>&1 || true)
-case "$diag" in
-    *MISMATCH*|*OK*)
-        # Either path is acceptable: both error consistently (OK in
-        # the sense of "they agree on the failure") OR mismatch.
-        # The test of interest is that --compare exits cleanly +
-        # produces a deterministic output shape.
-        echo "PASS divzero_parity_or_mismatch -> $(echo "$diag" | head -1)" ;;
-    *)
-        fail "divzero_parity_or_mismatch: unexpected output '$diag'" ;;
-esac
+# --- classpath reaches both isolated backends; agreed stdout emits once ---
+PROBE_CP="test/e2e/fixtures/compare"
+expected_probe=$'case-1|\nvalue 3\nPROBE-MAIN-DONE\nOK nil'
+
+got=$("$BIN" --compare -cp "$PROBE_CP" -e "(require 'probe.main) (probe.main/report)" 2>/dev/null)
+assert_eq 'classpath_require_parity' "$got" "$expected_probe"
+
+# --- --compare must remain live after -m switches into the run-mode grammar ---
+got=$("$BIN" --compare -cp "$PROBE_CP" -m probe.main 2>/dev/null)
+assert_eq 'main_mode_parity' "$got" "$expected_probe"
+
+# --- identical failures are agreement, with a successful process exit ---
+got=$("$BIN" --compare -e '(/ 1 0)' 2>&1)
+assert_eq 'identical_error_parity' "$got" 'OK ERROR ArithmeticError'
 
 echo
 echo "Phase 8 row 8.4 --compare CLI e2e: all green."

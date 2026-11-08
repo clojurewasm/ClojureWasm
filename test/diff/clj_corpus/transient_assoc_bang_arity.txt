@@ -1,0 +1,35 @@
+;; `assoc!` is deliberately MORE lenient than `assoc` about arity: a TRAILING
+;; KEY WITH NO VALUE is accepted and its value is nil. The upstream suite says
+;; so outright ("on the contrary to assoc, assoc! accepts an odd number (> 1)
+;; of args and assumes missing value is nil"), and the oracle agrees.
+;;
+;; cljw used to reject exactly that shape with map_literal_arity_odd, which is
+;; assoc's rule applied to assoc!. Fixed 2026-09-10, along with a second fault
+;; in the same guard: the even-count check ran BEFORE the arity check, so
+;; `(assoc! tm :b)` reported a key-without-value error where clj reports an
+;; ArityException. Too few args is an arity fault. Arity is checked first now.
+;;
+;; The nil default applies identically to a transient map, a transient vector
+;; and a user ITransientAssociative, since all three read their value through
+;; the one `pairedValue` helper.
+;;
+;; Not pinned: `(assoc! tm :b)` and `(assoc! tm)` both raise ArityException on
+;; each side, differing only in clj's `clojure.lang.` prefix (AD-007).
+(persistent! (apply assoc! (transient []) [0 1 1]))
+;;=> [1 nil]
+(persistent! (apply assoc! (transient []) [0 1 1 2]))
+;;=> [1 2]
+(persistent! (apply assoc! (transient [1]) [0 1 1 2 2]))
+;;=> [1 2 nil]
+(persistent! (apply assoc! (transient {:a 1}) [:b 2 :c]))
+;;=> {:a 1, :b 2, :c nil}
+(persistent! (apply assoc! (transient {:a 1}) [:b 2 :c 3 :d]))
+;;=> {:a 1, :b 2, :c 3, :d nil}
+(persistent! (apply assoc! (transient {}) [:a 1 :b 2]))
+;;=> {:a 1, :b 2}
+(persistent! (apply assoc! (transient {}) [:a 1 :b 2 :b 3]))
+;;=> {:a 1, :b 3}
+(persistent! (assoc! (transient {}) :a 1 :b 2))
+;;=> {:a 1, :b 2}
+(persistent! (assoc! (transient []) 0 :zero))
+;;=> [:zero]

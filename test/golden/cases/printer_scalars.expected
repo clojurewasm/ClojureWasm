@@ -1,0 +1,21 @@
+--- exit ---
+0
+--- stdout ---
+nil | nil
+true | true
+false | false
+0 | 0
+-1 | -1
+42 | 42
+3.14 | 3.14
+1/3 | 1/3
+\a | a
+\newline | 
+
+"s" | s
+"with \"quote\"" | with "quote"
+:kw | :kw
+:ns/kw | :ns/kw
+sym | sym
+ns/sym | ns/sym
+--- stderr ---

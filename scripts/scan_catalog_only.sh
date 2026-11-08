@@ -39,5 +39,5 @@ if (( hits > 0 )); then
     grep -rn "setErrorFmt(" "$REPO_ROOT/src/" 2>/dev/null \
         | grep -v "/error_catalog\.zig:" \
         | grep -v "/error\.zig:.*pub fn setErrorFmt" \
-        | head -10
+        | sed -n 10p
 fi

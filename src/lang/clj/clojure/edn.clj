@@ -12,7 +12,7 @@
 ;; interned by `src/lang/primitive/edn.zig::register`; this `.clj` file's
 ;; only job is to (a) open the `clojure.edn` namespace, (b) optionally
 ;; re-export the var with metadata, (c) leave room for the
-;; Pattern-A `read` / `parse` follow-up defns.
+;; Pattern-A `parse` follow-up defns.
 (ns clojure.edn
   (:refer-clojure))
 
@@ -21,4 +21,5 @@
 ;; so no defn / declare is needed here. Both the 1-arity
 ;; `(read-string s)` and the 2-arity `(read-string opts s)`
 ;; (`:readers` / `:default` / `:eof`, ADR-0073 D-200) land in that
-;; primitive. The reader-stream `(read)` arity is deferred.
+;; primitive. `(read)`, `(read reader)`, and `(read opts reader)` share
+;; its EDN option handling and consume only one form per call.

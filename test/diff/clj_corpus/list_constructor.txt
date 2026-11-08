@@ -1,0 +1,8 @@
+;; List constructor contract, reviewed against Clojure 1.12.4.
+;; An arbitrary apply rest sequence must become a fresh, metadata-free list.
+(mapv (fn [source] (let [result (apply list source)] [(list? result) (vec result) (meta result)])) [nil [0 1 2] (range 3) (map identity (range 3)) "ab" (with-meta '(0 1 2) {:source true})])
+;;=> [[true [] nil] [true [0 1 2] nil] [true [0 1 2] nil] [true [0 1 2] nil] [true [\a \b] nil] [true [0 1 2] nil]]
+(let [source (with-meta '(0 1 2) {:source true}) result (apply list source)] [(identical? source result) (meta result) (list? result)])
+;;=> [false nil true]
+(let [seen (atom []) result (apply list (map (fn [x] (swap! seen conj x) x) (range 4)))] [(list? result) @seen (vec result)])
+;;=> [true [0 1 2 3] [0 1 2 3]]

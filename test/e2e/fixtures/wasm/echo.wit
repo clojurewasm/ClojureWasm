@@ -1,0 +1,54 @@
+package local:cljwit@0.1.0;
+
+/// Every WIT type whose canonical ABI needs no linear memory, so the guest can
+/// be hand-written WAT and doc/design/0012's scalar rows become checkable
+/// without a Rust or C toolchain.
+world echo {
+  export echo-bool: func(v: bool) -> bool;
+  export echo-s32: func(v: s32) -> s32;
+  export echo-u64: func(v: u64) -> u64;
+  export echo-f32: func(v: f32) -> f32;
+  export echo-f64: func(v: f64) -> f64;
+  export echo-char: func(v: char) -> char;
+
+  /// The first aggregate row. Needs an exported memory and cabi_realloc, per
+  /// doc/design/0007 — but not a Rust toolchain, which is what the note first
+  /// assumed and what this disproves.
+  export echo-string: func(v: string) -> string;
+
+  /// enum lifts as a *case name* on the host side, which is why 0012 maps it
+  /// to a keyword rather than an ordinal.
+  enum colour { red, green, blue }
+  export echo-colour: func(v: colour) -> colour;
+
+  /// option's host representation is a pointer: NULL for none. That is what
+  /// makes 0012's L1 a loss on the Clojure side rather than at the boundary.
+  export echo-option-u32: func(v: option<u32>) -> option<u32>;
+
+  /// The row that makes L1 concrete: none and some(none) are distinct here and
+  /// both become nil in Clojure.
+  export echo-option-option-u32: func(v: option<option<u32>>) -> option<option<u32>>;
+
+  /// 0012's largest contested decision: result is the *type* mapping
+  /// ([:ok v] / [:err e]) and throwing is return-position sugar. This checks
+  /// that the tagged form round-trips, which the sugar is defined in terms of.
+  export echo-result: func(v: result<u32, string>) -> result<u32, string>;
+
+  /// The host gives a variant as a case *name* plus an optional payload, which
+  /// is why 0012 maps it to [:case-name value] — and [:case-name] when there
+  /// is none.
+  variant shape { circle(f64), square(u32), point }
+  export echo-shape: func(v: shape) -> shape;
+
+  /// The last two rows. Both are vectors on the host side — an array of vals,
+  /// or of name/val entries — rather than the single pointers the sum types use.
+  export echo-list-u32: func(v: list<u32>) -> list<u32>;
+  record pair { n: u32, label: string }
+  export echo-pair: func(v: pair) -> pair;
+
+  /// The two remaining value types: a set of names on the wire, and a
+  /// positional product distinguished from `list` only by its type.
+  flags perms { read, write, exec }
+  export echo-perms: func(v: perms) -> perms;
+  export echo-tuple: func(v: tuple<u32, string>) -> tuple<u32, string>;
+}

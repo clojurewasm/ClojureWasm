@@ -33,8 +33,8 @@ var uri_descriptor: ?*const type_descriptor.TypeDescriptor = null;
 /// The gpa-duped URI string carried by a URI host instance.
 fn uriString(recv: Value) []const u8 {
     const inst = host_instance.asHostInstance(recv);
-    const ptr: [*]const u8 = @ptrFromInt(inst.state[0]);
-    return ptr[0..inst.state[1]];
+    const ptr: [*]const u8 = @ptrFromInt(@as(usize, @intCast(inst.state[0])));
+    return ptr[0..@intCast(inst.state[1])];
 }
 
 /// `(java.net.URI. "scheme://host/path")` — store the string verbatim; accessors
@@ -79,8 +79,8 @@ fn toString(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 /// swept (host_instance is a GC leaf; the descriptor routes the tag finaliser
 /// here — see host_instance.zig).
 fn finaliseState(infra: std.mem.Allocator, state: *[host_instance.STATE_WORDS]u64) void {
-    const ptr: [*]u8 = @ptrFromInt(state[0]);
-    infra.free(ptr[0..state[1]]);
+    const ptr: [*]u8 = @ptrFromInt(@as(usize, @intCast(state[0])));
+    infra.free(ptr[0..@intCast(state[1])]);
 }
 
 const MethodSpec = struct { name: []const u8, f: *const fn (*Runtime, *Env, []const Value, SourceLocation) anyerror!Value };

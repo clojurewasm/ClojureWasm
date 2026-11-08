@@ -30,6 +30,12 @@ assert_eq 'json_decode_kw' "$(run '(cljw.json/decode "{\"name\":\"x\",\"nested\"
 assert_eq 'json_decode_get' "$(run '(:code (cljw.json/decode "{\"code\":\"(+ 1 2)\"}"))')" '"(+ 1 2)"'
 assert_eq 'json_decode_strict' "$(run '(get (cljw.json/decode-strict "{\"a\":1}") "a")')" '1'
 assert_eq 'json_roundtrip' "$(run '(cljw.json/decode (cljw.json/encode {:x [1 2 3]}))')" '{:x [1 2 3]}'
+# write-str / read-str delegate at call time (not a def-alias): with-redefs of
+# the data.json var reaches them, options pass through, and the vars document.
+assert_eq 'json_write_str_redefs' "$(run '(with-redefs [clojure.data.json/write-str (fn [& _] "X")] (cljw.json/write-str {:a 1}))')" '"X"'
+assert_eq 'json_read_str_opts' "$(run '(cljw.json/read-str "{\"a\":1}" :key-fn keyword)')" '{:a 1}'
+assert_eq 'json_write_str_arglists' "$(run '(:arglists (meta (var cljw.json/write-str)))')" '([x & options])'
+assert_eq 'json_read_str_doc' "$(run '(string? (:doc (meta (var cljw.json/read-str))))')" 'true'
 
 # --- cljw.fs ---
 assert_eq 'fs_exists'    "$(run "(cljw.fs/exists? \"$TMP/ten.txt\")")" 'true'

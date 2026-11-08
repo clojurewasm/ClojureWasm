@@ -36,6 +36,24 @@ const dispatch = @import("../../runtime/dispatch.zig");
 const reduced = @import("../../runtime/collection/reduced.zig");
 const range_mod = @import("../../runtime/collection/range.zig");
 const vector_mod = @import("../../runtime/collection/vector.zig");
+const sub_vector_mod = @import("../../runtime/collection/sub_vector.zig");
+const big_int = @import("../../runtime/numeric/big_int.zig");
+
+/// Count of a `.vector` OR `.sub_vector` — the reduce fast path index-walks both.
+fn vsCount(v: Value) u32 {
+    return switch (v.tag()) {
+        .sub_vector => sub_vector_mod.count(v),
+        else => vector_mod.count(v),
+    };
+}
+
+/// `nth` into a `.vector` OR `.sub_vector`.
+fn vsNth(v: Value, i: u32) Value {
+    return switch (v.tag()) {
+        .sub_vector => sub_vector_mod.nth(v, i),
+        else => vector_mod.nth(v, i),
+    };
+}
 const compare_mod = @import("../../runtime/compare.zig");
 const chunked_cons = @import("../../runtime/collection/chunked_cons.zig");
 const lazy_seq_mod = @import("../../runtime/lazy_seq.zig");
@@ -53,16 +71,9 @@ const root_set = @import("../../runtime/gc/root_set.zig");
 /// JVM reference: clojure.lang.RT.applyTo / clojure.core/apply
 /// cw v1 tier: A (Phase 6.16.a-3.1)
 ///
-/// ADR-0042 (row 7.9): variadic-callee bind-direct fast-path. When `f`
-/// is a user Fn whose variadic arity exactly matches `leading.len` AND
-/// trailing has a seq-shaped tag (list / cons / chunked_cons /
-/// lazy_seq / nil), pass `args[1..]` (= `[leading..., trailing]`)
-/// straight through. `tree_walk.callFunction`'s rest-pack gate then
-/// binds trailing directly to the `& rest` slot — no walk, no
-/// realisation. Other callee shapes (fixed-arity, builtin, keyword,
-/// map-as-fn, ...) and non-seq trailings fall through to the eager
-/// spread path so the arity-matching contract on those callables is
-/// preserved.
+/// Variadic Functions inspect only the bounded prefix needed for method
+/// selection, then bind the remaining seq directly (ADR-0042). Fixed
+/// methods still win when the full argument count fits one of them.
 pub fn applyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (args.len < 2) {
         return error_catalog.raise(.arity_below_min, loc, .{
@@ -75,12 +86,10 @@ pub fn applyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     const trailing = args[args.len - 1];
     const leading = args[1 .. args.len - 1];
 
-    if (canBindDirect(f, leading.len, trailing)) {
-        // ADR-0042 am1: bind the trailing seq straight to `& rest`
-        // (apply's lazy-preserving spread) via the dedicated entry — NOT
-        // the generic callFunction, which always cons-wraps. canBindDirect
-        // has verified `f` is a variadic fn_val whose `& rest` matches.
-        return try tree_walk.callFunctionBindingRest(rt, env, f, args[1..], loc);
+    if (f.tag() == .fn_val) {
+        if (f.decodePtr(*const tree_walk.Function).variadic != null) {
+            return applyVariadic(rt, env, f, leading, trailing, loc);
+        }
     }
 
     // Eager spread: walk the trailing seqable, collecting into a flat slice.
@@ -88,18 +97,33 @@ pub fn applyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     defer collected.deinit(rt.gpa);
     try collected.appendSlice(rt.gpa, leading);
 
+    // GC-ROOT: fixed-arity and builtin apply retain every peeled value
+    // across arbitrary lazy-seq callbacks, just like applyVariadic.
+    var roots: [1]Value = .{trailing};
+    const root_count: u16 = roots.len;
+    var frame: root_set.EvalFrame = .{
+        .stack = &roots,
+        .sp = &root_count,
+        .locals = collected.items,
+        .constants = args,
+        .callee = f,
+        .parent = root_set.eval_frame_head,
+    };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
+
     // `seq` the trailing operand so an EMPTY seqable (incl. an empty `.list`
     // / `.cons`, which are non-nil) collapses to nil — otherwise the walk
     // below runs once and spreads a spurious `(first empty)` = nil
     // (`(apply + '())` → "+ got nil"). seq on a realised seq returns it
     // unchanged; apply already eagerly walks, so no laziness is lost.
-    var cur: Value = trailing;
-    if (!cur.isNil()) {
-        cur = try sequence.seqFn(rt, env, &.{cur}, loc);
+    if (!roots[0].isNil()) {
+        roots[0] = try sequence.seqFn(rt, env, &.{roots[0]}, loc);
     }
-    while (!cur.isNil()) {
-        try collected.append(rt.gpa, try sequence.firstFn(rt, env, &.{cur}, loc));
-        cur = try sequence.nextFn(rt, env, &.{cur}, loc);
+    while (!roots[0].isNil()) {
+        try collected.append(rt.gpa, try sequence.firstFn(rt, env, &.{roots[0]}, loc));
+        frame.locals = collected.items;
+        roots[0] = try sequence.nextFn(rt, env, &.{roots[0]}, loc);
     }
     return try invokeCallable(rt, env, f, collected.items, loc);
 }
@@ -122,21 +146,61 @@ fn fuseBaseKind(coll: Value) FuseBaseKind {
         cur = vector_mod.nth(fuse, 1); // fuse = [xform source]
     }
     return switch (cur.tag()) {
-        .range, .vector, .chunked_cons => .chunked,
+        // `.array_seq` joins the CONCRETE bases: its elements are reachable
+        // without forcing anything, which is the property this enum is really
+        // sorting on (only `.unchunked` is acted upon — it alone delegates to
+        // `-fused-reduce`). [refs: O-058]
+        .range, .vector, .sub_vector, .chunked_cons, .array_seq, .string_seq => .chunked,
         .list, .cons, .nil => .unchunked,
         else => .unknown,
     };
 }
 
-fn canBindDirect(f: Value, leading_count: usize, trailing: Value) bool {
-    if (f.tag() != .fn_val) return false;
-    const fn_ptr = f.decodePtr(*const tree_walk.Function);
-    const v = fn_ptr.variadic orelse return false;
-    if (v.arity != leading_count) return false;
-    return switch (trailing.tag()) {
-        .list, .cons, .chunked_cons, .lazy_seq, .nil => true,
-        else => false,
+fn applyVariadic(rt: *Runtime, env: *Env, f: Value, leading: []const Value, trailing: Value, loc: SourceLocation) !Value {
+    const function = f.decodePtr(*const tree_walk.Function);
+    const required = function.variadic.?.arity;
+    var bound: usize = required;
+    for (function.methods) |method| bound = @max(bound, method.arity);
+
+    // GC-ROOT: apply owns its assembled argument spine, cursor, retained
+    // rest and peeled values across arbitrary lazy-seq callbacks.
+    var roots: [3]Value = .{ trailing, .nil_val, .nil_val };
+    const root_count: u16 = roots.len;
+    var frame: root_set.EvalFrame = .{
+        .stack = &roots,
+        .sp = &root_count,
+        .locals = &.{},
+        .constants = leading,
+        .callee = f,
+        .parent = root_set.eval_frame_head,
     };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
+
+    // An existing LazySeq is already an ISeq. Leading arguments may
+    // satisfy the bounded probe without touching that tail at all.
+    if (trailing.tag() != .lazy_seq) roots[0] = try sequence.seqFn(rt, env, &.{trailing}, loc);
+    var i = leading.len;
+    while (i > 0) {
+        i -= 1;
+        roots[0] = try list_mod.consHeap(rt, leading[i], roots[0]);
+    }
+    roots[1] = try sequence.seqFn(rt, env, &.{roots[0]}, loc);
+    var prefix: std.ArrayList(Value) = .empty;
+    defer prefix.deinit(rt.gpa);
+    // RT.boundedLength advances next after the final counted cell too.
+    // That bounded lookahead is observable for side-effecting lazy maps.
+    while (!roots[1].isNil() and prefix.items.len <= bound) {
+        if (prefix.items.len == required) roots[2] = roots[1];
+        try prefix.append(rt.gpa, try sequence.firstFn(rt, env, &.{roots[1]}, loc));
+        frame.locals = prefix.items;
+        roots[1] = try sequence.nextFn(rt, env, &.{roots[1]}, loc);
+    }
+    if (prefix.items.len <= bound) {
+        return invokeCallable(rt, env, f, prefix.items, loc);
+    }
+    prefix.items[required] = roots[2];
+    return tree_walk.callFunctionBindingRest(rt, env, f, prefix.items[0 .. required + 1], loc);
 }
 
 /// Invoke a callable Value (builtin or Function) with args via the
@@ -234,11 +298,11 @@ pub fn reduceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     // `.range` always has count ≥ 1 (empty → nil). [refs: O-001, D-163]
     if (coll.tag() == .range) {
         const n = range_mod.countOf(coll);
-        var racc: Value = if (args.len == 3) args[1] else range_mod.elementAt(coll, 0);
+        var racc: Value = if (args.len == 3) args[1] else try range_mod.elementAt(rt, coll, 0);
         var ri: i64 = if (args.len == 3) 0 else 1;
         while (ri < n) : (ri += 1) {
-            gc_roots[1] = racc; // root across the reducing-fn eval
-            const rstep = try invokeCallable(rt, env, f, &.{ racc, range_mod.elementAt(coll, ri) }, loc);
+            gc_roots[1] = racc; // root across the reducing-fn eval (and the elementAt heap-Long alloc)
+            const rstep = try invokeCallable(rt, env, f, &.{ racc, try range_mod.elementAt(rt, coll, ri) }, loc);
             if (reduced.isReduced(rstep)) return reduced.unreduce(rstep);
             racc = rstep;
         }
@@ -249,20 +313,20 @@ pub fn reduceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     // builds an N-element eager cons list before the walk). `(reduce f
     // bigvec)` / `(into to bigvec)` (into = reduce conj) went O(n)
     // intermediate alloc → O(1). [refs: O-002, D-163]
-    if (coll.tag() == .vector) {
-        const n = vector_mod.count(coll);
+    if (coll.tag() == .vector or coll.tag() == .sub_vector) {
+        const n = vsCount(coll);
         var racc: Value = undefined;
         var ri: u32 = 0;
         if (args.len == 3) {
             racc = args[1];
         } else {
             if (n == 0) return try invokeCallable(rt, env, f, &.{}, loc);
-            racc = vector_mod.nth(coll, 0);
+            racc = vsNth(coll, 0);
             ri = 1;
         }
         while (ri < n) : (ri += 1) {
             gc_roots[1] = racc; // root across the reducing-fn eval
-            const rstep = try invokeCallable(rt, env, f, &.{ racc, vector_mod.nth(coll, ri) }, loc);
+            const rstep = try invokeCallable(rt, env, f, &.{ racc, vsNth(coll, ri) }, loc);
             if (reduced.isReduced(rstep)) return reduced.unreduce(rstep);
             racc = rstep;
         }
@@ -455,20 +519,51 @@ pub fn someQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 // `-take-eager` remains (take is bounded-eager: it realizes only N, so
 // it already terminates on an infinite source).
 
-/// `(-take-eager n coll)` — eager list of first n elements.
+/// The realizable element count for a `take` numeric argument, mirroring clj's
+/// `(pos? n)` / `(dec n)` loop: a non-integer or infinite count is legal (clj
+/// compares the count numerically, it does not truncate). A positive float
+/// realizes ⌈n⌉ elements; ##Inf — or any count past the f64 integer range —
+/// realizes the whole (finite) source; n ≤ 0 / ##NaN realizes none. `null`
+/// means the count is not a number at all.
+const TakeCount = union(enum) { finite: i64, unbounded };
+
+fn takeCountOf(n_val: Value) ?TakeCount {
+    return switch (n_val.tag()) {
+        .integer => .{ .finite = n_val.asInteger() },
+        .float => blk: {
+            const f = n_val.asFloat();
+            if (std.math.isNan(f) or f <= 0) break :blk TakeCount{ .finite = 0 };
+            // Beyond 2^53 an f64 cannot represent consecutive integers, and no
+            // realizable sequence is that long, so ##Inf and any such count are
+            // unbounded — realize until the source ends.
+            if (f >= 9007199254740992.0) break :blk TakeCount.unbounded;
+            break :blk TakeCount{ .finite = @intFromFloat(@ceil(f)) };
+        },
+        // A BigInt count uses its value (`(take 5N …)` takes 5); one larger than
+        // any realizable sequence is unbounded (bounded by the finite source).
+        .big_int => blk: {
+            const v = big_int.toI64(n_val) catch break :blk TakeCount.unbounded;
+            break :blk TakeCount{ .finite = if (v > 0) v else 0 };
+        },
+        else => null,
+    };
+}
+
+/// `(-take-eager n coll)` — eager list of the first n elements. `n` may be any
+/// number (clj's take compares the count numerically): a positive float
+/// realizes ⌈n⌉ elements, ##Inf the whole finite source, n ≤ 0 / ##NaN none.
 pub fn takeEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("-take-eager", args, 2, loc);
-    const n_val = args[0];
-    if (n_val.tag() != .integer) {
-        return error_catalog.raise(.type_arg_not_integer, loc, .{
-            .fn_name = "-take-eager",
-            .actual = @tagName(n_val.tag()),
-        });
+    const count = takeCountOf(args[0]) orelse return error_catalog.raise(.type_arg_not_number, loc, .{
+        .fn_name = "take",
+        .actual = @tagName(args[0].tag()),
+    });
+    // (take 0 …) / (take -1 …) → () not nil (D-164): take yields an empty seq
+    // for a non-positive count.
+    switch (count) {
+        .finite => |n| if (n <= 0) return try list_mod.emptyList(rt),
+        .unbounded => {},
     }
-    const n = n_val.asInteger();
-    // (take 0 …) / (take -1 …) → () not nil (D-164): JVM take yields an
-    // empty seq for a non-positive count.
-    if (n <= 0) return try list_mod.emptyList(rt);
     // D-244 #4b: `cur` (the source cursor) AND each `collected` element are held
     // in a gpa `ArrayList` the GC does NOT trace, so a collect during `nextFn`'s
     // alloc (alloc-torture / ADR-0028 auto-collect) sweeps the source chunk +
@@ -481,9 +576,19 @@ pub fn takeEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
     var collected: std.ArrayList(Value) = .empty;
     defer collected.deinit(rt.gpa);
-    var remaining: i64 = n;
-    while (!cur.isNil() and remaining > 0) : (remaining -= 1) {
+    // Unbounded (##Inf / oversized count) walks until the source ends; the
+    // source is finite by contract for an eager take, so maxInt never limits.
+    var remaining: i64 = switch (count) {
+        .finite => |n| n,
+        .unbounded => std.math.maxInt(i64),
+    };
+    while (!cur.isNil() and remaining > 0) {
         try collected.append(rt.gpa, try sequence.firstFn(rt, env, &.{cur}, loc));
+        remaining -= 1;
+        // Don't force `next` on the element just taken as the last: clj's `take`
+        // realizes exactly n, and `(next s)` here would realize the (n+1)th
+        // (the `when-let` `@calls` count that read n+1 before this).
+        if (remaining == 0) break;
         cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     return try buildListFromSlice(rt, collected.items);
@@ -491,25 +596,21 @@ pub fn takeEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 
 /// `(-range start end step)` — produce a compact `.range` value (ADR-0063,
 /// O-001) for a finite integer range, or nil for an empty one. core.clj's
-/// `range` 3-arg arm calls this only when all args are fixed-precision
-/// integers and step≠0 (the `int?` + `(not= step 0)` gate); float / bigint /
-/// step-0 ranges stay the lazy `.clj` body. The integer-tag guard here is
-/// defensive — a direct mis-call raises rather than mis-producing.
+/// `range` 3-arg arm calls this only when all args are `int?` (a Long — inline
+/// i48 OR a heap `big_int` origin `.long`) and step≠0; float / genuine-BigInt /
+/// step-0 ranges stay the lazy `.clj` body. `expectI64` accepts a heap Long
+/// (the `.range` spans the full i64 domain, ADR-0063 amendment) and rejects
+/// anything else — the defensive guard against a direct mis-call.
 pub fn rangeLeafFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("-range", args, 3, loc);
-    for (args) |a| {
-        if (a.tag() != .integer) {
-            return error_catalog.raise(.type_arg_not_integer, loc, .{
-                .fn_name = "-range",
-                .actual = @tagName(a.tag()),
-            });
-        }
-    }
+    const start = try error_catalog.expectI64(args[0], "-range", loc);
+    const end = try error_catalog.expectI64(args[1], "-range", loc);
+    const step = try error_catalog.expectI64(args[2], "-range", loc);
     // An empty integer range (`(range 0)` / `(range 5 5)`) is `()` not nil
     // (D-164); `fromBounds` returns nil for count 0, lifted here. Internal
     // range ops keep `make`'s nil-for-empty (their callers test isNil).
-    const r = try range_mod.fromBounds(rt, args[0].asInteger(), args[1].asInteger(), args[2].asInteger());
+    const r = try range_mod.fromBounds(rt, start, end, step);
     return if (r.isNil()) try list_mod.emptyList(rt) else r;
 }
 
@@ -548,7 +649,6 @@ fn isFalsy(v: Value) bool {
 /// after the sort.
 const NaturalSortCtx = struct {
     rt: *Runtime,
-    env: *Env,
     loc: SourceLocation,
     err: ?anyerror = null,
 };
@@ -556,19 +656,8 @@ const NaturalSortCtx = struct {
 fn naturalLessThan(opaque_ctx: *anyopaque, a: Value, b: Value) bool {
     const ctx: *NaturalSortCtx = @ptrCast(@alignCast(opaque_ctx));
     if (ctx.err != null) return false;
-    // A deftype declaring java.lang.Comparable supplies its own ordering
-    // (instaparse's AutoFlattenSeq): consult Comparable/-compare-to before
-    // the native valueCompare — the same split the compare primitive applies.
-    if (a.tag() == .typed_instance or a.tag() == .reified_instance) {
-        var cs: dispatch.CallSite = .{};
-        const maybe = dispatch.dispatchOrNull(ctx.rt, ctx.env, &cs, a, "Comparable", "-compare-to", &.{ a, b }, ctx.loc) catch |e| {
-            ctx.err = e;
-            return false;
-        };
-        if (maybe) |r| {
-            if (r.tag() == .integer) return r.asInteger() < 0;
-        }
-    }
+    // A Comparable deftype/reify (instaparse's AutoFlattenSeq) orders itself
+    // inside valueCompare (compare.zig comparableOrder).
     const ord = compare_mod.valueCompare(ctx.rt, a, b, ctx.loc) catch |e| {
         ctx.err = e;
         return false;
@@ -652,6 +741,7 @@ fn sortNaturalFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     if (args.len != 1) {
         return error_catalog.raise(.arity_not_expected, loc, .{ .fn_name = "-sort-natural", .expected = 1, .got = args.len });
     }
+    _ = env;
     const v = args[0];
     const n = vector_mod.count(v);
     if (n <= 1) return v; // 0/1 elements are already sorted
@@ -659,7 +749,7 @@ fn sortNaturalFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     defer rt.gpa.free(buf);
     var i: u32 = 0;
     while (i < n) : (i += 1) buf[i] = vector_mod.nth(v, i);
-    var ctx: NaturalSortCtx = .{ .rt = rt, .env = env, .loc = loc };
+    var ctx: NaturalSortCtx = .{ .rt = rt, .loc = loc };
     value_sort.sort(buf, @ptrCast(&ctx), &naturalLessThan);
     if (ctx.err) |e| return e;
     return vector_mod.fromSlice(rt, buf);

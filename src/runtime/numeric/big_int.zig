@@ -35,8 +35,10 @@ const hash = @import("../hash.zig");
 /// i48 inline range but stays ≤ i64) or a genuine arbitrary-precision
 /// BigInt (D-165 / ADR-0080 — B2). INTENT-based, set by the producing call,
 /// NEVER inferred from magnitude: `(parse-long "999999999999999")` →
-/// `.long`, `(bigint 5)` / `5N` → `.bigint`. Gates only print (`N` suffix)
-/// and `(class)` / `instance?` (Long vs BigInt); `=` / hash are value-based
+/// `.long`, `(bigint 5)` / `5N` → `.bigint`. Gates print (`N` suffix),
+/// `(class)` / `instance?` (Long vs BigInt), and the FIXED-PRECISION
+/// predicates `int?` / `pos-int?` / `neg-int?` / `nat-int?` (a `.long`-origin
+/// heap Long is `int?`, a `.bigint` is not); `=` / hash are value-based
 /// (D-205) and ignore it.
 pub const IntOrigin = enum(u8) { long, bigint };
 
@@ -62,6 +64,14 @@ pub const BigInt = extern struct {
 /// The heap integer's origin (D-165). Caller must know `v` is `.big_int`.
 pub fn originOf(v: Value) IntOrigin {
     return v.decodePtr(*const BigInt).origin;
+}
+
+/// The heap integer's value as an i64, or `error.TargetTooSmall` /
+/// `error.NegativeIntoUnsigned` when it does not fit. Caller must know `v` is
+/// `.big_int`. Used where a magnitude only matters up to i64 (e.g. a `take`
+/// count larger than any realizable sequence is treated as unbounded).
+pub fn toI64(v: Value) !i64 {
+    return v.decodePtr(*const BigInt).m.toInt(i64);
 }
 
 /// Parse a base-10 digit string `[-+]?ddd` into a Managed on `rt.gc.infra`,
@@ -117,10 +127,8 @@ pub fn allocFromManaged(rt: *Runtime, src: *const std.math.big.int.Managed, orig
     const m_ptr = try rt.gc.infra.create(std.math.big.int.Managed);
     errdefer rt.gc.infra.destroy(m_ptr);
     m_ptr.* = try src.cloneWithDifferentAllocator(rt.gc.infra);
-
-    const bi = try rt.gc.alloc(BigInt);
-    bi.* = .{ .header = HeapHeader.init(.big_int), .origin = origin, .m = m_ptr };
-    return Value.encodeHeapPtr(.big_int, bi);
+    errdefer m_ptr.deinit();
+    return wrapManaged(rt, m_ptr, origin);
 }
 
 /// Wrap an already-computed, `gc.infra`-owned `*Managed` as a GC BigInt Value
@@ -134,6 +142,8 @@ pub fn allocFromManaged(rt: *Runtime, src: *const std.math.big.int.Managed, orig
 pub fn wrapManaged(rt: *Runtime, m_ptr: *std.math.big.int.Managed, origin: IntOrigin) !Value {
     const bi = try rt.gc.alloc(BigInt);
     bi.* = .{ .header = HeapHeader.init(.big_int), .origin = origin, .m = m_ptr };
+    // CLJW-GC-HEAP-RETURN: the limbs live on infra, invisible to the trigger.
+    rt.gc.noteOwnedAlloc(ownedBytes(&bi.header));
     return Value.encodeHeapPtr(.big_int, bi);
 }
 
@@ -150,8 +160,16 @@ pub fn finaliseGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
 /// BigInt has no Value fields → no trace fn needed (the GC walks
 /// the live list, sees BigInt's tag, and skips the per-tag trace
 /// table lookup when no entry is registered).
+/// D-573: the Managed header + its limb storage, which is what finaliseGc
+/// frees. `limbs.len` is the allocated capacity (std.math.big Managed).
+fn ownedBytes(header: *HeapHeader) usize {
+    const bi: *BigInt = @ptrCast(@alignCast(header));
+    return @sizeOf(std.math.big.int.Managed) + bi.m.limbs.len * @sizeOf(std.math.big.Limb);
+}
+
 pub fn registerGcHooks() void {
     tag_ops.registerFinaliser(.big_int, &finaliseGc);
+    tag_ops.registerOwnedBytes(.big_int, &ownedBytes);
 }
 
 /// Decode a BigInt Value into its *Managed for read-only access.

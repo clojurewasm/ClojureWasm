@@ -1,0 +1,49 @@
+name: "🧩 Missing var, namespace, or library support"
+description: Something from Clojure or a library that cljw does not have yet
+title: "[missing] "
+labels: ["missing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        cljw implements most of `clojure.core` and a growing set of standard
+        namespaces, but not all of it, and some of it never will be — anything
+        that requires the JVM class system (`gen-class`, `proxy` against real
+        Java base classes, `bean`'s reflective variant) is permanently out of
+        scope, recorded in [`data/compat_tiers.yaml`](https://github.com/BuddhiLW/ClojureWasm/blob/main/data/compat_tiers.yaml).
+
+        Telling us *what you were trying to do* matters more than the var name
+        — often there is a supported path, and if there is not, the use case is
+        what decides the priority.
+
+  - type: input
+    id: what
+    attributes:
+      label: What is missing
+      placeholder: clojure.core/load-file, or clojure.spec.alpha, or next.jdbc
+    validations:
+      required: true
+
+  - type: textarea
+    id: usecase
+    attributes:
+      label: What you were trying to do
+      description: The actual task, not just the missing name.
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: What cljw said
+      description: The error output, if you got one.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: cljw version
+    validations:
+      required: true

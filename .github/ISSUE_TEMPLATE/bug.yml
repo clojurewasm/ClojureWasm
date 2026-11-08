@@ -1,0 +1,70 @@
+name: "🐛 Bug"
+description: A crash, a hang, wrong output, or a build failure
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the bug is "this Clojure code gives a different answer than the JVM",
+        please use the **Clojure divergence** template instead — it asks for the
+        comparison that makes such a report actionable.
+
+        Crashes and hangs are the highest-priority reports here. A crash in the
+        WebAssembly FFI or the sandbox may be a security issue — in that case
+        please use [private vulnerability reporting](https://github.com/BuddhiLW/ClojureWasm/security/advisories/new)
+        rather than a public issue.
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The exact command or code. Smaller is better.
+      render: shell
+      placeholder: cljw -e '(future (throw (ex-info "x" {})))'
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Paste the output, error, or stack trace verbatim.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: cljw version
+      description: Output of `cljw --version`.
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and install method
+      placeholder: macOS aarch64, brew / Linux x86_64, built from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: wasm
+    attributes:
+      label: Does it involve the WebAssembly FFI?
+      options:
+        - "No"
+        - "Yes — wasm/load or wasm/call"
+        - "Yes — a component required as a namespace"
+        - "Not sure"
+    validations:
+      required: true

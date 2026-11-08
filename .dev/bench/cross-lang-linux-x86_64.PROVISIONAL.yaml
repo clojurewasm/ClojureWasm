@@ -1,0 +1,635 @@
+# PROVISIONAL. Do NOT render this into bench/README.md.
+#
+# Produced 2026-09-05 by the OLD compare_langs.sh, before commit 3cf8b391 added
+# core pinning, governor recording and per-measurement stddev. It therefore
+# carries no cold_sd, so bench_domain gives it noise_floor 1.0 and every
+# difference in it is taken at face value.
+#
+# It should not be. Measured on the same host at the same time: median relative
+# dispersion 22%, noise floor 1.62x, while this file's per-workload differences
+# are mostly 1.2-1.5x. All of them sit inside the noise.
+#
+# Its env block was also repaired BY HAND: the macOS-only host detection emitted
+# bare `?` characters, which are YAML's explicit-key indicator, so the file as
+# written did not parse at all.
+#
+# Kept as the record of the first x86_64 run and of why it cannot be published.
+# Superseded by kanban [CLJW-BENCH-LINUX-SUITE] (20260905012148-4fc83448), which
+# re-runs it under the fixed harness.
+# Cross-language benchmark comparison
+# Generated: 2026-09-05T00:35:03-03:00
+
+env:
+  machine: "Alienware m16 R2"
+  cpu: "Intel(R) Core(TM) Ultra 9 185H, 22-core"
+  ram: "62 GB"
+  os: "Ubuntu 24.04.4 LTS"
+  kernel: "Linux 7.0.0-30-generic x86_64"
+  tool: hyperfine
+  runs: 10
+  warmup: 5
+
+date: "2026-09-05"
+
+startup_ms:
+  cw: 42.4514
+  c: 1.2303
+  zig: 0.7355
+  java: 52.5414
+  clj: 1003.2008
+  go: 2.7323
+  py: 45.4657
+  rb: 84.0563
+  js: 43.6818
+  bb: 17.3486
+
+benchmarks:
+  fib_recursive:
+    cold:
+      cw: 63.0671
+      c: 1.8221
+      java: 49.6327
+      clj: 1573.2626
+      go: 3.9718
+      py: 51.9537
+      rb: 109.6462
+      js: 50.7781
+      bb: 52.0457
+    warm:
+      cw: 20.6157
+      c: 0.5918
+      java: 0.0000
+      clj: 570.0618
+      go: 1.2395
+      py: 6.4880
+      rb: 25.5899
+      js: 7.0963
+      bb: 34.6971
+  fib_loop:
+    cold:
+      cw: 35.5778
+      c: 0.8219
+      java: 52.3918
+      clj: 1464.8426
+      go: 3.6061
+      py: 38.8242
+      rb: 110.5343
+      js: 58.8647
+      bb: 28.3888
+    warm:
+      cw: 0.0000
+      c: 0.0000
+      java: 0.0000
+      clj: 461.6418
+      go: 0.8738
+      py: 0.0000
+      rb: 26.4780
+      js: 15.1829
+      bb: 11.0402
+  tak:
+    cold:
+      cw: 54.8083
+      c: 1.0165
+      java: 59.8633
+      clj: 1781.1708
+      go: 2.9862
+      py: 43.5344
+      rb: 97.7864
+      js: 52.5668
+      bb: 29.3884
+    warm:
+      cw: 12.3569
+      c: 0.0000
+      java: 7.3219
+      clj: 777.9700
+      go: 0.2539
+      py: 0.0000
+      rb: 13.7301
+      js: 8.8850
+      bb: 12.0398
+  arith_loop:
+    cold:
+      cw: 99.0182
+      c: 1.0224
+      java: 55.2632
+      clj: 1268.8020
+      go: 3.3438
+      py: 161.4207
+      rb: 126.7784
+      js: 54.4628
+      bb: 124.0454
+    warm:
+      cw: 56.5668
+      c: 0.0000
+      java: 2.7218
+      clj: 265.6012
+      go: 0.6115
+      py: 115.9550
+      rb: 42.7221
+      js: 10.7810
+      bb: 106.6968
+  map_filter_reduce:
+    cold:
+      cw: 46.4828
+      c: 1.1681
+      java: 46.8913
+      clj: 1327.4323
+      go: 2.7010
+      py: 48.0309
+      rb: 91.3733
+      js: 49.9121
+      bb: 29.2254
+    warm:
+      cw: 4.0314
+      c: 0.0000
+      java: 0.0000
+      clj: 324.2315
+      go: 0.0000
+      py: 2.5652
+      rb: 7.3170
+      js: 6.2303
+      bb: 11.8768
+  vector_ops:
+    cold:
+      cw: 47.6471
+      c: 0.7877
+      java: 56.9092
+      clj: 1411.5733
+      go: 3.5148
+      py: 46.3645
+      rb: 99.8817
+      js: 52.3018
+      bb: 24.7199
+    warm:
+      cw: 5.1957
+      c: 0.0000
+      java: 4.3678
+      clj: 408.3725
+      go: 0.7825
+      py: 0.8988
+      rb: 15.8254
+      js: 8.6200
+      bb: 7.3713
+  map_ops:
+    cold:
+      cw: 38.9262
+      c: 1.0886
+      java: 50.2257
+      clj: 1285.2314
+      go: 2.9347
+      py: 39.5935
+      rb: 93.2023
+      js: 52.4883
+      bb: 22.2749
+    warm:
+      cw: 0.0000
+      c: 0.0000
+      java: 0.0000
+      clj: 282.0306
+      go: 0.2024
+      py: 0.0000
+      rb: 9.1460
+      js: 8.8065
+      bb: 4.9263
+  list_build:
+    cold:
+      cw: 34.2314
+      c: 2.8834
+      java: 53.7719
+      clj: 1281.9087
+      go: 3.7948
+      py: 42.7123
+      rb: 79.8935
+      js: 49.7093
+      bb: 23.8095
+    warm:
+      cw: 0.0000
+      c: 1.6531
+      java: 1.2305
+      clj: 278.7079
+      go: 1.0625
+      py: 0.0000
+      rb: 0.0000
+      js: 6.0275
+      bb: 6.4609
+  sieve:
+    cold:
+      cw: 88.4841
+      c: 1.3921
+      java: 65.5540
+      clj: 1331.3643
+      go: 3.8647
+      py: 36.6109
+      rb: 87.2851
+      js: 43.3675
+      bb: 30.1026
+    warm:
+      cw: 46.0327
+      c: 0.1618
+      java: 13.0126
+      clj: 328.1635
+      go: 1.1324
+      py: 0.0000
+      rb: 3.2288
+      js: 0.0000
+      bb: 12.7540
+  nqueens:
+    cold:
+      cw: 59.6639
+      c: 1.2023
+      java: 49.5818
+      go: 3.3473
+      py: 42.0469
+      rb: 116.2355
+      js: 47.6099
+      bb: 45.2494
+    warm:
+      cw: 17.2125
+      c: 0.0000
+      java: 0.0000
+      go: 0.6150
+      py: 0.0000
+      rb: 32.1792
+      js: 3.9281
+      bb: 27.9008
+  atom_swap:
+    cold:
+      cw: 35.0203
+      c: 1.0646
+      java: 48.8589
+      clj: 1406.3662
+      go: 2.5486
+      py: 39.8994
+      rb: 91.9067
+      js: 48.4560
+      bb: 23.3377
+    warm:
+      cw: 0.0000
+      c: 0.0000
+      java: 0.0000
+      clj: 403.1654
+      go: 0.0000
+      py: 0.0000
+      rb: 7.8504
+      js: 4.7742
+      bb: 5.9891
+  gc_stress:
+    cold:
+      cw: 81.3917
+      c: 6.9682
+      java: 101.7978
+      clj: 1322.1243
+      go: 10.6244
+      py: 86.8930
+      rb: 105.4978
+      js: 55.1522
+      bb: 97.9637
+    warm:
+      cw: 38.9403
+      c: 5.7379
+      java: 49.2564
+      clj: 318.9235
+      go: 7.8921
+      py: 41.4273
+      rb: 21.4415
+      js: 11.4704
+      bb: 80.6151
+  lazy_chain:
+    cold:
+      cw: 87.6126
+      c: 1.3214
+      java: 45.4869
+      clj: 1341.6957
+      go: 3.2367
+      py: 44.6611
+      rb: 82.2990
+      js: 44.6159
+      bb: 31.0475
+    warm:
+      cw: 45.1612
+      c: 0.0911
+      java: 0.0000
+      clj: 338.4949
+      go: 0.5044
+      py: 0.0000
+      rb: 0.0000
+      js: 0.9341
+      bb: 13.6989
+  transduce:
+    cold:
+      cw: 44.9127
+      c: 1.1103
+      java: 49.8420
+      clj: 1417.2251
+      go: 2.6375
+      py: 41.4987
+      rb: 103.1296
+      js: 47.8954
+      bb: 23.4510
+    warm:
+      cw: 2.4613
+      c: 0.0000
+      java: 0.0000
+      clj: 414.0243
+      go: 0.0000
+      py: 0.0000
+      rb: 19.0733
+      js: 4.2136
+      bb: 6.1024
+  keyword_lookup:
+    cold:
+      cw: 53.0831
+      c: 3.2829
+      java: 54.2426
+      clj: 1464.0117
+      go: 5.8549
+      py: 51.3693
+      rb: 91.2433
+      js: 54.4870
+      bb: 39.4818
+    warm:
+      cw: 10.6317
+      c: 2.0526
+      java: 1.7012
+      clj: 460.8109
+      go: 3.1226
+      py: 5.9036
+      rb: 7.1870
+      js: 10.8052
+      bb: 22.1332
+  protocol_dispatch:
+    cold:
+      cw: 43.3909
+      c: 0.9275
+      java: 53.1831
+      go: 3.1354
+      py: 44.5774
+      rb: 94.1091
+      js: 50.2420
+    warm:
+      cw: 0.9395
+      c: 0.0000
+      java: 0.6417
+      go: 0.4031
+      py: 0.0000
+      rb: 10.0528
+      js: 6.5602
+  nested_update:
+    cold:
+      cw: 73.0333
+      c: 1.0797
+      java: 59.7468
+      clj: 1336.0872
+      go: 3.8715
+      py: 34.2793
+      rb: 82.2857
+      js: 46.7183
+      bb: 27.2412
+    warm:
+      cw: 30.5819
+      c: 0.0000
+      java: 7.2054
+      clj: 332.8864
+      go: 1.1392
+      py: 0.0000
+      rb: 0.0000
+      js: 3.0365
+      bb: 9.8926
+  string_ops:
+    cold:
+      cw: 83.2103
+      c: 8.8891
+      java: 66.7537
+      clj: 949.8767
+      go: 4.1456
+      py: 50.7468
+      rb: 65.2611
+      js: 33.1580
+      bb: 30.8891
+    warm:
+      cw: 40.7589
+      c: 7.6588
+      java: 14.2123
+      clj: 0.0000
+      go: 1.4133
+      py: 5.2811
+      rb: 0.0000
+      js: 0.0000
+      bb: 13.5405
+  multimethod_dispatch:
+    cold:
+      cw: 32.1203
+      c: 0.5585
+      java: 32.5087
+      clj: 1802.5790
+      go: 4.6023
+      py: 65.5867
+      rb: 129.9988
+      js: 66.3927
+      bb: 28.8730
+    warm:
+      cw: 0.0000
+      c: 0.0000
+      java: 0.0000
+      clj: 799.3782
+      go: 1.8700
+      py: 20.1210
+      rb: 45.9425
+      js: 22.7109
+      bb: 11.5244
+  real_workload:
+    cold:
+      cw: 131.3489
+      c: 0.4574
+      java: 73.5208
+      clj: 1761.9473
+      go: 2.9489
+      py: 69.6669
+      rb: 138.0942
+      js: 54.2963
+      bb: 38.6781
+    warm:
+      cw: 88.8975
+      c: 0.0000
+      java: 20.9794
+      clj: 758.7465
+      go: 0.2166
+      py: 24.2012
+      rb: 54.0379
+      js: 10.6145
+      bb: 21.3295
+  wasm_load:
+    cold:
+      cw: 52.5809
+    warm:
+      cw: 10.1295
+  wasm_call:
+    cold:
+      cw: 22120.0211
+    warm:
+      cw: 22077.5697
+  wasm_memory:
+    cold:
+      cw: 5097.9162
+    warm:
+      cw: 5055.4648
+  wasm_fib:
+    cold:
+      cw: 67.5267
+    warm:
+      cw: 25.0753
+  wasm_sieve:
+    cold:
+      cw: 173.5894
+    warm:
+      cw: 131.1380
+  gc_alloc_rate:
+    cold:
+      cw: 232.6288
+      clj: 1750.0419
+      js: 55.7803
+      bb: 104.4652
+    warm:
+      cw: 190.1774
+      clj: 746.8411
+      js: 12.0985
+      bb: 87.1166
+  gc_large_heap:
+    cold:
+      cw: 260.5076
+      clj: 1765.5787
+      js: 87.3304
+      bb: 103.6289
+    warm:
+      cw: 218.0562
+      clj: 762.3779
+      js: 43.6486
+      bb: 86.2803
+  wasm_tak:
+    cold:
+      cw: 69.4774
+    warm:
+      cw: 27.0260
+  wasm_arith:
+    cold:
+      cw: 61.2015
+    warm:
+      cw: 18.7501
+  wasm_gcd:
+    cold:
+      cw: 22948.5282
+    warm:
+      cw: 22906.0768
+  wasm_fib_loop:
+    cold:
+      cw: 1829.4787
+    warm:
+      cw: 1787.0273
+  bigint_factorial:
+    cold:
+      cw: 73.3097
+      java: 77.7688
+      clj: 1379.0362
+      go: 5.9293
+      py: 33.5582
+      rb: 100.0696
+      js: 52.5776
+      bb: 34.7021
+    warm:
+      cw: 30.8583
+      java: 25.2274
+      clj: 375.8354
+      go: 3.1970
+      py: 0.0000
+      rb: 16.0133
+      js: 8.8958
+      bb: 17.3535
+  ratio_sum:
+    cold:
+      cw: 114.8257
+      clj: 1205.1316
+      bb: 80.7647
+    warm:
+      cw: 72.3743
+      clj: 201.9308
+      bb: 63.4161
+  stm_refs:
+    cold:
+      cw: 115.4685
+      clj: 1638.8711
+      bb: 182.7551
+    warm:
+      cw: 73.0171
+      clj: 635.6703
+      bb: 165.4065
+  regex_count:
+    cold:
+      cw: 114.1623
+      c: 8.9320
+      java: 113.9366
+      clj: 1500.6968
+      go: 13.8564
+      py: 48.3585
+      rb: 98.2332
+      js: 42.4020
+      bb: 26.5389
+    warm:
+      cw: 71.7109
+      c: 7.7017
+      java: 61.3952
+      clj: 497.4960
+      go: 11.1241
+      py: 2.8928
+      rb: 14.1769
+      js: 0.0000
+      bb: 9.1903
+  sort:
+    cold:
+      cw: 29.1855
+      c: 1.4016
+      java: 38.5580
+      clj: 1182.0034
+      go: 2.2872
+      py: 29.2746
+      rb: 78.4305
+      js: 34.7711
+      bb: 14.2667
+    warm:
+      cw: 0.0000
+      c: 0.1713
+      java: 0.0000
+      clj: 178.8026
+      go: 0.0000
+      py: 0.0000
+      rb: 0.0000
+      js: 0.0000
+      bb: 0.0000
+  destructure:
+    cold:
+      cw: 79.4425
+      clj: 2314.6476
+      bb: 117.1636
+    warm:
+      cw: 36.9911
+      clj: 1311.4468
+      bb: 99.8150
+  edn_roundtrip:
+    cold:
+      cw: 205.6130
+      clj: 3585.1396
+      bb: 548.6785
+    warm:
+      cw: 163.1616
+      clj: 2581.9388
+      bb: 531.3299
+  json_parse:
+    cold:
+      cw: 380.5401
+      py: 154.8230
+      rb: 236.7985
+      js: 99.4684
+    warm:
+      cw: 338.0887
+      py: 109.3573
+      rb: 152.7422
+      js: 55.7866

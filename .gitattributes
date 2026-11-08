@@ -8,3 +8,7 @@
 
 # Keep read-only historical / generated content out of GitHub's language stats.
 docs/ja/archive/** linguist-documentation
+# Append-only ledgers: parallel branches each add rows at the end, so a union
+# merge is the correct resolution (the YAML and ledger gates still check it).
+.dev/optimizations.md merge=union
+.dev/debt.yaml merge=union

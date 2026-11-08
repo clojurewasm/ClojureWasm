@@ -58,3 +58,17 @@
 ;;=> "38d7ea4c68000"
 (bit-and (bit-shift-left 1 40) (bit-shift-left 1 40))
 ;;=> 1099511627776
+(bit-shift-left 1 -1)
+;;=> -9223372036854775808
+(bit-shift-left 1 64)
+;;=> 1
+(unsigned-bit-shift-right -1 64)
+;;=> -1
+(bit-set 0 -1)
+;;=> -9223372036854775808
+(bit-set 0 64)
+;;=> 1
+(bit-test 1 64)
+;;=> true
+(bit-and-not 15 1 2 4)
+;;=> 8

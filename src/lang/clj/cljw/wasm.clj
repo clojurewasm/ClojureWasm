@@ -23,12 +23,39 @@
                     after-slash)]
     after-dot))
 
+(defn- component-var?
+  "True for a Var `require-component*` interned (and a user has not since
+   re-`def`ined: `def` replaces the metadata, and with it the tag)."
+  [v]
+  (true? (:cljw.wasm/component-export (meta v))))
+
+(defn- retire-var!
+  "Unmap the component-interned Var `sym` from `ns-obj`, first rebinding its root
+   to a fn that throws. A caller that captured the Var before the swap then gets
+   a catchable error naming the export, instead of a call into the previous
+   instance, and the old handle is no longer reachable through the Var."
+  [ns-obj sym path]
+  (when-let [v (get (ns-interns ns-obj) sym)]
+    (let [msg (str "component " path " no longer exports `" sym "`")]
+      (alter-var-root v (constantly (fn [& _] (throw (ex-info msg {:cljw.wasm/component-path path
+                                                                   :cljw.wasm/export (name sym)})))))
+      (ns-unmap ns-obj sym))))
+
 (defn require-component*
   "Runtime worker for `require-component`. Loads `path` as a cached component
    handle, then per `opts`: `:as <sym>` interns ALL exports as Vars in the named
    namespace; `:refer [<sym> …]` interns the named exports into the CURRENT ns.
    Each Var is a fn calling its export through the shared handle. Returns the
-   target Namespace (`:as`) or the current ns."
+   target Namespace (`:as`) or the current ns.
+
+   Re-requiring is a swap. The export table is the source of truth for which
+   Vars a component owns: every interned Var is tagged
+   `:cljw.wasm/component-export`, and on a re-require the tagged Vars the new
+   table no longer has are retired (see `retire-var!`). In the `:as` namespace
+   that is every tagged Var; in the current namespace (`:refer`) only the ones
+   interned from the same `path`, since several components may be referred
+   there. Kept exports keep their Var identity (`intern` rebinds the root), and
+   a Var the user defined, or re-`def`ined over an export name, is never touched."
   [path opts]
   (let [handle (wasm/load-component path)
         exports (wasm/component-exports path)
@@ -39,17 +66,28 @@
         ;; (`:doc` is intentionally NOT attached — cljw Vars carry no :doc per AD-041.)
         intern! (fn [ns-obj sym e]
                   (let [v (intern ns-obj sym (var-fn (:name e)))]
-                    (alter-meta! v assoc :arglists (list (mapv (comp symbol first) (:params e))))
+                    (alter-meta! v assoc
+                                 :arglists (list (mapv (comp symbol first) (:params e)))
+                                 :cljw.wasm/component-export true
+                                 :cljw.wasm/component-path path)
                     v))
+        by-clean (reduce (fn [m e] (assoc m (strip-export-name (:name e)) e)) {} exports)
         as-sym (:as opts)
         refer-syms (:refer opts)]
     (when as-sym
       (let [target (create-ns as-sym)]
+        (doseq [[sym v] (ns-interns target)
+                :when (and (component-var? v) (not (contains? by-clean (name sym))))]
+          (retire-var! target sym path))
         (doseq [e exports]
           (intern! target (symbol (strip-export-name (:name e))) e))))
     (when (seq refer-syms)
-      (let [cur (the-ns *ns*)
-            by-clean (reduce (fn [m e] (assoc m (strip-export-name (:name e)) e)) {} exports)]
+      (let [cur (the-ns *ns*)]
+        (doseq [[sym v] (ns-interns cur)
+                :when (and (component-var? v)
+                           (= path (:cljw.wasm/component-path (meta v)))
+                           (not (contains? by-clean (name sym))))]
+          (retire-var! cur sym path))
         (doseq [s refer-syms]
           (when-let [e (get by-clean (name s))]
             (intern! cur (symbol (name s)) e)))))

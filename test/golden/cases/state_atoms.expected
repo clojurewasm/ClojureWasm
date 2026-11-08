@@ -1,0 +1,10 @@
+--- exit ---
+0
+--- stdout ---
+1 11 11 :done :done
+2 2
+forced once
+42 42 true
+3
+:val
+--- stderr ---

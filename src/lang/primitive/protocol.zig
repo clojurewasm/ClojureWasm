@@ -17,7 +17,8 @@
 const std = @import("std");
 const value = @import("../../runtime/value/value.zig");
 const Value = value.Value;
-const Runtime = @import("../../runtime/runtime.zig").Runtime;
+const runtime_mod = @import("../../runtime/runtime.zig");
+const Runtime = runtime_mod.Runtime;
 const env_mod = @import("../../runtime/env.zig");
 const Env = env_mod.Env;
 const error_mod = @import("../../runtime/error/info.zig");
@@ -122,7 +123,7 @@ pub fn makeProtocol(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     // DebugAllocator diagnostics at process exit. Test fixtures in
     // `runtime/protocol.zig` keep the prior manual-destroy shape
     // because their fqcn / methods are stack / rodata literals.
-    try rt.trackHeap(.{ .ptr = @ptrCast(@constCast(protocol_mod.asProtocol(v))), .free = protocol_mod.freeOwnedProtocol });
+    try rt.trackHeap(.{ .ptr = @ptrCast(@constCast(protocol_mod.asProtocol(v))), .free = protocol_mod.freeOwnedProtocol, .size = @sizeOf(protocol_mod.ProtocolDescriptor) });
     return v;
 }
 
@@ -155,7 +156,7 @@ pub fn makeProtocolFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     const name_dup = try rt.gc.infra.dupe(u8, string_mod.asString(args[1]));
     errdefer rt.gc.infra.free(name_dup);
     const v = try protocol_mod.makeProtocolFn(rt, proto, name_dup);
-    try rt.trackHeap(.{ .ptr = @ptrCast(@constCast(protocol_mod.asProtocolFn(v))), .free = protocol_mod.freeOwnedProtocolFn });
+    try rt.trackHeap(.{ .ptr = @ptrCast(@constCast(protocol_mod.asProtocolFn(v))), .free = protocol_mod.freeOwnedProtocolFn, .size = @sizeOf(protocol_mod.ProtocolFn) });
     return v;
 }
 
@@ -169,16 +170,29 @@ pub fn makeProtocolFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
 /// native impl, etc.). Bumps `rt.protocol_generation` via
 /// `extendTypeWithImpls` so live CallSite caches invalidate on
 /// next dispatch. Returns the target Value (args[0]) unchanged so
-/// macros can chain.
+/// macros can chain. The type now declares `proto` (`protocol_impls`).
+///
+/// `(rt/__extend-type! td-ref proto impls-vec :routed)` installs the same
+/// rows WITHOUT declaring `proto`: the section is a protocol_remap routing
+/// target (a Counted `count` installed as IPersistentCollection/-count), and
+/// the type implements only the interfaces it named.
 pub fn extendType(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    try error_catalog.checkArity("__extend-type!", args, 3, loc);
+    try error_catalog.checkArityRange("__extend-type!", args, 3, 4, loc);
+    const routed = args.len == 4;
+    if (routed and !(args[3].tag() == .keyword and std.mem.eql(u8, keyword_mod.asKeyword(args[3]).name, "routed"))) {
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "__extend-type!",
+            .expected = ":routed",
+            .actual = @tagName(args[3].tag()),
+        });
+    }
     // `(extend-type nil P ...)` extends a protocol to the nil type (clj
     // nil-punning — a common idiom, e.g. data.finger-tree's empty-meter
     // defaults). nil resolves below to the per-Tag nil descriptor, the same
     // one dispatch resolves a nil receiver to (dispatch.zig resolveDescriptor),
     // so the registered impls dispatch on `(m nil)`.
-    if (args[0].tag() != .type_descriptor and args[0].tag() != .nil) {
+    if (args[0].tag() != .type_descriptor and args[0].tag() != .nil and args[0].tag() != .protocol) {
         return error_catalog.raise(.type_arg_invalid, loc, .{
             .fn_name = "__extend-type!",
             .expected = "type_descriptor",
@@ -213,10 +227,15 @@ pub fn extendType(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
             if (host_class_mod.isKnownOpaqueClass(fqcn)) return args[0];
         }
     }
-    const td: *td_mod.TypeDescriptor = if (args[0].tag() == .nil)
-        try rt.nativeDescriptor(.nil)
-    else
-        @constCast(td_mod.asTypeDescriptorRef(args[0]));
+    // ADR-0187: a PROTOCOL target has no descriptor to write onto — its
+    // implementor set is open and grows at runtime — so the impls are recorded
+    // on the Runtime and consulted by `dispatch` on a per-type miss. Resolved
+    // after the impls are built, below.
+    const td: ?*td_mod.TypeDescriptor = switch (args[0].tag()) {
+        .nil => try rt.nativeDescriptor(.nil),
+        .protocol => null,
+        else => @constCast(td_mod.asTypeDescriptorRef(args[0])),
+    };
     const proto_name: []const u8 = switch (args[1].tag()) {
         .protocol => protocol_mod.asProtocol(args[1]).fqcn(),
         .symbol => host_interface.canonicalName(symbol_mod.asSymbol(args[1]).name) orelse {
@@ -271,7 +290,15 @@ pub fn extendType(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
             .method_val = fn_val,
         };
     }
-    try protocol_mod.extendTypeWithImpls(rt, td, new_impls);
+    // ADR-0187: protocol target — keep `new_impls` (the side table owns it)
+    // and record it against the PROVIDING protocol. Bump the generation so
+    // live CallSite caches re-resolve and can reach the new fallback.
+    if (td == null) {
+        try recordProtocolTargetExt(rt, proto_name, protocol_mod.asProtocol(args[0]).fqcn(), new_impls);
+        rt.protocol_generation +%= 1;
+        return args[0];
+    }
+    try protocol_mod.extendTypeWithImpls(rt, td.?, new_impls);
     // extendTypeWithImpls @memcpy's into a fresh combined slice on
     // `rt.gc.infra` and swaps it onto `td.method_table`; the input
     // `new_impls` slice is no longer referenced, so free it back.
@@ -279,9 +306,29 @@ pub fn extendType(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     // Record the protocol in the declared-interface list so a zero-method
     // MARKER protocol (`Sequential`, no method_table entry) is still
     // detectable, and `protocol_impls` stays an honest "implements P" set
-    // (D-190 / ADR-0068).
-    try protocol_mod.addProtocolImpl(rt, td, proto_name);
+    // (D-190 / ADR-0068). A routed section declares nothing.
+    if (!routed) try protocol_mod.addProtocolImpl(rt, td.?, proto_name);
     return args[0];
+}
+
+/// Append `{target_proto, impls}` to `rt.protocol_target_exts[provider]`
+/// (ADR-0187). Takes ownership of `impls`. A repeated (provider, target) pair
+/// appends rather than replaces, so the newest extension is found first.
+fn recordProtocolTargetExt(
+    rt: *Runtime,
+    provider: []const u8,
+    target_proto: []const u8,
+    impls: []const td_mod.TypeDescriptor.MethodEntry,
+) !void {
+    const gpa = rt.gc.infra;
+    const gop = try rt.protocol_target_exts.getOrPut(gpa, provider);
+    const old: []runtime_mod.ProtocolTargetExt = if (gop.found_existing) gop.value_ptr.* else &.{};
+    const grown = try gpa.alloc(runtime_mod.ProtocolTargetExt, old.len + 1);
+    // Newest first: dispatch takes the first satisfying entry.
+    grown[0] = .{ .target_proto = target_proto, .impls = impls };
+    @memcpy(grown[1..], old);
+    if (old.len > 0) gpa.free(old);
+    gop.value_ptr.* = grown;
 }
 
 /// `(rt/__native-type tag-keyword)` — return the `.type_descriptor`
@@ -570,7 +617,7 @@ pub fn reifyPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
         .parent = null,
         .meta = Value.nil_val,
     };
-    try rt.trackHeap(.{ .ptr = td, .free = freeReifyDescriptor });
+    try rt.trackHeap(.{ .ptr = td, .free = freeReifyDescriptor, .size = @sizeOf(@TypeOf(td.*)) });
 
     return td_mod.allocReifiedInstance(rt, td);
 }
@@ -1007,7 +1054,10 @@ test "__extend-type! appends method_val rows + bumps protocol_generation" {
     }
 
     try testing.expectEqual(@intFromEnum(td_ref), @intFromEnum(result));
-    try testing.expectEqual(gen_before +% 1, fix.rt.protocol_generation);
+    // Two bumps: the method-table write, then addProtocolImpl's membership
+    // write (ADR-0206: the ProtocolFn cache must not memoise the state
+    // between them).
+    try testing.expectEqual(gen_before +% 2, fix.rt.protocol_generation);
     try testing.expectEqual(@as(usize, 1), td.method_table.len);
     // addProtocolImpl recorded "P" in the declared-interface list.
     try testing.expectEqual(@as(usize, 1), td.protocol_impls.len);
@@ -1033,6 +1083,51 @@ test "__extend-type! rejects a non-type_descriptor target" {
     );
 }
 
+test "__extend-type! :routed installs the rows without declaring the protocol" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const proto_name = try symbol_mod.intern(&fix.rt, null, "P");
+    var methods_vec = vector_mod.empty();
+    methods_vec = try vector_mod.conj(&fix.rt, methods_vec, try symbol_mod.intern(&fix.rt, null, "m"));
+    const proto_val = try makeProtocol(&fix.rt, &fix.env, &[_]Value{ proto_name, methods_vec }, .{});
+
+    const td = try fix.rt.gc.infra.create(td_mod.TypeDescriptor);
+    defer fix.rt.gc.infra.destroy(td);
+    td.* = .{
+        .fqcn = "user/Foo",
+        .kind = .deftype,
+        .field_layout = null,
+        .protocol_impls = &.{},
+        .method_table = &.{},
+        .parent = null,
+        .meta = Value.nil_val,
+    };
+    const td_ref = try td_mod.makeTypeDescriptorRef(&fix.rt, td);
+
+    var impls = vector_mod.empty();
+    impls = try vector_mod.conj(&fix.rt, impls, try buildImplPair(&fix.rt, "m", Value.initBuiltinFn(&extendTypeMockBuiltin)));
+    const routed = try keyword_mod.intern(&fix.rt, null, "routed");
+    _ = try extendType(&fix.rt, &fix.env, &[_]Value{ td_ref, proto_val, impls, routed }, .{});
+    defer {
+        for (td.method_table) |entry| fix.rt.gc.infra.free(entry.method_name);
+        fix.rt.gc.infra.free(td.method_table);
+    }
+
+    // The method dispatches under P, but the type does not declare P.
+    try testing.expectEqual(@as(usize, 1), td.method_table.len);
+    try testing.expectEqualStrings("P", td.method_table[0].protocol_name);
+    try testing.expectEqual(@as(usize, 0), td.protocol_impls.len);
+
+    // Any other fourth argument is a type error.
+    const other = try keyword_mod.intern(&fix.rt, null, "declared");
+    try testing.expectError(
+        error.TypeError,
+        extendType(&fix.rt, &fix.env, &[_]Value{ td_ref, proto_val, impls, other }, .{}),
+    );
+}
+
 // --- row 7.4 cycle 2 — __defrecord! primitive ---
 
 test "__defrecord! registers a TypeDescriptor with .kind = .defrecord" {
@@ -1052,7 +1147,22 @@ test "__defrecord! registers a TypeDescriptor with .kind = .defrecord" {
     // makeTypeDescriptorRef trackHeap-registers the ref (row 7.7 cycle 1);
     // rt.deinit owns the destroy.
 
-    const td = fix.rt.types.get("Point") orelse return error.TestUnexpectedResult;
+    // ADR-0198: `rt.types` is keyed by the QUALIFIED name, so a user type
+    // registered while some namespace is current is `<ns>.Point`, not
+    // `Point`. The simple-name index is the secondary lookup that bare
+    // references (notably the VM's runtime `op_ctor_call`) still use.
+    const td = fix.rt.types_by_simple.get("Point") orelse return error.TestUnexpectedResult;
+    {
+        const dns = td.defining_ns orelse return error.TestUnexpectedResult;
+        var kbuf: [256]u8 = undefined;
+        const key = try std.fmt.bufPrint(&kbuf, "{s}.{s}", .{ dns, "Point" });
+        const by_key = fix.rt.types.get(key) orelse return error.TestUnexpectedResult;
+        // Both indexes must name the SAME descriptor, or a bare reference and
+        // a qualified one would disagree about what `Point` is.
+        try testing.expect(by_key == td);
+        // The simple name is NOT a key any more; that is the whole change.
+        try testing.expect(fix.rt.types.get("Point") == null);
+    }
     try testing.expectEqual(td_mod.TypeKind.defrecord, td.kind);
     const layout = td.field_layout orelse return error.TestUnexpectedResult;
     try testing.expectEqual(@as(usize, 2), layout.len);

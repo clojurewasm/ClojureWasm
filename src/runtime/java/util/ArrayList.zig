@@ -43,7 +43,7 @@ const ValueList = std.ArrayList(Value);
 var al_descriptor: ?*const type_descriptor.TypeDescriptor = null;
 
 fn listOf(recv: Value) *ValueList {
-    return @ptrFromInt(host_instance.asHostInstance(recv).state[0]);
+    return @ptrFromInt(@as(usize, @intCast(host_instance.asHostInstance(recv).state[0])));
 }
 
 /// Descriptor-identity check for a java.util.ArrayList host instance
@@ -251,14 +251,14 @@ fn countImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 /// [ref: .dev/gc_rooting.md §H].
 fn traceState(gc_ptr: *anyopaque, state: *[host_instance.STATE_WORDS]u64) void {
     const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
-    const lp: *ValueList = @ptrFromInt(state[0]);
+    const lp: *ValueList = @ptrFromInt(@as(usize, @intCast(state[0])));
     for (lp.items) |e| {
         if (e.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
     }
 }
 
 fn finaliseState(infra: std.mem.Allocator, state: *[host_instance.STATE_WORDS]u64) void {
-    const lp: *ValueList = @ptrFromInt(state[0]);
+    const lp: *ValueList = @ptrFromInt(@as(usize, @intCast(state[0])));
     lp.deinit(infra);
     infra.destroy(lp);
 }
@@ -316,7 +316,7 @@ var descriptor: type_descriptor.TypeDescriptor = .{
     .method_table = &.{},
     .static_fields = &.{},
     // List + Collection + Iterable (Collection extends Iterable). D-466 follow-up.
-    .host_supertypes = &.{ "java.util.List", "java.util.Collection", "java.lang.Iterable" },
+    .host_supertypes = &.{ "java.util.List", "java.util.AbstractList", "java.util.Collection", "java.lang.Iterable" },
     .print_content = printContent,
     .parent = null,
     .meta = .nil_val,

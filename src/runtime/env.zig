@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Env — namespace graph + Var registry + dynamic-binding stack.
 //!
 //! Per-session container. The CLI allocates one Env; an nREPL server
@@ -47,9 +48,10 @@ pub const VarFlags = packed struct(u8) {
     zig_leaf: bool = false,
     /// `^:unsupported true` — declare-only placeholder per ADR-0033 D8.
     /// Analyzer raises `feature_not_supported_unsupported_var` when the
-    /// Var is used as a callable. Used for vars like
-    /// `clojure.walk/macroexpand-all` that depend on later-Phase
-    /// machinery (Phase 7 macroexpand) but need a symbol present today.
+    /// Var is used as a callable. For a var whose symbol must resolve
+    /// today while its implementation waits on machinery that has not
+    /// landed. No bundled var currently carries it — the mechanism is
+    /// live (analyzer.zig consults this flag) but unused.
     unsupported: bool = false,
     _pad: u3 = 0,
 };
@@ -68,11 +70,13 @@ pub const MetadataMap = struct {
     zig_leaf: bool = false,
     /// `^:unsupported` — declare-only placeholder; raises on call.
     unsupported: bool = false,
-    /// `^:doc` string. Stored on the Var for `(doc fn-name)`.
-    doc: ?[]const u8 = null,
-    /// `^:arglists` (human-readable summary). Stored on the Var
-    /// for `(doc fn-name)`.
-    arglists: ?[]const u8 = null,
+    // No `doc` / `arglists` here: a docstring lives ONLY in `Var.meta`
+    // (`(:doc (meta v))`, what `clojure.repl/doc`, `find-doc` and
+    // `scripts/check_doc_coverage.sh` read). A Zig-interned primitive gets
+    // its docs from `.clj` via `alter-meta!` — `core_meta.clj` for
+    // clojure.core, the owning namespace's `.clj` otherwise (e.g.
+    // `clojure/data/csv.clj` for `read-csv`). The former string fields were
+    // stored on the Var and read by nothing user-visible.
 };
 
 /// Clojure's `Var`: a named value holder produced by `def`.
@@ -93,10 +97,6 @@ pub const Var = struct {
     meta: ?Value = null,
     /// dynamic / macro / private / zig_leaf / unsupported flags.
     flags: VarFlags = .{},
-    /// `^:doc` — docstring for `(doc fn-name)`. Set via MetadataMap.
-    doc: ?[]const u8 = null,
-    /// `^:arglists` — human-readable signature for `(doc fn-name)`.
-    arglists: ?[]const u8 = null,
     /// Watch map `{key -> fn}` (`add-watch` / `remove-watch`), or nil. Fires
     /// `(fn key var old new)` from `alter-var-root` only (a dynamic-binding
     /// `set!` does NOT notify, matching JVM `Var`). The Var is gpa-owned and
@@ -178,6 +178,12 @@ pub const Namespace = struct {
     /// reachable; Phase 2 uses it via `referAll(rt_ns, user_ns)` so
     /// primitives like `+` resolve unqualified inside `user/`.
     refers: VarMap = .empty,
+    /// Vars `ns-unmap` removed from `mappings`. An unmapped Var is no longer
+    /// reachable BY NAME, but compiled code and captured `#'ns/x` values still
+    /// hold its pointer (clj: the Var object outlives its mapping), so it can be
+    /// neither freed nor dropped from the GC roots. It lives here until the
+    /// namespace is torn down; `root_set` walks it after `mappings`.
+    retired: std.ArrayList(*Var) = .empty,
     /// `(require '[other :as alias])` produces these. Wired in Phase 4.
     aliases: NsAliasMap = .empty,
     /// `(:import pkg.Class …)` simple-name → JVM-form FQCN map (D-235).
@@ -228,6 +234,12 @@ pub const Namespace = struct {
             alloc.destroy(entry.value_ptr.*);
         }
         self.mappings.deinit(alloc);
+        // retired Vars are owned exactly like mappings' (name = Var.name).
+        for (self.retired.items) |v| {
+            alloc.free(v.name);
+            alloc.destroy(v);
+        }
+        self.retired.deinit(alloc);
         // refers / aliases own only their key strings; the Vars and
         // Namespaces they point at belong to the source namespace.
         var rit = self.refers.keyIterator();
@@ -424,6 +436,12 @@ pub const Env = struct {
     }
 
     pub fn deinit(self: *Env) void {
+        // Teardown guard (ADR-0176 / D-548(a)) — see Runtime.deinit's twin
+        // guard: on an error-unwind with a live worker (whose eval reads this
+        // Env's namespaces/Vars), freeing them here is the same corruption
+        // class. This defer runs BEFORE Runtime.deinit's (LIFO), so it does
+        // the bounded epilogue wait; a timeout = a running thunk → skip.
+        if (!@import("gc/root_set.zig").awaitQuiescentWorkers(50 * 1_000_000)) return;
         // Clear any process-global slot that points INTO this Env's
         // Vars before they are freed, so the slot can never dangle.
         // Currently the sole consumer is `runtime/error/context.zig`'s
@@ -695,6 +713,19 @@ pub const Env = struct {
         if (ns.aliases.fetchRemove(alias_name)) |kv| self.alloc.free(kv.key);
     }
 
+    /// `(ns-unmap ns sym)`: remove `name` from `ns`'s mappings and refers. No-op
+    /// when absent (clj). An interned Var moves to `ns.retired` rather than
+    /// being freed (see `Namespace.retired`); a refer entry owns only its key.
+    /// A later `intern` of the same name creates a FRESH Var, as in clj.
+    pub fn unmap(self: *Env, ns: *Namespace, name: []const u8) !void {
+        if (ns.mappings.contains(name)) {
+            try ns.retired.ensureUnusedCapacity(self.alloc, 1);
+            const kv = ns.mappings.fetchRemove(name).?;
+            ns.retired.appendAssumeCapacity(kv.value);
+        }
+        if (ns.refers.fetchRemove(name)) |kv| self.alloc.free(kv.key);
+    }
+
     /// `(def name root)` equivalent. Creates a new Var in `ns`, or
     /// updates the existing Var's `root` in place if `name` is already
     /// bound. Update-in-place is what makes `def` idempotent at the
@@ -761,8 +792,6 @@ fn applyMetadata(v: *Var, m: MetadataMap) void {
     v.flags.private = m.private;
     v.flags.zig_leaf = m.zig_leaf;
     v.flags.unsupported = m.unsupported;
-    v.doc = m.doc;
-    v.arglists = m.arglists;
 }
 
 // --- tests ---
@@ -1027,8 +1056,7 @@ test "Env.intern with null metadata leaves flags + doc default" {
     try testing.expect(!v.flags.private);
     try testing.expect(!v.flags.zig_leaf);
     try testing.expect(!v.flags.unsupported);
-    try testing.expect(v.doc == null);
-    try testing.expect(v.arglists == null);
+    try testing.expect(v.meta == null);
 }
 
 test "Env.intern with MetadataMap sets all fields" {
@@ -1044,14 +1072,10 @@ test "Env.intern with MetadataMap sets all fields" {
         .private = true,
         .zig_leaf = true,
         .unsupported = false,
-        .doc = "a private leaf",
-        .arglists = "([x])",
     });
     try testing.expect(v.flags.private);
     try testing.expect(v.flags.zig_leaf);
     try testing.expect(!v.flags.unsupported);
-    try testing.expectEqualStrings("a private leaf", v.doc.?);
-    try testing.expectEqualStrings("([x])", v.arglists.?);
 }
 
 test "Env.intern re-intern with new metadata overwrites previous metadata" {
@@ -1078,8 +1102,10 @@ test "Env.intern with ^:unsupported marker stores flag" {
     var env = try Env.init(&fix.rt);
     defer env.deinit();
 
-    const ns = try env.findOrCreateNs("clojure.walk");
-    const v = try env.intern(ns, "macroexpand-all", Value.nil_val, .{
+    // A synthetic var: the test exercises the FLAG, so the name must not be
+    // a real one whose support status could later contradict it.
+    const ns = try env.findOrCreateNs("cljw.test-fixture");
+    const v = try env.intern(ns, "declared-unsupported", Value.nil_val, .{
         .private = false,
         .unsupported = true,
     });

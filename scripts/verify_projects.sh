@@ -20,8 +20,9 @@
 #         bash scripts/verify_projects.sh medley     # one project (by dir name)
 set -uo pipefail
 cd "$(dirname "$0")/.."
+source "$(dirname "$0")/lib_cljw_bin.sh"
 BIN="$PWD/zig-out/bin/cljw"
-[ -x "$BIN" ] || { echo "build cljw first: zig build -Dwasm -Doptimize=ReleaseSafe" >&2; exit 1; }
+cljw_bin_require "$BIN" verify_projects
 if ! command -v git >/dev/null 2>&1; then
     echo "SKIP verify_projects: git not on PATH (deps.edn :git/url needs git)"
     exit 0

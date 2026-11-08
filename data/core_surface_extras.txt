@@ -1,0 +1,131 @@
+# clojure.core public names that cljw has and JVM Clojure does not (AD-057).
+#
+# GENERATED-ADJACENT: regenerate the candidate list with
+#   scripts/check_core_surface.sh --regen
+# but READ the diff before committing it — a new name appearing here is a
+# decision, not a formality. That is the whole point of the file.
+#
+# Three groups, all deliberate:
+#
+#   1. Protocol names (ISeq, ILookup, Seqable, …). cljw has no Java, so where
+#      JVM Clojure has the `clojure.lang.*` INTERFACES a deftype implements,
+#      cljw has protocols (ADR-0007 Option beta / ADR-0059). They must be
+#      public for `(deftype Foo [] ISeq (-first [_] :a))` to compile, exactly
+#      as ClojureScript publishes `cljs.core/ISeq`.
+#   2. Protocol METHOD names (-first, -count, -assoc, …). Same reason, same
+#      ClojureScript convention. `test/conformance/verified_projects/
+#      data.finger-tree` depends on this stack by name.
+#   3. A small set of cljw-original conveniences (array?, queue?, …).
+#
+# The gate asserts cljw's extra-name set EQUALS this file. A name added to
+# clojure.core that is not here fails the build.
+-apply-to
+-as-transient
+-assoc
+-assoc!
+-assoc-ex
+-assoc-n
+-assoc-n!
+-blocking-deref
+-char-at
+-comparator
+-compare-to
+-concat-seqs
+-concat2
+-conj!
+-cons
+-contains-key?
+-count
+-cs-length
+-dedupe-step
+-deref
+-derive-tf
+-disjoin
+-disjoin!
+-distinct-step
+-editable?
+-empty
+-entry-at
+-entry-key
+-filter-lazy
+-first
+-fuse-descriptor
+-fused-reduce
+-global-hierarchy
+-invoke
+-key
+-keys
+-kv-reduce
+-length
+-lookup
+-map-lazy
+-map-n-step
+-merge-sorted
+-meta
+-msort
+-next
+-nth
+-peek
+-persistent!
+-pop
+-pop!
+-preserving-reduced
+-realized?
+-reduce
+-rest
+-rseq
+-seq
+-seq-or-empty
+-sorted-comparator
+-sorted-seq
+-sorted-seq-from
+-spread
+-sub-sequence
+-tset-contains?
+-tx-seq-pump
+-tx-seq-run
+-update-in-idx
+-val
+-vals
+-with-meta
+-without
+-without!
+Associative
+CharSequence
+Comparable
+Eduction
+IBlockingDeref
+IDeref
+IEditableCollection
+IFn
+IKVReduce
+ILookup
+IMapEntry
+IObj
+IPending
+IPersistentCollection
+IPersistentMap
+IPersistentSet
+IPersistentStack
+IPersistentVector
+IReduce
+ISeq
+ITransientAssociative
+ITransientCollection
+ITransientMap
+ITransientSet
+ITransientVector
+Indexed
+Reversible
+Seqable
+Sequential
+Sorted
+agent?
+array?
+import*
+monitor-enter
+monitor-exit
+queue?
+re-find-all
+re-find-from
+stack-trace

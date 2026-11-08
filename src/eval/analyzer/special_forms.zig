@@ -27,7 +27,7 @@ const env_mod = @import("../../runtime/env.zig");
 const Env = env_mod.Env;
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const macro_dispatch = @import("../macro_dispatch.zig");
-const vector_mod = @import("../../runtime/collection/vector.zig");
+const map_entry_mod = @import("../../runtime/collection/map_entry.zig");
 const analyzer_mod = @import("analyzer.zig");
 const bindings = @import("bindings.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
@@ -104,17 +104,33 @@ pub fn constructInstance(
     rt: *Runtime,
     env: *Env,
     type_name: []const u8,
+    /// The namespace the ctor form was analyzed in ("" when none). A user
+    /// type registered as `<definer_ns>.<type_name>` wins over every other
+    /// reading of the bare name, as a class name clj compiled there would.
+    definer_ns: []const u8,
     args: []const Value,
     loc: error_catalog.SourceLocation,
 ) anyerror!Value {
-    // D-284: cljw has no clojure.lang.MapEntry type — a map entry IS a 2-vector
-    // `[k v]` (core.clj). `(MapEntry. k v)` (or the qualified form) constructs that
-    // 2-vector, so collection libs that build entries explicitly (priority-map,
-    // ordered, …) work. `key`/`val`/`nth` already operate on a 2-vector.
+    if (definer_ns.len != 0) {
+        var qbuf: [512]u8 = undefined;
+        if (std.fmt.bufPrint(&qbuf, "{s}.{s}", .{ definer_ns, type_name })) |qualified| {
+            if (rt.types.get(qualified)) |td| return constructFromDescriptor(rt, env, td, type_name, args, loc);
+        } else |_| {
+            // Namespace + name longer than the buffer: no registered key
+            // could match it either, so fall through to the steps below.
+        }
+    }
+    // D-284: `(MapEntry. k v)` / `(new clojure.lang.MapEntry k v)` constructs an
+    // entry, so collection libs that build entries explicitly (priority-map,
+    // ordered, …) work. It used to return a plain 2-vector, from when a map entry
+    // WAS one; a map entry is now a distinct type, and `key`/`val` require a real
+    // one, so a vector here made `(key (MapEntry. :a 1))` throw. clj agrees with
+    // the current shape: `(map-entry? (clojure.lang.MapEntry. :a 1))` is true —
+    // and so is `vector?`, which the map_entry type also satisfies.
     if (std.mem.eql(u8, type_name, "MapEntry") or std.mem.eql(u8, type_name, "clojure.lang.MapEntry")) {
         if (args.len != 2)
             return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = "MapEntry.", .expected = 2 });
-        return vector_mod.fromSlice(rt, args);
+        return map_entry_mod.make(rt, args[0], args[1]);
     }
     // D-416: `(Object.)` mints a fresh identity-unique value — the Clojure
     // unique-sentinel idiom (`(def notfound (Object.))`, data.finger-tree). No
@@ -148,9 +164,23 @@ pub fn constructInstance(
     }
     const td = resolveJavaSurface(rt, env, type_name) orelse
         return error_catalog.raise(.symbol_unresolved, loc, .{ .sym = type_name });
+    return constructFromDescriptor(rt, env, td, type_name, args, loc);
+}
+
+/// The descriptor-driven half of `constructInstance`: a field layout
+/// (deftype / record) allocates an instance, a `<init>` entry (java surface)
+/// is called through the runtime vtable, anything else takes no constructor.
+fn constructFromDescriptor(
+    rt: *Runtime,
+    env: *Env,
+    td: *const type_descriptor_mod.TypeDescriptor,
+    type_name: []const u8,
+    args: []const Value,
+    loc: error_catalog.SourceLocation,
+) anyerror!Value {
     if (td.field_layout) |fl| {
         if (args.len != fl.len)
-            return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = type_name, .expected = fl.len });
+            return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = td.fqcn orelse type_name, .expected = fl.len });
         return type_descriptor_mod.allocInstance(rt, td, args);
     }
     if (td.lookupMethod(null, "<init>")) |me| {
@@ -159,8 +189,10 @@ pub fn constructInstance(
         const vt = rt.vtable orelse return error.NoVTable;
         return vt.callFn(rt, env, me.method_val, args, loc);
     }
+    // No constructor takes arguments: clj's IllegalArgumentException, not an
+    // arity error against an imaginary 0-arg ctor.
     if (args.len != 0)
-        return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = type_name, .expected = 0 });
+        return error_catalog.raise(.ctor_unmatched, loc, .{ .class = td.fqcn orelse type_name });
     return error_catalog.raise(.symbol_unresolved, loc, .{ .sym = type_name });
 }
 
@@ -186,7 +218,7 @@ pub fn analyzeDot(
     macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     if (items.len < 3)
-        return error_catalog.raise(.feature_not_supported, form.location, .{ .name = ". form needs a receiver and a member" });
+        return error_catalog.raise(.form_malformed, form.location, .{ .name = ". form needs a receiver and a member" });
     const recv = items[1];
     const member_form = items[2];
     // Normalise the member name + args from either shape.
@@ -195,27 +227,42 @@ pub fn analyzeDot(
     switch (member_form.data) {
         .symbol => |m| {
             if (m.ns != null)
-                return error_catalog.raise(.feature_not_supported, member_form.location, .{ .name = ". member must be an unqualified symbol" });
+                return error_catalog.raise(.form_malformed, member_form.location, .{ .name = ". member must be an unqualified symbol" });
             member_name = m.name;
             arg_forms = items[3..];
         },
         .list => |inner| {
             if (items.len != 3 or inner.len == 0 or inner[0].data != .symbol or inner[0].data.symbol.ns != null)
-                return error_catalog.raise(.feature_not_supported, member_form.location, .{ .name = ". (member args) form must be (member …) with an unqualified head" });
+                return error_catalog.raise(.form_malformed, member_form.location, .{ .name = ". (member args) form must be (member …) with an unqualified head" });
             member_name = inner[0].data.symbol.name;
             arg_forms = inner[1..];
         },
-        else => return error_catalog.raise(.feature_not_supported, member_form.location, .{ .name = ". member must be a symbol or (member …) list" }),
+        else => return error_catalog.raise(.form_malformed, member_form.location, .{ .name = ". member must be a symbol or (member …) list" }),
     }
     // A `.-field` style leading-dash member reads a field only.
     const field_only = member_name.len >= 1 and member_name[0] == '-';
     const resolved_member = if (field_only) member_name[1..] else member_name;
-    // Static when the receiver is a symbol naming a class with this method.
-    if (recv.data == .symbol and recv.data.symbol.ns == null) {
-        if (resolveJavaSurface(rt, env, recv.data.symbol.name)) |td| {
-            if (td.lookupMethod(null, resolved_member) != null) {
-                return analyzeStaticMethodCall(arena, rt, env, scope, td, resolved_member, arg_forms, form, macro_table);
-            }
+    // Static access when the receiver is a (non-local) symbol naming a class:
+    // JVM `(. Class member)` / `(. Class (method args…))` is exactly the
+    // `(Class/member args…)` static form. Lower to that form so the one
+    // qualified-head path serves both spellings — static methods, zero-arg
+    // static field reads (`(. Math PI)`), and the AD-008 deferred rewrite for
+    // an unmodelled `clojure.lang.*` member (the ns still loads).
+    if (recv.data == .symbol and recv.data.symbol.ns == null and
+        !(scope != null and scope.?.lookup(recv.data.symbol.name) != null))
+    {
+        const cls = recv.data.symbol.name;
+        const static_hit = if (resolveJavaSurface(rt, env, cls)) |td|
+            (!field_only and td.lookupMethod(null, resolved_member) != null) or
+                (arg_forms.len == 0 and td.lookupStaticField(resolved_member) != null)
+        else
+            false;
+        if (static_hit or analyzer_mod.isDeferredHostNs(cls)) {
+            const call_items = try arena.alloc(Form, arg_forms.len + 1);
+            call_items[0] = .{ .data = .{ .symbol = .{ .ns = cls, .name = resolved_member } }, .location = member_form.location };
+            @memcpy(call_items[1..], arg_forms);
+            const call_form: Form = .{ .data = .{ .list = call_items }, .location = form.location };
+            return analyzer_mod.analyze(arena, rt, env, scope, call_form, macro_table);
         }
     }
     return analyzeInstanceMember(arena, rt, env, scope, resolved_member, recv, arg_forms, form, macro_table, field_only);
@@ -241,12 +288,20 @@ pub fn analyzeCtorCall(
     // lexically correct one. Eval-time resolution would consult the CALLER's
     // ns and miss it (hiccup.util's `(URI. s)` inside to-uri, called from
     // user code). Guarded on the FQCN actually resolving as a registered
-    // surface — a USER deftype registers in rt.types under its BARE name
-    // (its dotted FQCN is not a key), so it keeps the bare spelling and the
-    // eval-time path (which also allows forward refs to later deftypes).
+    // surface.
+    //
+    // A USER type keeps the bare spelling and resolves at eval time, which is
+    // what lets a `(Name. …)` inside the defrecord's own expansion refer to a
+    // type registered a moment later. The namespace of THIS analysis rides
+    // along as `definer_ns` so that eval-time lookup qualifies the name
+    // lexically (ADR-0198): the current ns at eval time is the CALLER's, and
+    // a bare `Point` there fell to the last-wins simple-name index, so
+    // `aaa/->Point` built whichever `Point` any namespace registered last.
     var resolved_name = type_name;
+    var definer_ns: []const u8 = "";
     if (std.mem.findScalar(u8, type_name, '.') == null) {
         if (env.current_ns) |cur_ns| {
+            definer_ns = try arena.dupe(u8, cur_ns.name);
             if (cur_ns.imports.get(type_name)) |fqcn| {
                 if (rt.types.get(fqcn) != null) {
                     resolved_name = fqcn;
@@ -266,6 +321,7 @@ pub fn analyzeCtorCall(
     n.* = .{ .interop_call_node = .{
         .kind = .constructor,
         .type_name = resolved_name,
+        .definer_ns = if (resolved_name.ptr == type_name.ptr) definer_ns else "",
         .args = args,
         .loc = form.location,
     } };
@@ -285,7 +341,7 @@ pub fn analyzeNew(
     macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     if (items.len < 2 or items[1].data != .symbol)
-        return error_catalog.raise(.feature_not_supported, form.location, .{ .name = "new (requires a class symbol: (new Classname args…))" });
+        return error_catalog.raise(.form_malformed, form.location, .{ .name = "new (requires a class symbol: (new Classname args…))" });
     const cls = items[1].data.symbol;
     const type_name: []const u8 = if (cls.ns) |prefix|
         try std.fmt.allocPrint(arena, "{s}/{s}", .{ prefix, cls.name })
@@ -460,78 +516,80 @@ pub fn analyzeDefmacro(
     placeholder_var.flags.macro_ = true;
 
     // D-187: lower docstring / attr-map / synthesized :arglists into
-    // Var.meta (mirrors defn's D-183(d), so `(:doc (meta #'m))` works);
-    // reader `^meta` on the name merges first. :arglists is always present.
-    {
-        var meta_items: std.ArrayList(Form) = .empty;
-        if (items[1].meta) |mf| try meta_items.appendSlice(arena, mf.data.map);
-        if (attr_form) |a| try meta_items.appendSlice(arena, a.data.map);
-        if (doc_form) |d| {
-            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location });
-            try meta_items.append(arena, d);
+    // Var.meta (mirrors defn's D-183(d), so `(:doc (meta #'m))` works).
+    // Layered as clj's defn (which defmacro expands to) layers them, each
+    // over the last: reader `^meta` on the name, then :arglists, then the
+    // docstring, then the attr-map, so an attr-map `{:doc …}` or
+    // `{:arglists …}` wins. :arglists is always present.
+    //
+    // :arglists is the list of param vectors: `([params])` for single
+    // arity, `([a] [a b] …)` for multi-arity (each clause's vector).
+    const arglists_inner = if (multi_arity) blk: {
+        const clauses = items[head..];
+        const av = try arena.alloc(Form, clauses.len);
+        for (clauses, 0..) |c, j| {
+            if (c.data != .list or c.data.list.len == 0 or c.data.list[0].data != .vector)
+                return error_catalog.raise(.defmacro_params_not_vector, c.location, .{});
+            av[j] = c.data.list[0];
         }
-        // :arglists is the list of param vectors: `([params])` for single
-        // arity, `([a] [a b] …)` for multi-arity (each clause's vector).
-        const arglists_inner = if (multi_arity) blk: {
-            const clauses = items[head..];
-            const av = try arena.alloc(Form, clauses.len);
-            for (clauses, 0..) |c, j| {
-                if (c.data != .list or c.data.list.len == 0 or c.data.list[0].data != .vector)
-                    return error_catalog.raise(.defmacro_params_not_vector, c.location, .{});
-                av[j] = c.data.list[0];
-            }
-            break :blk av;
-        } else blk: {
-            const av = try arena.alloc(Form, 1);
-            av[0] = items[head];
-            break :blk av;
-        };
-        try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "arglists" } }, .location = form.location });
-        try meta_items.append(arena, .{ .data = .{ .list = arglists_inner }, .location = form.location });
-        const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
+        break :blk av;
+    } else blk: {
+        const av = try arena.alloc(Form, 1);
+        av[0] = items[head];
+        break :blk av;
+    };
+    const arglists_key: Form = .{ .data = .{ .keyword = .{ .name = "arglists" } }, .location = form.location };
+    const doc_key: Form = .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location };
+    {
+        var meta: form_mod.MapBuilder = .{};
+        // Guarded like analyzeDef: `.meta` is a Form, and reading `.data.map`
+        // off a non-map variant is illegal union access (a ReleaseSafe panic).
+        if (items[1].meta) |mf| {
+            if (mf.data == .map) try meta.merge(arena, mf.data.map);
+        }
+        try meta.put(arena, arglists_key, .{ .data = .{ .list = arglists_inner }, .location = form.location });
+        if (doc_form) |d| try meta.put(arena, doc_key, d);
+        if (attr_form) |a| try meta.merge(arena, a.data.map);
+        const meta_map = try meta.toForm(arena, form.location);
         placeholder_var.meta = try analyzer_mod.formToValue(rt, env, try unquoteMetaValues(arena, meta_map));
     }
     // D-563(b): the wire-riding meta EXPRESSION for macro Vars — the same
     // merged map plus the compiler-minted :line/:column/:file, wholesale-
     // quoted to one composite constant (mirrors analyzeDef's def_meta_expr;
-    // macro docstrings now survive AOT artifacts too).
+    // macro docstrings now survive AOT artifacts too). A locationless macro
+    // gets no location keys; its user meta and arglists still evaluate.
     const macro_meta_expr: ?*const Node = blk: {
         const src_loc = items[1].location;
-        if (src_loc.line == 0) break :blk null;
-        var meta_items: std.ArrayList(Form) = .empty;
-        if (items[1].meta) |mf| try meta_items.appendSlice(arena, mf.data.map);
-        if (attr_form) |a| try meta_items.appendSlice(arena, a.data.map);
-        if (doc_form) |d| {
-            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location });
-            try meta_items.append(arena, d);
+        var meta: form_mod.MapBuilder = .{};
+        // Guarded like analyzeDef: `.meta` is a Form, and reading `.data.map`
+        // off a non-map variant is illegal union access (a ReleaseSafe panic).
+        if (items[1].meta) |mf| {
+            if (mf.data == .map) try meta.merge(arena, mf.data.map);
         }
-        const arglists_inner2 = if (multi_arity) blk2: {
-            const clauses = items[head..];
-            const av = try arena.alloc(Form, clauses.len);
-            for (clauses, 0..) |c, j| av[j] = c.data.list[0];
-            break :blk2 av;
-        } else blk2: {
-            const av = try arena.alloc(Form, 1);
-            av[0] = items[head];
-            break :blk2 av;
-        };
-        try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "arglists" } }, .location = form.location });
         // Synthesized arglists are DATA — quoted, like clj's defn/defmacro.
         const agq = try arena.alloc(Form, 2);
         agq[0] = macro_dispatch.makeSymbol("quote", form.location);
-        agq[1] = .{ .data = .{ .list = arglists_inner2 }, .location = form.location };
-        try meta_items.append(arena, .{ .data = .{ .list = agq }, .location = form.location });
-        const kws = [_]struct { name: []const u8, v: i64 }{
-            .{ .name = "line", .v = @intCast(src_loc.line) },
-            .{ .name = "column", .v = @intCast(src_loc.column) },
-        };
-        for (kws) |kv| {
-            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = kv.name } }, .location = form.location });
-            try meta_items.append(arena, .{ .data = .{ .integer = kv.v }, .location = form.location });
+        agq[1] = .{ .data = .{ .list = arglists_inner }, .location = form.location };
+        try meta.put(arena, arglists_key, .{ .data = .{ .list = agq }, .location = form.location });
+        if (doc_form) |d| try meta.put(arena, doc_key, d);
+        if (attr_form) |a| try meta.merge(arena, a.data.map);
+        if (src_loc.line != 0) {
+            const kws = [_]struct { name: []const u8, v: i64 }{
+                .{ .name = "line", .v = @intCast(src_loc.line) },
+                .{ .name = "column", .v = @intCast(src_loc.column) },
+            };
+            for (kws) |kv| try meta.put(
+                arena,
+                .{ .data = .{ .keyword = .{ .name = kv.name } }, .location = form.location },
+                .{ .data = .{ .integer = kv.v }, .location = form.location },
+            );
+            try meta.put(
+                arena,
+                .{ .data = .{ .keyword = .{ .name = "file" } }, .location = form.location },
+                .{ .data = .{ .string = src_loc.file }, .location = form.location },
+            );
         }
-        try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "file" } }, .location = form.location });
-        try meta_items.append(arena, .{ .data = .{ .string = src_loc.file }, .location = form.location });
-        const meta_map2: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
+        const meta_map2 = try meta.toForm(arena, form.location);
         // Real-expression analysis, mirroring analyzeDef (D-316): quoted
         // arglists stay data, computed values evaluate, `:tag` symbols resolve
         // uniformly (a Class value or a name error — clj parity).
@@ -580,7 +638,7 @@ pub fn analyzeDefmacro(
 
     const n = try arena.create(Node);
     n.* = .{ .def_node = .{
-        .name = name_sym.name,
+        .var_ptr = placeholder_var,
         .value_expr = value_node,
         .is_macro = true,
         .is_private = is_private,
@@ -622,11 +680,9 @@ pub fn analyzeDef(
             break :blk 3;
         },
     };
-    // ADR-0038: pre-register the Var at analyze time so recursive
-    // defns + forward references inside `(do ...)` resolve. Var lands
-    // with placeholder nil; `evalDef` (tree_walk.zig:466) and the VM
-    // op_def arm re-intern with the actual value at runtime. env.intern
-    // is idempotent (env.zig:353-357 updates root in place).
+    // ADR-0038: declare and capture the Var before analyzing its initializer,
+    // so recursive definitions and forward references resolve. Both backends
+    // bind this exact Var even if the caller later changes namespaces.
     const ns = env.current_ns orelse
         return error_catalog.raiseInternal(form.location, "def: no current namespace");
     // ADR-0038 amendment (D-184): declare-if-absent — pre-register so
@@ -643,46 +699,48 @@ pub fn analyzeDef(
     // Combine the reader `^meta` map (if any) with an optional `:doc` from the
     // `(def name doc init)` form, then lift into Var.meta.
     if (items[1].meta != null or doc_form != null) {
-        var meta_items: std.ArrayList(Form) = .empty;
+        var meta: form_mod.MapBuilder = .{};
         if (items[1].meta) |mf| {
-            if (mf.data == .map) try meta_items.appendSlice(arena, mf.data.map);
+            if (mf.data == .map) try meta.merge(arena, mf.data.map);
         }
-        if (doc_form) |d| {
-            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location });
-            try meta_items.append(arena, d);
-        }
-        const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
+        if (doc_form) |d| try meta.put(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location }, d);
+        const meta_map = try meta.toForm(arena, form.location);
         var_ptr.meta = try analyzer_mod.formToValue(rt, env, try unquoteMetaValues(arena, meta_map));
     }
     // D-563(b): the full Var-meta EXPRESSION — user `^meta` + `:doc`, with the
-    // compiler-minted `:line`/`:column`/`:file` appended AFTER them (a map
-    // literal is last-key-wins, so the source location overrides a user
-    // `^{:line …}` — clj parity). Both backends evaluate it at def time and
-    // set `Var.meta`, so def meta rides the AOT wire (the analyze-time lift
-    // above only covers the pre-eval window). Skipped for locationless
-    // internal defs (line 0 = no real source position).
+    // compiler-minted `:line`/`:column`/`:file` merged OVER them (so the
+    // source location overrides a user `^{:line …}` — clj parity). Both
+    // backends evaluate it at def time and set `Var.meta`, so def meta rides
+    // the AOT wire (the analyze-time lift above only covers the pre-eval
+    // window). A locationless def (line 0: an internal def, or a form
+    // `eval`'d from a bootstrap-compiled caller such as `load-string`) gets no
+    // location keys, but its user meta is still evaluated; with neither there
+    // is nothing to evaluate.
     const def_meta_expr: ?*const Node = blk: {
         const src_loc = items[1].location;
-        if (src_loc.line == 0) break :blk null;
-        var meta_items: std.ArrayList(Form) = .empty;
+        var meta: form_mod.MapBuilder = .{};
         if (items[1].meta) |mf| {
-            if (mf.data == .map) try meta_items.appendSlice(arena, mf.data.map);
+            if (mf.data == .map) try meta.merge(arena, mf.data.map);
         }
-        if (doc_form) |d| {
-            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location });
-            try meta_items.append(arena, d);
+        if (doc_form) |d| try meta.put(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location }, d);
+        if (src_loc.line != 0) {
+            const kws = [_]struct { name: []const u8, v: i64 }{
+                .{ .name = "line", .v = @intCast(src_loc.line) },
+                .{ .name = "column", .v = @intCast(src_loc.column) },
+            };
+            for (kws) |kv| try meta.put(
+                arena,
+                .{ .data = .{ .keyword = .{ .name = kv.name } }, .location = form.location },
+                .{ .data = .{ .integer = kv.v }, .location = form.location },
+            );
+            try meta.put(
+                arena,
+                .{ .data = .{ .keyword = .{ .name = "file" } }, .location = form.location },
+                .{ .data = .{ .string = src_loc.file }, .location = form.location },
+            );
         }
-        const kws = [_]struct { name: []const u8, v: i64 }{
-            .{ .name = "line", .v = @intCast(src_loc.line) },
-            .{ .name = "column", .v = @intCast(src_loc.column) },
-        };
-        for (kws) |kv| {
-            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = kv.name } }, .location = form.location });
-            try meta_items.append(arena, .{ .data = .{ .integer = kv.v }, .location = form.location });
-        }
-        try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "file" } }, .location = form.location });
-        try meta_items.append(arena, .{ .data = .{ .string = src_loc.file }, .location = form.location });
-        const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
+        if (meta.entries.items.len == 0) break :blk null;
+        const meta_map = try meta.toForm(arena, form.location);
         // The map analyzes as a REAL EXPRESSION (D-316): quoted values stay
         // data (defn's synthesized `:arglists '([x])` — now quoted at the
         // generator), literals embed, and a COMPUTED value like
@@ -716,7 +774,7 @@ pub fn analyzeDef(
     }
     const n = try arena.create(Node);
     n.* = .{ .def_node = .{
-        .name = name_sym.name,
+        .var_ptr = var_ptr,
         .value_expr = value_node,
         .is_dynamic = is_dynamic,
         .is_private = is_private,
@@ -915,13 +973,13 @@ fn prependPrefix(arena: std.mem.Allocator, prefix: []const u8, sub: Form) Analyz
         },
         .vector => |vec| {
             if (vec.len == 0 or vec[0].data != .symbol)
-                return error_catalog.raise(.feature_not_supported, sub.location, .{ .name = "prefix-list sub-libspec must begin with a symbol" });
+                return error_catalog.raise(.form_malformed, sub.location, .{ .name = "prefix-list sub-libspec must begin with a symbol" });
             const full = try std.fmt.allocPrint(arena, "{s}.{s}", .{ prefix, vec[0].data.symbol.name });
             const out = try arena.dupe(Form, vec);
             out[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = full } }, .location = vec[0].location };
             return .{ .data = .{ .vector = out }, .location = sub.location };
         },
-        else => return error_catalog.raise(.feature_not_supported, sub.location, .{ .name = "prefix-list sub-libspec must be a symbol or vector" }),
+        else => return error_catalog.raise(.form_malformed, sub.location, .{ .name = "prefix-list sub-libspec must be a symbol or vector" }),
     }
 }
 
@@ -968,7 +1026,7 @@ fn appendLibspecs(
             else => unreachable, // isPrefixList only returns true for list/vector
         };
         if (vec.len == 0 or vec[0].data != .symbol)
-            return error_catalog.raise(.feature_not_supported, libspec_form.location, .{ .name = "prefix-list must begin with a prefix symbol" });
+            return error_catalog.raise(.form_malformed, libspec_form.location, .{ .name = "prefix-list must begin with a prefix symbol" });
         const prefix = vec[0].data.symbol.name;
         for (vec[1..]) |sub| {
             const expanded = try prependPrefix(arena, prefix, sub);
@@ -1038,14 +1096,14 @@ fn parseComponentLibspec(rt: ?*Runtime, arena: std.mem.Allocator, f: Form) Analy
     var i: usize = 1;
     while (i < elems.len) {
         if (elems[i].data != .keyword)
-            return error_catalog.raise(.feature_not_supported, elems[i].location, .{ .name = "wasm component libspec options must be keyword/value pairs" });
+            return error_catalog.raise(.form_malformed, elems[i].location, .{ .name = "wasm component libspec options must be keyword/value pairs" });
         const kw = elems[i].data.keyword;
         if (i + 1 >= elems.len)
-            return error_catalog.raise(.feature_not_supported, elems[i].location, .{ .name = "wasm component libspec keyword without value" });
+            return error_catalog.raise(.form_malformed, elems[i].location, .{ .name = "wasm component libspec keyword without value" });
         const val = elems[i + 1];
         if (std.mem.eql(u8, kw.name, "as")) {
             if (val.data != .symbol or val.data.symbol.ns != null)
-                return error_catalog.raise(.feature_not_supported, val.location, .{ .name = "wasm component :as value must be an unqualified symbol" });
+                return error_catalog.raise(.form_malformed, val.location, .{ .name = "wasm component :as value must be an unqualified symbol" });
             alias = try arena.dupe(u8, val.data.symbol.name);
         } else if (std.mem.eql(u8, kw.name, "refer")) {
             refers = try parseSymbolNameSeq(arena, val, "wasm component :refer value must be a vector of symbols");
@@ -1097,21 +1155,21 @@ fn parseLibspecForm(
         .symbol => |s| ns_sym = s,
         .vector => |vec| {
             if (vec.len == 0 or vec[0].data != .symbol)
-                return error_catalog.raise(.feature_not_supported, inner_form.location, .{ .name = "require libspec must begin with a symbol" });
+                return error_catalog.raise(.form_malformed, inner_form.location, .{ .name = "require libspec must begin with a symbol" });
             ns_sym = vec[0].data.symbol;
             var i: usize = 1;
             while (i < vec.len) {
                 if (vec[i].data != .keyword)
-                    return error_catalog.raise(.feature_not_supported, vec[i].location, .{ .name = "require libspec options must be keyword/value pairs" });
+                    return error_catalog.raise(.form_malformed, vec[i].location, .{ .name = "require libspec options must be keyword/value pairs" });
                 const kw = vec[i].data.keyword;
                 if (kw.ns != null)
-                    return error_catalog.raise(.feature_not_supported, vec[i].location, .{ .name = "require libspec keyword must be unqualified" });
+                    return error_catalog.raise(.form_malformed, vec[i].location, .{ .name = "require libspec keyword must be unqualified" });
                 if (i + 1 >= vec.len)
-                    return error_catalog.raise(.feature_not_supported, vec[i].location, .{ .name = "require libspec keyword without value" });
+                    return error_catalog.raise(.form_malformed, vec[i].location, .{ .name = "require libspec keyword without value" });
                 const val = vec[i + 1];
                 if (std.mem.eql(u8, kw.name, "as")) {
                     if (val.data != .symbol or val.data.symbol.ns != null)
-                        return error_catalog.raise(.feature_not_supported, val.location, .{ .name = "require :as value must be an unqualified symbol" });
+                        return error_catalog.raise(.form_malformed, val.location, .{ .name = "require :as value must be an unqualified symbol" });
                     alias_name = try arena.dupe(u8, val.data.symbol.name);
                 } else if (std.mem.eql(u8, kw.name, "refer")) {
                     // `:refer :all` refers every public var (env.referAll).
@@ -1146,7 +1204,7 @@ fn parseLibspecForm(
                 i += 2;
             }
         },
-        else => return error_catalog.raise(.feature_not_supported, inner_form.location, .{ .name = "require libspec must be symbol or vector" }),
+        else => return error_catalog.raise(.form_malformed, inner_form.location, .{ .name = "require libspec must be symbol or vector" }),
     }
 
     const ns_name: []const u8 = if (ns_sym.ns) |prefix|
@@ -1175,12 +1233,12 @@ fn parseSymbolNameSeq(
     const items: []const Form = switch (val.data) {
         .vector => |v| v,
         .list => |l| l,
-        else => return error_catalog.raise(.feature_not_supported, val.location, .{ .name = err_name }),
+        else => return error_catalog.raise(.form_malformed, val.location, .{ .name = err_name }),
     };
     const buf = try arena.alloc([]const u8, items.len);
     for (items, 0..) |entry, k| {
         if (entry.data != .symbol or entry.data.symbol.ns != null)
-            return error_catalog.raise(.feature_not_supported, entry.location, .{ .name = err_name });
+            return error_catalog.raise(.form_malformed, entry.location, .{ .name = err_name });
         buf[k] = try arena.dupe(u8, entry.data.symbol.name);
     }
     return buf;
@@ -1204,11 +1262,11 @@ pub fn analyzeNs(
     macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     if (items.len < 2)
-        return error_catalog.raise(.feature_not_supported, form.location, .{ .name = "ns requires a name" });
+        return error_catalog.raise(.form_malformed, form.location, .{ .name = "ns requires a name" });
 
     const name_form = items[1];
     if (name_form.data != .symbol)
-        return error_catalog.raise(.feature_not_supported, name_form.location, .{ .name = "ns name must be a bare symbol" });
+        return error_catalog.raise(.form_malformed, name_form.location, .{ .name = "ns name must be a bare symbol" });
     const sym = name_form.data.symbol;
     const ns_name: []const u8 = if (sym.ns) |prefix|
         try std.fmt.allocPrint(arena, "{s}/{s}", .{ prefix, sym.name })
@@ -1260,13 +1318,13 @@ pub fn analyzeNs(
         const inner: []const Form = switch (directive.data) {
             .list => |l| l,
             .vector => |v| v,
-            else => return error_catalog.raise(.feature_not_supported, directive.location, .{ .name = "ns directive must be a list or vector" }),
+            else => return error_catalog.raise(.form_malformed, directive.location, .{ .name = "ns directive must be a list or vector" }),
         };
         if (inner.len == 0 or inner[0].data != .keyword)
-            return error_catalog.raise(.feature_not_supported, directive.location, .{ .name = "ns directive must begin with a keyword" });
+            return error_catalog.raise(.form_malformed, directive.location, .{ .name = "ns directive must begin with a keyword" });
         const kw = inner[0].data.keyword;
         if (kw.ns != null)
-            return error_catalog.raise(.feature_not_supported, directive.location, .{ .name = "ns directive keyword must be unqualified" });
+            return error_catalog.raise(.form_malformed, directive.location, .{ .name = "ns directive keyword must be unqualified" });
         if (std.mem.eql(u8, kw.name, "refer-clojure")) {
             refer_clojure = true;
             try parseReferClojureFilters(arena, inner[1..], &refer_clojure_exclude, &refer_clojure_only, directive.location);
@@ -1368,17 +1426,17 @@ fn parseImportForms(
             .list, .vector => {
                 const elems = if (entry.data == .list) entry.data.list else entry.data.vector;
                 if (elems.len < 2 or elems[0].data != .symbol)
-                    return error_catalog.raise(.feature_not_supported, entry.location, .{ .name = ":import prefix form must be (package Class …)" });
+                    return error_catalog.raise(.form_malformed, entry.location, .{ .name = ":import prefix form must be (package Class …)" });
                 const pkg = try symFullText(arena, elems[0].data.symbol);
                 for (elems[1..]) |ce| {
                     if (ce.data != .symbol or ce.data.symbol.ns != null)
-                        return error_catalog.raise(.feature_not_supported, ce.location, .{ .name = ":import class entry must be a simple symbol" });
+                        return error_catalog.raise(.form_malformed, ce.location, .{ .name = ":import class entry must be a simple symbol" });
                     const cname = ce.data.symbol.name;
                     const fqcn = try std.fmt.allocPrint(arena, "{s}.{s}", .{ pkg, cname });
                     try out.append(arena, .{ .simple = try arena.dupe(u8, cname), .fqcn = fqcn });
                 }
             },
-            else => return error_catalog.raise(.feature_not_supported, entry.location, .{ .name = ":import entry must be a symbol or (package Class …) list" }),
+            else => return error_catalog.raise(.form_malformed, entry.location, .{ .name = ":import entry must be a symbol or (package Class …) list" }),
         }
     }
 }
@@ -1404,12 +1462,12 @@ fn parseReferClojureFilters(
     var i: usize = 0;
     while (i < args.len) {
         if (args[i].data != .keyword)
-            return error_catalog.raise(.feature_not_supported, args[i].location, .{ .name = ":refer-clojure args must be keyword/value pairs" });
+            return error_catalog.raise(.form_malformed, args[i].location, .{ .name = ":refer-clojure args must be keyword/value pairs" });
         const kw = args[i].data.keyword;
         if (kw.ns != null)
-            return error_catalog.raise(.feature_not_supported, args[i].location, .{ .name = ":refer-clojure keyword must be unqualified" });
+            return error_catalog.raise(.form_malformed, args[i].location, .{ .name = ":refer-clojure keyword must be unqualified" });
         if (i + 1 >= args.len)
-            return error_catalog.raise(.feature_not_supported, args[i].location, .{ .name = ":refer-clojure keyword without value" });
+            return error_catalog.raise(.form_malformed, args[i].location, .{ .name = ":refer-clojure keyword without value" });
         const val = args[i + 1];
         if (std.mem.eql(u8, kw.name, "exclude")) {
             // D-299: clj accepts a list OR vector arg (`:exclude (vec)` / `[vec]`).
@@ -1442,7 +1500,7 @@ pub fn analyzeSetBang(
     if (items.len != 3)
         return error_catalog.raise(.set_arity_invalid, form.location, .{ .got = items.len - 1 });
     if (items[1].data != .symbol)
-        return error_catalog.raise(.feature_not_supported, items[1].location, .{ .name = "set! on a non-symbol target (field assignment)" });
+        return error_catalog.raise(.form_malformed, items[1].location, .{ .name = "set! on a non-symbol target (field assignment)" });
     const name_sym = items[1].data.symbol;
     // ADR-0104: a bare deftype mutable field (in a method's field context, not
     // shadowed by a local) → in-place field write. Checked before Var

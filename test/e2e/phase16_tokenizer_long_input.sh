@@ -19,7 +19,7 @@ fail() { echo "FAIL $1" >&2; exit 1; }
 python3 -c "print(';; ' + 'x'*80000); print('(println 42)')" > /tmp/cljw_longline.$$.clj
 trap 'rm -f /tmp/cljw_longline.$$.clj /tmp/cljw_longtok.$$.clj' EXIT
 out=$("$BIN" /tmp/cljw_longline.$$.clj 2>&1) || true
-echo "$out" | grep -qiE "panic|integer overflow" && fail "long line PANICKED (tokenizer column u16 overflow): $out"
+grep -qiE "panic|integer overflow" <<<"$out" && fail "long line PANICKED (tokenizer column u16 overflow): $out"
 [[ "$out" == "42" ]] || fail "long line wrong/failed result (expected 42): $out"
 echo "PASS tok-long-line-no-panic -> $out"
 
@@ -27,7 +27,7 @@ echo "PASS tok-long-line-no-panic -> $out"
 # not silently truncate (Token.len must hold the full length).
 python3 -c "n=70000; print('(println (count ' + '\"' + 'a'*n + '\"' + '))')" > /tmp/cljw_longtok.$$.clj
 out=$("$BIN" /tmp/cljw_longtok.$$.clj 2>&1) || true
-echo "$out" | grep -qiE "panic|integer overflow" && fail "long token PANICKED (Token.len u16 overflow): $out"
+grep -qiE "panic|integer overflow" <<<"$out" && fail "long token PANICKED (Token.len u16 overflow): $out"
 [[ "$out" == "70000" ]] || fail "long token wrong/truncated count (expected 70000): $out"
 echo "PASS tok-long-token-no-panic -> $out"
 

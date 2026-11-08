@@ -25,6 +25,7 @@ const value_mod = @import("../../../runtime/value/value.zig");
 const env_mod = @import("../../../runtime/env.zig");
 const runtime_mod = @import("../../../runtime/runtime.zig");
 const string_mod = @import("../../../runtime/collection/string.zig");
+const error_catalog = @import("../../../runtime/error/catalog.zig");
 const tree_walk = @import("../tree_walk.zig");
 
 const Node = node_mod.Node;
@@ -34,15 +35,19 @@ const BytecodeChunk = opcode_mod.BytecodeChunk;
 const Value = value_mod.Value;
 const Runtime = runtime_mod.Runtime;
 
-pub const Error = error{
-    TooManyConstants,
-    JumpTooFar,
-    TooManyCallArgs,
-    VectorLiteralTooLarge,
-    MapLiteralTooLarge,
-    SetLiteralTooLarge,
-    NotImplemented,
-} || std.mem.Allocator.Error;
+/// A form past a limit of the bytecode format (a u16 index or count, an i16
+/// jump) raises the catchable `form_too_large` catalog error, never an
+/// internal one (D-346).
+pub const Error = error_catalog.ClojureWasmError;
+
+/// The entries a u16-indexed pool or side table holds.
+const u16_entries: usize = std.math.maxInt(u16) + 1;
+
+/// The most elements one literal-build instruction takes off the operand
+/// stack. A larger literal is built in steps of this size, so evaluating it
+/// needs one step of operand stack however large it is (D-346). Even, so a
+/// map literal's steps end on a key/value boundary.
+pub const literal_step: usize = 512;
 
 /// One-shot entry: compile `root` into a finalised `BytecodeChunk`.
 ///
@@ -188,6 +193,9 @@ const Compiler = struct {
     fn compileSet(self: *Compiler, n: node_mod.SetNode) Error!void {
         try self.compileNode(n.value_expr);
         const idx = try self.addConstant(Value.encodeHeapPtr(.var_ref, n.var_ptr));
+        // The value expr re-stamped `current_*`; op_set_var raises at the
+        // set! form itself (TreeWalk evalSet's n.loc, ADR-0036 error half).
+        self.stampLoc(n.loc);
         try self.emit(.op_set_var, idx);
     }
 
@@ -200,25 +208,39 @@ const Compiler = struct {
         try self.compileNode(n.value_expr);
         const name_val = try string_mod.alloc(self.rt, n.field_name);
         const idx = try self.addConstant(name_val);
+        self.stampLoc(n.loc);
         try self.emit(.op_set_field, idx);
     }
 
+    /// A collection literal with an evaluated element (an all-constant one
+    /// is a `.constant` node, folded by the analyzer). Up to `literal_step`
+    /// elements are evaluated and then built by one `build` op; each further
+    /// step is evaluated onto the stack above the collection so far and
+    /// appended by one `extend` op.
+    fn compileLiteral(self: *Compiler, elements: []const Node, loc: error_catalog.SourceLocation, build: Opcode, extend: Opcode) Error!void {
+        var offset: usize = 0;
+        while (true) {
+            const end = @min(offset + literal_step, elements.len);
+            for (elements[offset..end]) |*elt| try self.compileNode(elt);
+            // Stamp the literal's own loc on the build step (ADR-0118), not
+            // the last element's.
+            self.stampLoc(loc);
+            try self.emit(if (offset == 0) build else extend, @intCast(end - offset));
+            if (end == elements.len) break;
+            offset = end;
+        }
+    }
+
     fn compileVectorLiteral(self: *Compiler, n: node_mod.VectorLiteralNode) Error!void {
-        for (n.elements) |*elt| try self.compileNode(elt);
-        if (n.elements.len > std.math.maxInt(u16)) return error.VectorLiteralTooLarge;
-        try self.emit(.op_vector_literal, @intCast(n.elements.len));
+        try self.compileLiteral(n.elements, n.loc, .op_vector_literal, .op_vector_extend);
     }
 
     fn compileMapLiteral(self: *Compiler, n: node_mod.MapLiteralNode) Error!void {
-        for (n.elements) |*elt| try self.compileNode(elt);
-        if (n.elements.len > std.math.maxInt(u16)) return error.MapLiteralTooLarge;
-        try self.emit(.op_map_literal, @intCast(n.elements.len));
+        try self.compileLiteral(n.elements, n.loc, .op_map_literal, .op_map_extend);
     }
 
     fn compileSetLiteral(self: *Compiler, n: node_mod.SetLiteralNode) Error!void {
-        for (n.elements) |*elt| try self.compileNode(elt);
-        if (n.elements.len > std.math.maxInt(u16)) return error.SetLiteralTooLarge;
-        try self.emit(.op_set_literal, @intCast(n.elements.len));
+        try self.compileLiteral(n.elements, n.loc, .op_set_literal, .op_set_extend);
     }
 
     fn emitConst(self: *Compiler, v: Value) Error!void {
@@ -391,6 +413,21 @@ const Compiler = struct {
                 return;
             }
         }
+        // PERF: `(inc x)` / `(dec x)` → op_inc/op_dec instead of op_get_var +
+        // op_call into the builtin, which re-entered `plus` through a slice
+        // (~600 instructions a call). No fused local form: the arg's own loc
+        // must reach the loc_stack for an arg-precise caret [refs: O-102]
+        if (n.args.len == 1 and n.callee.* == .var_ref) {
+            if (intrinsic.recognizeUnary(self.rt, n.callee.var_ref.var_ptr)) |uop| {
+                try self.compileNode(&n.args[0]);
+                if (n.loc.line != 0) {
+                    self.current_line = n.loc.line;
+                    self.current_column = n.loc.column;
+                }
+                try self.emit(if (uop == .inc) .op_inc else .op_dec, 0);
+                return;
+            }
+        }
         // PERF: collection-accessor intrinsics (ADR-0130 extended; O-043). `(get
         // coll k)` (2-arg) → op_get; `(nth coll i default)` (3-arg) → op_nth.
         // Same Var-pointer gate + runtime `core_coll_pristine` deopt as the arith
@@ -417,7 +454,7 @@ const Compiler = struct {
             }
         }
         try self.compileNode(n.callee);
-        if (n.args.len > std.math.maxInt(u16)) return error.TooManyCallArgs;
+        if (n.args.len > std.math.maxInt(u16)) return self.tooLarge("call arguments", std.math.maxInt(u16));
         for (n.args) |*a| try self.compileNode(a);
         // Compiling the callee + args moved `current_*` to the last arg;
         // re-stamp the CALL form's loc so `op_call` (and the error it may
@@ -519,7 +556,7 @@ const Compiler = struct {
         // semantics, they are claims about analyzer correctness).
         const frame = self.current_loop.?;
         if (n.args.len != frame.bindings.len) unreachable;
-        if (n.args.len > std.math.maxInt(u16)) return error.TooManyCallArgs;
+        if (n.args.len > std.math.maxInt(u16)) return self.tooLarge("recur arguments", std.math.maxInt(u16));
         for (n.args) |*a| try self.compileNode(a);
 
         // PERF: D-386 (O-022) recur_loop fusion — if the loop bindings occupy
@@ -551,7 +588,7 @@ const Compiler = struct {
         }
         const back_distance: usize = self.instructions.items.len + 1 - frame.top_ip;
         if (back_distance > std.math.maxInt(i16))
-            return error.JumpTooFar;
+            return self.tooLarge("instructions in one loop", std.math.maxInt(i16));
         const back_offset: i16 = -@as(i16, @intCast(back_distance));
         try self.emit(.op_jump, @as(u16, @bitCast(back_offset)));
     }
@@ -664,7 +701,7 @@ const Compiler = struct {
         //   op_pop_binding_frame                       ; exception-path pop
         //   op_throw                                   ; re-raises
         // end:
-        if (n.pairs.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+        if (n.pairs.len > std.math.maxInt(u16)) return self.tooLarge("binding pairs", std.math.maxInt(u16));
         for (n.pairs) |pair| {
             // var_ref-encode the resolved Var into the constant pool, same
             // shape op_def / op_get_var use for Var references.
@@ -714,21 +751,27 @@ const Compiler = struct {
         switch (n.kind) {
             .constructor => {
                 for (n.args) |*a| try self.compileNode(a);
-                if (n.args.len > std.math.maxInt(u16)) return Error.TooManyCallArgs;
-                if (self.ctor_sites.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+                if (n.args.len > std.math.maxInt(u16)) return self.tooLarge("call arguments", std.math.maxInt(u16));
+                if (self.ctor_sites.items.len > std.math.maxInt(u16)) return self.tooLarge("constructor calls", u16_entries);
                 const ctor_idx: u16 = @intCast(self.ctor_sites.items.len);
                 const name_dup = try self.arena.dupe(u8, n.type_name);
                 try self.ctor_sites.append(self.arena, .{
                     .type_name = name_dup,
+                    .definer_ns = try self.arena.dupe(u8, n.definer_ns),
                     .arg_count = @intCast(n.args.len),
                 });
+                // Raise at the ctor form, not its last argument
+                // (TreeWalk evalConstructorCall's n.loc, ADR-0036 error half).
+                self.stampLoc(n.loc);
                 try self.emit(.op_ctor_call, ctor_idx);
             },
             .instance_member => {
                 const target = n.target orelse @panic("compileInteropCall: target null for .instance_member (analyzer bug)");
                 try self.compileNode(target);
                 for (n.args) |*a| try self.compileNode(a);
-                if (self.call_sites.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+                // The receiver counts as one of the u16 arguments.
+                if (n.args.len >= std.math.maxInt(u16)) return self.tooLarge("call arguments", std.math.maxInt(u16) - 1);
+                if (self.call_sites.items.len > std.math.maxInt(u16)) return self.tooLarge("host calls", u16_entries);
                 const cs_idx: u16 = @intCast(self.call_sites.items.len);
                 const method_name_dup = try self.arena.dupe(u8, n.name);
                 const total_args: u16 = @intCast(1 + n.args.len);
@@ -737,12 +780,16 @@ const Compiler = struct {
                     .arg_count = total_args,
                     .field_only = n.field_only,
                 });
+                // Raise at the interop form, not its last argument
+                // (TreeWalk evalInstanceMember's n.loc, ADR-0036 error half).
+                self.stampLoc(n.loc);
                 try self.emit(.op_method_call, cs_idx);
             },
             .static_method => {
                 const td = n.descriptor orelse @panic("compileInteropCall: descriptor null for .static_method (analyzer bug)");
                 for (n.args) |*a| try self.compileNode(a);
-                if (self.call_sites.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+                if (n.args.len > std.math.maxInt(u16)) return self.tooLarge("call arguments", std.math.maxInt(u16));
+                if (self.call_sites.items.len > std.math.maxInt(u16)) return self.tooLarge("host calls", u16_entries);
                 const cs_idx: u16 = @intCast(self.call_sites.items.len);
                 const method_name_dup = try self.arena.dupe(u8, n.name);
                 // No receiver: arg_count is the user-arg count only.
@@ -752,6 +799,7 @@ const Compiler = struct {
                     .arg_count = arg_count,
                     .descriptor = td,
                 });
+                self.stampLoc(n.loc);
                 try self.emit(.op_static_method_call, cs_idx);
             },
         }
@@ -787,7 +835,7 @@ const Compiler = struct {
             if (n.refer_clojure or n.doc != null or has_attr) {
                 // A docstring rides the side-table entry too (D-239 sibling);
                 // the entry's `refer_clojure` keeps the no-refer shape honest.
-                if (self.ns_filters.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+                if (self.ns_filters.items.len > std.math.maxInt(u16)) return self.tooLarge("ns forms", u16_entries);
                 const filter_idx: u16 = @intCast(self.ns_filters.items.len);
                 const name_dup = try self.arena.dupe(u8, n.name);
                 const exclude_dup = try self.arena.alloc([]const u8, n.refer_clojure_exclude.len);
@@ -814,7 +862,7 @@ const Compiler = struct {
             }
             for (n.imports) |imp| {
                 try self.emit(.op_pop, 0); // drop the prior op's nil
-                if (self.import_sites.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+                if (self.import_sites.items.len > std.math.maxInt(u16)) return self.tooLarge("imports", u16_entries);
                 const idx: u16 = @intCast(self.import_sites.items.len);
                 try self.import_sites.append(self.arena, .{
                     .simple = try self.arena.dupe(u8, imp.simple),
@@ -845,7 +893,7 @@ const Compiler = struct {
     /// (ADR-0036); reused by both `compileRequire` and `compileNs`.
     fn emitLibspec(self: *Compiler, n: node_mod.RequireNode) Error!void {
         if (n.alias != null or n.refers.len > 0 or n.refer_all) {
-            if (self.libspecs.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+            if (self.libspecs.items.len > std.math.maxInt(u16)) return self.tooLarge("require libspecs", u16_entries);
             const idx: u16 = @intCast(self.libspecs.items.len);
             const ns_dup = try self.arena.dupe(u8, n.ns_name);
             const alias_dup: ?[]const u8 = if (n.alias) |a| try self.arena.dupe(u8, a) else null;
@@ -870,17 +918,16 @@ const Compiler = struct {
 
     fn compileDef(self: *Compiler, n: node_mod.DefNode) Error!void {
         // Emit the value expression first, then `op_def <packed>` where
-        // the low 13 bits index the symbol-name String constant and
+        // the low 13 bits index the analyzed Var constant and
         // the high 3 bits carry the dynamic / macro / private flags
         // (see `opcode.zig` for the layout). The constant-pool ceiling
-        // shrinks from u16 to `DEF_NAME_IDX_MAX` only for def name
+        // shrinks from u16 to `DEF_VAR_IDX_MAX` only for def target
         // slots — call / let / get_var indices keep the full u16.
         // A no-init `(def x)` emits no value and uses op_def_unbound (unbound
         // placeholder, no-clobber); `(def x v)` compiles the value then op_def.
         if (n.has_init) try self.compileNode(n.value_expr);
-        const name_val = try string_mod.alloc(self.rt, n.name);
-        const idx = try self.addConstant(name_val);
-        if (idx > opcode_mod.DEF_NAME_IDX_MAX) return error.TooManyConstants;
+        const idx = try self.addConstant(Value.encodeHeapPtr(.var_ref, n.var_ptr));
+        if (idx > opcode_mod.DEF_VAR_IDX_MAX) return self.tooLarge("constants before a def", opcode_mod.DEF_VAR_IDX_MAX + 1);
         var packed_operand: u16 = idx;
         if (n.is_dynamic) packed_operand |= opcode_mod.DEF_FLAG_DYNAMIC;
         if (n.is_macro) packed_operand |= opcode_mod.DEF_FLAG_MACRO;
@@ -910,7 +957,7 @@ const Compiler = struct {
     /// the jump (so 0 means "fall through").
     fn patchJump(self: *Compiler, jump_index: usize) Error!void {
         const offset = self.instructions.items.len - jump_index - 1;
-        if (offset > std.math.maxInt(i16)) return error.JumpTooFar;
+        if (offset > std.math.maxInt(i16)) return self.tooLarge("instructions in one branch", std.math.maxInt(i16));
         self.instructions.items[jump_index].operand = @as(u16, @bitCast(@as(i16, @intCast(offset))));
     }
 
@@ -923,8 +970,23 @@ const Compiler = struct {
         });
     }
 
+    /// Stamp `loc` on the instructions emitted next (ADR-0118), for a compound
+    /// node that emits after compiling its children.
+    fn stampLoc(self: *Compiler, loc: error_catalog.SourceLocation) void {
+        if (loc.line == 0) return;
+        self.current_line = loc.line;
+        self.current_column = loc.column;
+    }
+
+    /// The form exceeds a limit of the bytecode format; `max` is the most of
+    /// `what` the format holds. Raised at the form being compiled.
+    fn tooLarge(self: *const Compiler, comptime what: []const u8, max: usize) Error {
+        const loc: error_catalog.SourceLocation = .{ .file = self.source_file, .line = self.current_line, .column = self.current_column };
+        return error_catalog.raise(.form_too_large, loc, .{ .what = what, .max = max });
+    }
+
     fn addConstant(self: *Compiler, v: Value) Error!u16 {
-        if (self.constants.items.len > std.math.maxInt(u16)) return error.TooManyConstants;
+        if (self.constants.items.len > std.math.maxInt(u16)) return self.tooLarge("constants", u16_entries);
         // D-430: `self.constants` is an arena list, not a GC object — publish
         // the value on the analysis-roots frame so a collect between now and
         // the chunk's execution (whose EvalFrame then roots the pool) cannot
@@ -976,8 +1038,7 @@ const Compiler = struct {
 const testing = std.testing;
 
 /// Minimal fixture that builds the Runtime + arena needed to call
-/// `compile`. Heap Values allocated during compilation (e.g. the
-/// symbol-name String emitted by `compileDef`) are tracked by
+/// `compile`. Heap Values allocated during compilation are tracked by
 /// `rt.trackHeap` and freed in `rt.deinit`.
 const Fixture = struct {
     threaded: std.Io.Threaded,
@@ -1260,25 +1321,27 @@ test "compile fn* with slot_base > 0 emits a template Function (closure capture 
     try testing.expect(fn_ptr.closure_bindings == null);
 }
 
-test "compile def emits value-expr then op_def with symbol-name String" {
+test "compile def emits value-expr then op_def with the analyzed Var" {
     var f = Fixture.init(testing.allocator);
     defer f.deinit();
 
     const value_expr: Node = .{ .constant = .{ .value = Value.true_val } };
-    const node: Node = .{ .def_node = .{ .name = "hello", .value_expr = &value_expr } };
+    var ns: env_mod.Namespace = undefined;
+    var target: env_mod.Var = .{ .ns = &ns, .name = "hello" };
+    const node: Node = .{ .def_node = .{ .var_ptr = &target, .value_expr = &value_expr } };
     const chunk = try f.compile(&node);
 
-    // op_const true ; op_def <idx-of-"hello"> ; op_ret
+    // op_const true ; op_def <idx-of-Var> ; op_ret
     try testing.expectEqual(@as(usize, 3), chunk.instructions.len);
     try testing.expectEqual(Opcode.op_const, chunk.instructions[0].op());
     try testing.expectEqual(Opcode.op_def, chunk.instructions[1].op());
     try testing.expectEqual(Opcode.op_ret, chunk.instructions[2].op());
 
     const operand = chunk.instructions[1].operand;
-    try testing.expectEqual(@as(u16, 0), operand & ~opcode_mod.DEF_NAME_IDX_MASK);
-    const name_val = chunk.constants[operand & opcode_mod.DEF_NAME_IDX_MASK];
-    try testing.expect(name_val.isString());
-    try testing.expectEqualStrings("hello", string_mod.asString(name_val));
+    try testing.expectEqual(@as(u16, 0), operand & ~opcode_mod.DEF_VAR_IDX_MASK);
+    const var_val = chunk.constants[operand & opcode_mod.DEF_VAR_IDX_MASK];
+    try testing.expectEqual(Value.Tag.var_ref, var_val.tag());
+    try testing.expectEqual(&target, var_val.decodePtr(*env_mod.Var));
 }
 
 test "compile def packs dynamic / macro / private flags into op_def operand" {
@@ -1286,8 +1349,10 @@ test "compile def packs dynamic / macro / private flags into op_def operand" {
     defer f.deinit();
 
     const value_expr: Node = .{ .constant = .{ .value = Value.true_val } };
+    var ns: env_mod.Namespace = undefined;
+    var target: env_mod.Var = .{ .ns = &ns, .name = "foo" };
     const node: Node = .{ .def_node = .{
-        .name = "foo",
+        .var_ptr = &target,
         .value_expr = &value_expr,
         .is_dynamic = true,
         .is_macro = false,
@@ -1296,11 +1361,11 @@ test "compile def packs dynamic / macro / private flags into op_def operand" {
     const chunk = try f.compile(&node);
 
     const operand = chunk.instructions[1].operand;
-    const name_idx = operand & opcode_mod.DEF_NAME_IDX_MASK;
+    const var_idx = operand & opcode_mod.DEF_VAR_IDX_MASK;
     try testing.expectEqual(@as(u16, opcode_mod.DEF_FLAG_DYNAMIC), operand & opcode_mod.DEF_FLAG_DYNAMIC);
     try testing.expectEqual(@as(u16, 0), operand & opcode_mod.DEF_FLAG_MACRO);
     try testing.expectEqual(@as(u16, opcode_mod.DEF_FLAG_PRIVATE), operand & opcode_mod.DEF_FLAG_PRIVATE);
-    try testing.expectEqualStrings("foo", string_mod.asString(chunk.constants[name_idx]));
+    try testing.expectEqual(&target, chunk.constants[var_idx].decodePtr(*env_mod.Var));
 }
 
 test "compile loop* emits initial bindings then body without exit op" {

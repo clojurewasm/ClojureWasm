@@ -46,7 +46,7 @@ assert_eq "matcher_oracle_table" "$got" "$want"
 if err=$("$BIN" -e '(let [m (re-matcher #"b" "a")] (.group m))' 2>&1); then
   fail "group_without_match: expected non-zero exit, got '$err'"
 fi
-echo "$err" | grep -q "No match found" || fail "group_without_match: message missing 'No match found': $err"
+grep -q "No match found" <<<"$err" || fail "group_without_match: message missing 'No match found': $err"
 echo "PASS group_without_match"
 
 # D-457(3b): a matcher-state error is catchable as IllegalStateException (clj-parity:

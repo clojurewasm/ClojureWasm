@@ -1,0 +1,1 @@
+{:crlf ["a" "b"], :empty [""], :empty-line ["a" "" "b"], :lf ["a" "b"], :lone-cr ["a\rb"], :plain ["alpha"]}

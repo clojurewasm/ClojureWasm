@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Tokenizer — Clojure source text → token stream.
 //!
 //! Stateful iterator: callers loop on `next()` until they see `.eof`.
@@ -33,6 +34,9 @@ pub const TokenKind = enum(u8) {
     /// `1/3` — rational literal. Token text holds the full `num/den`
     /// digit pair; the reader splits on `/` before parsing each side.
     ratio_literal,
+    /// A digit-led run that is not a number (`12x`, `1/2/3`, `4/-2`). Token
+    /// text is the whole run up to the delimiter; the reader rejects it.
+    number_invalid,
     string,
     /// `\a` / `\newline` / `\uXXXX` / `\oNNN` — character literal. Token text
     /// includes the leading `\`; the reader decodes the body to a codepoint.
@@ -108,14 +112,29 @@ pub const Token = struct {
 };
 
 /// Stateful tokenizer.
+/// Which surface syntax the tokenizer accepts (ADR-0200 Layer B). `.clojure`
+/// is clj's LispReader; `.edn` is clj's EdnReader, a strict subset: no
+/// syntax-quote / unquote / deref macros (`` ` `` `~` `@` are invalid leading
+/// AND invalid constituent characters), `'` is a symbol constituent that may
+/// also start a symbol (`'a` is the symbol `'a`), no `::auto` keywords, and the
+/// only `#` dispatches are `#{` `#_` `##` `#^` `#:ns{` and `#tag`.
+pub const Dialect = enum { clojure, edn };
+
 pub const Tokenizer = struct {
     source: []const u8,
     pos: u32 = 0,
     line: u32 = 1,
     column: u16 = 0,
+    dialect: Dialect = .clojure,
 
     pub fn init(source: []const u8) Tokenizer {
         return .{ .source = source };
+    }
+
+    /// A char clj's EdnReader rejects inside a token ("Invalid constituent
+    /// character"). In `.clojure` these terminate the token instead.
+    fn isEdnBadConstituent(self: *const Tokenizer, c: u8) bool {
+        return self.dialect == .edn and (c == '@' or c == '~' or c == '`');
     }
 
     /// Return the next token; advances state. Idempotent at EOF.
@@ -128,6 +147,14 @@ pub const Tokenizer = struct {
         const start_line = self.line;
         const start_col = self.column;
         const ch = self.source[self.pos];
+
+        if (self.dialect == .edn) switch (ch) {
+            // clj EdnReader: no quote macro, `'` is a symbol constituent that
+            // can start one; `` ` `` `~` `@` are "Invalid leading character".
+            '\'' => return self.readSymbol(start, start_line, start_col),
+            '`', '~', '@' => return self.singleChar(.invalid, start, start_line, start_col),
+            else => {},
+        };
 
         switch (ch) {
             '(' => return self.singleChar(.lparen, start, start_line, start_col),
@@ -242,10 +269,28 @@ pub const Tokenizer = struct {
         if (self.pos - start <= 1) {
             return self.makeToken(.invalid, start, start_line, start_col); // bare ':'
         }
+        // clj EdnReader has no auto-resolved keywords: `::kw` is "Invalid token".
+        if (self.dialect == .edn and self.source[start + 1] == ':')
+            return self.makeToken(.invalid, start, start_line, start_col);
+        if (self.endsAtEdnBadConstituent()) return self.makeToken(.invalid, start, start_line, start_col);
         return self.makeToken(.keyword, start, start_line, start_col);
     }
 
+    /// A number token runs to the next delimiter, as clj's LispReader.readNumber
+    /// does: scan the longest numeric shape, and if a symbol constituent still
+    /// follows (`12x`, `1/2/3`, `4/-2`, `1.5.3`) consume the whole run and emit
+    /// `.number_invalid`, which the reader rejects as `Invalid number: <text>`.
     fn readNumber(self: *Tokenizer, start: u32, start_line: u32, start_col: u16) Token {
+        const kind = self.scanNumber();
+        if (self.pos < self.source.len and isNumberChar(self.source[self.pos])) {
+            while (self.pos < self.source.len and isNumberChar(self.source[self.pos])) self.advance();
+            return self.makeToken(.number_invalid, start, start_line, start_col);
+        }
+        return self.makeToken(kind, start, start_line, start_col);
+    }
+
+    /// Advance over the longest numeric literal shape at `pos` and classify it.
+    fn scanNumber(self: *Tokenizer) TokenKind {
         var is_float = false;
 
         if (self.pos < self.source.len and (self.source[self.pos] == '+' or self.source[self.pos] == '-')) {
@@ -259,7 +304,12 @@ pub const Tokenizer = struct {
             self.advance();
             self.advance();
             while (self.pos < self.source.len and isHexDigit(self.source[self.pos])) self.advance();
-            return self.makeToken(.integer, start, start_line, start_col);
+            // clj's int pattern takes the `N` suffix on every radix form: `0xFFN` is 255N.
+            if (self.pos < self.source.len and self.source[self.pos] == 'N') {
+                self.advance();
+                return .big_int_literal;
+            }
+            return .integer;
         }
 
         while (self.pos < self.source.len and isDigit(self.source[self.pos])) self.advance();
@@ -267,14 +317,14 @@ pub const Tokenizer = struct {
         // Radix literal: `<base>r<digits>` (e.g. 2r1010, 16rFF, 36rZ). The
         // leading decimal digits are the base; `r`/`R` introduces the mantissa
         // in that base (digits 0-9a-zA-Z). Only when an alphanumeric mantissa
-        // digit follows — `2r` alone falls through to symbol-split.
+        // digit follows — `2r` alone is an invalid number token.
         if (self.pos + 1 < self.source.len and
             (self.source[self.pos] == 'r' or self.source[self.pos] == 'R') and
             isAlphanumeric(self.source[self.pos + 1]))
         {
             self.advance(); // 'r' / 'R'
             while (self.pos < self.source.len and isAlphanumeric(self.source[self.pos])) self.advance();
-            return self.makeToken(.integer, start, start_line, start_col);
+            return .integer;
         }
 
         if (self.pos < self.source.len and self.source[self.pos] == '.') {
@@ -295,36 +345,47 @@ pub const Tokenizer = struct {
         // Phase 14 row 14.4 gap (b): Ratio literal `1/3`. Only valid
         // when the numerator was a plain integer (no dot / exp) and
         // the `/` is followed by at least one digit. Anything else
-        // (`1/foo`) falls through to the integer/symbol split.
+        // (`1/foo`) is an invalid number token.
         if (!is_float and self.pos + 1 < self.source.len and
             self.source[self.pos] == '/' and isDigit(self.source[self.pos + 1]))
         {
             self.advance(); // consume '/'
             while (self.pos < self.source.len and isDigit(self.source[self.pos])) self.advance();
-            return self.makeToken(.ratio_literal, start, start_line, start_col);
+            return .ratio_literal;
         }
 
         // Phase 5.10.d: BigInt `N` and BigDecimal `M` suffixes get
         // their own token kinds so the reader can parse them via
         // std.math.big.int.Managed.setString (lossless) instead of
         // i64 / f64 parse (lossy on overflow).
-        if (self.pos < self.source.len and self.source[self.pos] == 'N') {
+        if (!is_float and self.pos < self.source.len and self.source[self.pos] == 'N') {
             self.advance();
-            return self.makeToken(.big_int_literal, start, start_line, start_col);
+            return .big_int_literal;
         }
         if (self.pos < self.source.len and self.source[self.pos] == 'M') {
             self.advance();
-            return self.makeToken(.big_decimal_literal, start, start_line, start_col);
+            return .big_decimal_literal;
         }
 
-        return self.makeToken(if (is_float) .float else .integer, start, start_line, start_col);
+        return if (is_float) .float else .integer;
     }
 
     fn readSymbol(self: *Tokenizer, start: u32, start_line: u32, start_col: u16) Token {
         while (self.pos < self.source.len and isSymbolChar(self.source[self.pos])) self.advance();
+        if (self.endsAtEdnBadConstituent()) return self.makeToken(.invalid, start, start_line, start_col);
         // `nil` / `true` / `false` come back as plain symbol tokens;
         // the reader (next phase) re-classifies them.
         return self.makeToken(.symbol, start, start_line, start_col);
+    }
+
+    /// `.edn` only: the token just scanned stopped at `@` `~` or `` ` ``, which
+    /// clj's EdnReader rejects as an "Invalid constituent character". Consume
+    /// the rest of the run so the error names the whole token.
+    fn endsAtEdnBadConstituent(self: *Tokenizer) bool {
+        if (self.pos >= self.source.len or !self.isEdnBadConstituent(self.source[self.pos])) return false;
+        while (self.pos < self.source.len and
+            (isSymbolChar(self.source[self.pos]) or self.isEdnBadConstituent(self.source[self.pos]))) self.advance();
+        return true;
     }
 
     fn readDispatch(self: *Tokenizer, start: u32, start_line: u32, start_col: u16) Token {
@@ -333,6 +394,22 @@ pub const Tokenizer = struct {
         if (self.pos >= self.source.len) {
             return self.makeToken(.invalid, start, start_line, start_col);
         }
+
+        // clj EdnReader's dispatch table is `#{` `#_` `##` `#^` `#:` and `#tag`
+        // only; every other dispatch char is "No dispatch macro for: c", and
+        // `#::` (auto-resolved namespaced map) is an invalid token.
+        if (self.dialect == .edn) switch (self.source[self.pos]) {
+            '!', '"', '(', '\'', '?', '=', '<' => {
+                self.advance();
+                return self.makeToken(.invalid, start, start_line, start_col);
+            },
+            ':' => if (self.pos + 1 < self.source.len and self.source[self.pos + 1] == ':') {
+                self.advance();
+                self.advance();
+                return self.makeToken(.invalid, start, start_line, start_col);
+            },
+            else => {},
+        };
 
         switch (self.source[self.pos]) {
             '_' => {
@@ -351,7 +428,7 @@ pub const Tokenizer = struct {
                 return self.makeToken(.meta_caret, start, start_line, start_col);
             },
             '!' => {
-                while (self.pos < self.source.len and self.source[self.pos] != '\n') self.advance();
+                self.skipLineComment();
                 return self.next(); // skip shebang line, return next real token
             },
             '"' => return self.readRegexLiteral(start, start_line, start_col),
@@ -401,9 +478,16 @@ pub const Tokenizer = struct {
             if (isWhitespace(c)) {
                 self.advance();
             } else if (c == ';') {
-                while (self.pos < self.source.len and self.source[self.pos] != '\n') self.advance();
+                self.skipLineComment();
             } else break;
         }
+    }
+
+    /// Consume a `;` or `#!` comment up to, not including, the line end. A
+    /// line ends at LF or CR (clj CommentReader), so a CR-only source does
+    /// not swallow the forms after its first comment.
+    fn skipLineComment(self: *Tokenizer) void {
+        while (self.pos < self.source.len and !isLineEnd(self.source[self.pos])) self.advance();
     }
 
     fn advance(self: *Tokenizer) void {
@@ -459,19 +543,31 @@ fn isWhitespace(c: u8) bool {
     };
 }
 
+fn isLineEnd(c: u8) bool {
+    return c == '\n' or c == '\r';
+}
+
 fn isTerminator(c: u8) bool {
-    // `#` is NOT a terminator: it is a symbol/keyword constituent mid-token
-    // (clj `foo#` auto-gensym, `foo#bar`). A token-START `#` is still a reader
-    // dispatch — the main `next` switch matches `'#' => readDispatch` before
-    // any symbol read begins, so only a non-leading `#` reaches a symbol body.
+    // clj LispReader isTerminatingMacro: every macro char except `#`, `'` and
+    // `%` ends a token, so `a@b` is `a (deref b)` and `x~y` is `x (unquote y)`.
+    // `#` stays a symbol/keyword constituent mid-token (`foo#` auto-gensym,
+    // `foo#bar`); a token-START `#` is still a reader dispatch, because the
+    // main `next` switch matches `'#' => readDispatch` before any symbol read
+    // begins. `'` stays a constituent too (`a'b` is one symbol).
     return isWhitespace(c) or switch (c) {
-        '"', ';', '(', ')', '[', ']', '{', '}', '\\' => true,
+        '"', ';', '(', ')', '[', ']', '{', '}', '\\', '@', '^', '`', '~' => true,
         else => false,
     };
 }
 
 fn isSymbolChar(c: u8) bool {
     return !isTerminator(c) and c > ' ';
+}
+
+/// clj LispReader.readNumber ends a number at whitespace or ANY macro char,
+/// so unlike a symbol, `#`, `'` and `%` also end it: `1#` is 1 then `#`.
+fn isNumberChar(c: u8) bool {
+    return isSymbolChar(c) and c != '#' and c != '\'' and c != '%';
 }
 
 fn isSymbolStart(c: u8) bool {
@@ -658,4 +754,87 @@ test "'(1 2) emits quote then list" {
     try testing.expectEqual(TokenKind.integer, t.next().kind);
     try testing.expectEqual(TokenKind.integer, t.next().kind);
     try testing.expectEqual(TokenKind.rparen, t.next().kind);
+}
+
+test "a line comment ends at CR as well as LF" {
+    var t = Tokenizer.init(";c\r3\n5");
+    try testing.expectEqualStrings("3", t.next().text(t.source));
+    try testing.expectEqualStrings("5", t.next().text(t.source));
+    var s = Tokenizer.init("#!shebang\r7");
+    try testing.expectEqualStrings("7", s.next().text(s.source));
+}
+
+test "@ ^ backtick ~ end a symbol, keyword or char token; ' and # do not" {
+    var t = Tokenizer.init("a@b :k^m x`y z~w q'r g#");
+    try testing.expectEqualStrings("a", t.next().text(t.source));
+    try testing.expectEqual(TokenKind.deref, t.next().kind);
+    try testing.expectEqualStrings("b", t.next().text(t.source));
+    try testing.expectEqualStrings(":k", t.next().text(t.source));
+    try testing.expectEqual(TokenKind.meta_caret, t.next().kind);
+    try testing.expectEqualStrings("m", t.next().text(t.source));
+    try testing.expectEqualStrings("x", t.next().text(t.source));
+    try testing.expectEqual(TokenKind.syntax_quote, t.next().kind);
+    try testing.expectEqualStrings("y", t.next().text(t.source));
+    try testing.expectEqualStrings("z", t.next().text(t.source));
+    try testing.expectEqual(TokenKind.unquote, t.next().kind);
+    try testing.expectEqualStrings("w", t.next().text(t.source));
+    try testing.expectEqualStrings("q'r", t.next().text(t.source));
+    try testing.expectEqualStrings("g#", t.next().text(t.source));
+
+    var c = Tokenizer.init("\\a@b \\@");
+    const a = c.next();
+    try testing.expectEqual(TokenKind.char_lit, a.kind);
+    try testing.expectEqualStrings("\\a", a.text(c.source));
+    try testing.expectEqual(TokenKind.deref, c.next().kind);
+    try testing.expectEqualStrings("b", c.next().text(c.source));
+    try testing.expectEqualStrings("\\@", c.next().text(c.source));
+}
+
+test "a number token runs to the delimiter; a non-number run is number_invalid" {
+    const bad = [_][]const u8{ "12x", "1.5x", "1/2x", "1/2/3", "4/-2", "12N3", "1.5Mx", "1.5.3", "2r", "0x1g", "+12x", "1.5N" };
+    for (bad) |src| {
+        var t = Tokenizer.init(src);
+        const tok = t.next();
+        try testing.expectEqual(TokenKind.number_invalid, tok.kind);
+        try testing.expectEqualStrings(src, tok.text(src));
+        try testing.expectEqual(TokenKind.eof, t.next().kind);
+    }
+}
+
+test "a number token ends at a macro char, even ones a symbol keeps" {
+    var t = Tokenizer.init("1#'%");
+    try testing.expectEqual(TokenKind.integer, t.next().kind);
+    var u = Tokenizer.init("0xFFN 1(");
+    try testing.expectEqual(TokenKind.big_int_literal, u.next().kind);
+    try testing.expectEqual(TokenKind.integer, u.next().kind);
+    try testing.expectEqual(TokenKind.lparen, u.next().kind);
+}
+
+fn ednKinds(src: []const u8) TokenKind {
+    var t = Tokenizer.init(src);
+    t.dialect = .edn;
+    return t.next().kind;
+}
+
+test "edn dialect rejects the macro characters and dispatches clj's EdnReader lacks" {
+    for ([_][]const u8{ "`a", "~a", "@a", "#'a", "#(x)", "#\"r\"", "#=(x)", "#?(:clj 1)", "#!x", "::kw", "#::{}", "a@b", "a~b", "a`b", ":k@b" }) |src|
+        try testing.expectEqual(TokenKind.invalid, ednKinds(src));
+}
+
+test "edn dialect reads quote as a symbol constituent and keeps the EDN dispatches" {
+    var t = Tokenizer.init("'a #{ #_ ##Inf #:a{ #tag");
+    t.dialect = .edn;
+    const q = t.next();
+    try testing.expectEqual(TokenKind.symbol, q.kind);
+    try testing.expectEqualStrings("'a", q.text(t.source));
+    try testing.expectEqual(TokenKind.set_open, t.next().kind);
+    try testing.expectEqual(TokenKind.discard, t.next().kind);
+    try testing.expectEqual(TokenKind.symbolic, t.next().kind);
+    _ = t.next(); // Inf
+    try testing.expectEqual(TokenKind.ns_map, t.next().kind);
+    _ = t.next(); // {
+    try testing.expectEqual(TokenKind.tagged, t.next().kind);
+    // The clojure dialect is unchanged.
+    var c = Tokenizer.init("`a");
+    try testing.expectEqual(TokenKind.syntax_quote, c.next().kind);
 }

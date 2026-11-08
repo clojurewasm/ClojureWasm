@@ -34,21 +34,28 @@ EOF
 ) || fail "case1: non-zero exit ($got)"
 echo "PASS reify_basic_construction"
 
-# --- Case 2: reify with empty form raises reify_form_incomplete ---
-diag=$("$BIN" -e '(reify)' 2>&1 || true)
-if [[ "$diag" != *"reify requires"* ]]; then
-    fail "case2: expected reify_form_incomplete diagnostic, got '$diag'"
+# --- Case 2: (reify) with no sections builds an instance, as on the JVM ---
+got=$("$BIN" -e '(some? (reify))' 2>&1 | tail -1)
+if [[ "$got" != "true" ]]; then
+    fail "case2: expected (reify) to build an instance, got '$got'"
 fi
-echo "PASS reify_form_incomplete_diagnostic"
+echo "PASS reify_empty_form_constructs"
 
-# --- Case 3: reify with no method-impl section raises section_invalid ---
-diag=$("$BIN" - <<'EOF' 2>&1 || true
+# --- Case 3: a protocol section with no method impls constructs, as on the JVM ---
+got=$("$BIN" - <<'EOF' 2>&1 | tail -1
 (defprotocol P (m [this]))
-(reify P)
+(prn (some? (reify P)))
 EOF
 )
+if [[ "$got" != "true" ]]; then
+    fail "case3: expected (reify P) to build an instance, got '$got'"
+fi
+echo "PASS reify_empty_section_constructs"
+
+# --- Case 3b: a non-symbol where a section name belongs raises section_invalid ---
+diag=$("$BIN" -e '(reify (m [_] 1))' 2>&1 || true)
 if [[ "$diag" != *"reify section"* ]]; then
-    fail "case3: expected reify_section_invalid diagnostic, got '$diag'"
+    fail "case3b: expected reify_section_invalid diagnostic, got '$diag'"
 fi
 echo "PASS reify_section_invalid_diagnostic"
 

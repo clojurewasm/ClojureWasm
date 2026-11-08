@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Arithmetic + comparison primitives for the `rt/` namespace:
 //! `+`, `-`, `*`, `/`, `quot`, `rem`, `mod`, the auto-promoting
 //! `+'`/`-'`/`*'`/`inc'`/`dec'` family (ADR-0100: in cljw these are
@@ -35,25 +36,6 @@ const string_mod = @import("../../runtime/collection/string.zig");
 
 // --- numeric helpers ---
 
-/// Convert any numeric Value to f64 (lossy for big_int / ratio /
-/// big_decimal — Clojure float contagion). Caller must have
-/// type-checked; a non-number returns 0.0. Shared by the comparison
-/// f64 path and the `double`/`float` primitive (F-011).
-fn toF64(v: Value) f64 {
-    return switch (v.tag()) {
-        .float => v.asFloat(),
-        .integer => @floatFromInt(v.asInteger()),
-        .char => @floatFromInt(v.asChar()),
-        .big_int => big_int_mod.asManaged(v).toFloat(f64, .nearest_even)[0],
-        .ratio => switch (ratio_mod.parts(v)) {
-            .small => |s| @as(f64, @floatFromInt(s.n)) / @as(f64, @floatFromInt(s.d)),
-            .big => |b| b.n.m.toFloat(f64, .nearest_even)[0] / b.d.m.toFloat(f64, .nearest_even)[0],
-        },
-        .big_decimal => big_decimal_mod.toFloat(v),
-        else => 0.0, // caller has already type-checked
-    };
-}
-
 fn ensureNumeric(args: []const Value, name: []const u8, loc: SourceLocation) !void {
     for (args, 0..) |v, i| {
         switch (v.tag()) {
@@ -78,6 +60,7 @@ pub fn plus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     while (i < args.len) : (i += 1) {
         acc = promote.addPromoting(rt, acc, args[i]) catch |err| switch (err) {
             error.NonTerminatingDecimal => return error_catalog.raise(.non_terminating_decimal, loc, .{}),
+            error.RoundingNecessary => return error_catalog.raise(.rounding_necessary, loc, .{}),
             else => return err,
         };
     }
@@ -98,6 +81,7 @@ pub fn minus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         if (args[0].isFloat()) return Value.initFloat(-args[0].asFloat());
         return promote.subPromoting(rt, Value.initInteger(0), args[0]) catch |err| switch (err) {
             error.NonTerminatingDecimal => return error_catalog.raise(.non_terminating_decimal, loc, .{}),
+            error.RoundingNecessary => return error_catalog.raise(.rounding_necessary, loc, .{}),
             else => return err,
         };
     }
@@ -106,6 +90,7 @@ pub fn minus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     while (i < args.len) : (i += 1) {
         acc = promote.subPromoting(rt, acc, args[i]) catch |err| switch (err) {
             error.NonTerminatingDecimal => return error_catalog.raise(.non_terminating_decimal, loc, .{}),
+            error.RoundingNecessary => return error_catalog.raise(.rounding_necessary, loc, .{}),
             else => return err,
         };
     }
@@ -123,6 +108,7 @@ pub fn star(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     while (i < args.len) : (i += 1) {
         acc = promote.mulPromoting(rt, acc, args[i]) catch |err| switch (err) {
             error.NonTerminatingDecimal => return error_catalog.raise(.non_terminating_decimal, loc, .{}),
+            error.RoundingNecessary => return error_catalog.raise(.rounding_necessary, loc, .{}),
             else => return err,
         };
     }
@@ -143,6 +129,7 @@ pub fn slash(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         return promote.divPromoting(rt, Value.initInteger(1), args[0]) catch |err| switch (err) {
             error.DivideByZero => return error_catalog.raise(.divide_by_zero, error_mod.argLoc(0, loc), .{}),
             error.NonTerminatingDecimal => return error_catalog.raise(.non_terminating_decimal, loc, .{}),
+            error.RoundingNecessary => return error_catalog.raise(.rounding_necessary, loc, .{}),
             else => return err,
         };
     }
@@ -153,6 +140,7 @@ pub fn slash(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             // ADR-0118 cycle 2.5: caret on the zero divisor at index `i`, not the call form.
             error.DivideByZero => return error_catalog.raise(.divide_by_zero, error_mod.argLoc(i, loc), .{}),
             error.NonTerminatingDecimal => return error_catalog.raise(.non_terminating_decimal, loc, .{}),
+            error.RoundingNecessary => return error_catalog.raise(.rounding_necessary, loc, .{}),
             else => return err,
         };
     }
@@ -194,13 +182,15 @@ fn denominator(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 /// 3602879701896397/36028797018963968). cw v1 floats render full-decimal
 /// (no exponent), so the parse is just sign / integer / fractional digits:
 /// numerator = the digits with the point removed, denominator = 10^(frac
-/// digit count), then gcd-reduce. NaN / Inf raise.
+/// digit count), then gcd-reduce. NaN / Inf raise. A BigDecimal is already an
+/// exact decimal, so it takes `bigDecRationalize` instead of a float round-trip.
 fn rationalize(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("rationalize", args, 1, loc);
     const v = args[0];
     switch (v.tag()) {
         .integer, .big_int, .ratio => return v,
+        .big_decimal => return bigDecRationalize(rt, v, loc),
         .float => {},
         else => |t| return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "rationalize", .actual = @tagName(t) }),
     }
@@ -244,35 +234,54 @@ fn rationalize(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return promote.wrapManaged(rt, &num_m);
 }
 
-// --- comparison ---
+/// `(rationalize 1.5M)` = 3/2. A BigDecimal carries its own exact value,
+/// `unscaled * 10^(-scale)`, so it never goes through a float: a positive scale
+/// is the denominator, and a non-positive one is trailing zeros on the digits,
+/// which makes the result an integer with no ratio to reduce. Going via a float
+/// would lose precision that the BigDecimal was chosen to keep.
+fn bigDecRationalize(rt: *Runtime, v: Value, loc: SourceLocation) anyerror!Value {
+    _ = loc;
+    const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
+    const Managed = std.math.big.int.Managed;
+    // 10^|scale| computed exactly, no digit-string round-trip and so no size
+    // ceiling (CLJW-BIGINT-STR-PLACEHOLDER sweep).
+    var pow_m = try Managed.initSet(rt.gc.infra, 10);
+    defer pow_m.deinit();
+    const mag: u32 = @intCast(@abs(@as(i64, bd.scale)));
+    try pow_m.pow(&pow_m, mag);
 
-/// Run `pred` pairwise across `args`, short-circuiting on `false`.
-/// Used by `<` / `>` / `<=` / `>=`.
-/// True when `a` and `b` are in the SAME numeric category (int/big_int,
-/// or ratio/ratio, or big_decimal/big_decimal) and neither is a float —
-/// the pairs `compare.valueCompare` orders EXACTLY without hitting its
-/// cross-category f64 fallback (which raises on big numbers). Mirrors
-/// `compare.zig::numericOrder`'s same-category arms.
-fn exactComparable(a: Value, b: Value) bool {
-    const ta = a.tag();
-    const tb = b.tag();
-    const int_a = ta == .integer or ta == .big_int;
-    const int_b = tb == .integer or tb == .big_int;
-    if (int_a and int_b) return true;
-    if (ta == .ratio and tb == .ratio) return true;
-    if (ta == .big_decimal and tb == .big_decimal) return true;
-    return false;
+    if (bd.scale <= 0) {
+        var int_m = try Managed.init(rt.gc.infra);
+        defer int_m.deinit();
+        try int_m.mul(bd.unscaled.m, &pow_m);
+        return promote.wrapManaged(rt, &int_m);
+    }
+
+    if (try ratio_mod.allocFromManagedPair(rt, bd.unscaled.m, &pow_m)) |ratio_v| return ratio_v;
+    // Null means the reduction collapsed to an integer, and the caller emits
+    // it. The quotient has to be computed here: `allocFromManagedPair` takes
+    // its pair as `const`, so the numerator is still the UNREDUCED unscaled
+    // value, and wrapping it answers 10 for 1.0M. A BigDecimal reaches this
+    // arm whenever its trailing digits are zeros (1.0M, 1.00M, 10.0M).
+    var quot_m = try Managed.init(rt.gc.infra);
+    defer quot_m.deinit();
+    var rem_m = try Managed.init(rt.gc.infra);
+    defer rem_m.deinit();
+    try quot_m.divTrunc(&rem_m, bd.unscaled.m, &pow_m);
+    return promote.wrapManaged(rt, &quot_m);
 }
 
-/// Pairwise numeric comparison for `< > <= >= ==`. Same-category big
-/// numbers (BigInt / Ratio / BigDecimal — and plain int) compare EXACTLY
-/// through the numeric tower (`opred` over `compare.valueCompare`); f64
-/// would lose precision/sign (D-167). A float operand or a cross-category
-/// pair takes the f64 path (`fpred` over `toF64`): float contagion +
-/// correct IEEE NaN (every NaN comparison false, where a total Order maps
-/// NaN to `.gt`). The exact cross-category combine ladder at huge
-/// magnitude (e.g. Ratio vs Int) is the still-deferred D-014a tail — f64
-/// there is a lossy approximation, not the old zeroing bug.
+// --- comparison ---
+
+/// Pairwise numeric comparison for `< > <= >= ==`, short-circuiting on the
+/// first false pair, as clj's `Numbers` combine ladder decides it. A float
+/// operand makes the pair a double comparison (`fpred` over `promote.toF64`): float
+/// contagion, and IEEE NaN, where every NaN comparison is false and a total
+/// Order would map NaN to `.gt`. Any other pair (Long, BigInt, Ratio,
+/// BigDecimal, in any mix) compares exactly (`opred` over
+/// `compare.valueCompare`), because doubles lose precision and sign past 2^53
+/// (D-167): 24691357802469135781/2 and 12345678901234567891 are one double but
+/// not one number. `min` and `max` fold over these, so they pick by exact value.
 fn pairwise(
     rt: *Runtime,
     name: []const u8,
@@ -283,17 +292,18 @@ fn pairwise(
 ) !Value {
     // clj comparators are min-1-arity (D-446): `(<)` throws ArityException.
     try error_catalog.checkArityMin(name, args, 1, loc);
+    // The 1-arity body is `([x] true)` in clj — it never inspects `x`, so
+    // `(> "abc")` / `(== nil)` are `true`, NOT type errors. The numeric check
+    // must therefore run AFTER the arity-1 short-circuit, not before it.
+    if (args.len < 2) return Value.true_val;
     try ensureNumeric(args, name, loc);
-    if (args.len < 2) return Value.true_val; // (< 1) is true in Clojure
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         const a = args[i - 1];
         const b = args[i];
-        if (exactComparable(a, b)) {
-            if (!opred(try compare_mod.valueCompare(rt, a, b, loc))) return Value.false_val;
-        } else {
-            if (!fpred(toF64(a), toF64(b))) return Value.false_val;
-        }
+        if (a.isFloat() or b.isFloat()) {
+            if (!fpred(try promote.toF64(a), try promote.toF64(b))) return Value.false_val;
+        } else if (!opred(try compare_mod.valueCompare(rt, a, b, loc))) return Value.false_val;
     }
     return Value.true_val;
 }
@@ -384,13 +394,12 @@ pub fn compare(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     // path), so this cannot live in the shared valueCompare. `(compare ##NaN 1)`
     // → 0, `(compare ##NaN ##NaN)` → 0.
     if (isNanFloat(args[0]) or isNanFloat(args[1])) return Value.initInteger(0);
-    // A deftype/reify declaring java.lang.Comparable (instaparse's
-    // AutoFlattenSeq) supplies its own ordering: consult Comparable/
-    // -compare-to (clj: RT compare casts to Comparable and calls compareTo).
-    if (args[0].tag() == .typed_instance or args[0].tag() == .reified_instance) {
-        var cs: dispatch.CallSite = .{};
-        if (try dispatch.dispatchOrNull(rt, env, &cs, args[0], "Comparable", "-compare-to", args[0..2], loc)) |r| return r;
-    }
+    // A Comparable deftype/reify (instaparse's AutoFlattenSeq) or a host
+    // instance with compareTo (java.io.File) supplies its own ordering, and
+    // clj returns that compareTo int unchanged (RT compare casts to
+    // Comparable and calls compareTo), so `(compare (File. "a") (File. "c"))`
+    // is -2.
+    if (try compare_mod.comparableCompareTo(rt, env, args[0], args[1], loc)) |c| return Value.initInteger(c);
     // clj returns the Java compareTo MAGNITUDE for string/char/keyword/
     // symbol pairs (`(compare "a" "c")` → -2); everything else is a sign.
     if (compare_mod.javaCompareTo(args[0], args[1])) |diff| {
@@ -809,6 +818,10 @@ pub fn uncheckedChar(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
 /// (Long / Float / BigInt / Ratio / BigDecimal) apply.
 pub fn min(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (args.len == 0) return error_catalog.raise(.arity_below_min, loc, .{ .got = @as(usize, 0), .fn_name = "min", .min = @as(usize, 1) });
+    // clj's `min` propagates NaN: any NaN operand makes the whole call NaN
+    // (`(min 1 ##NaN)` → `##NaN`). The `<`-fold below drops it, because
+    // `(< NaN x)` is false, so NaN never wins — pre-scan and short-circuit.
+    for (args) |a| if (isNanFloat(a)) return a;
     var best = args[0];
     for (args[1..]) |a| {
         const pair = [_]Value{ a, best };
@@ -821,6 +834,8 @@ pub fn min(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
 /// `(max x & more)` — maximum across one or more numerics.
 pub fn max(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (args.len == 0) return error_catalog.raise(.arity_below_min, loc, .{ .got = @as(usize, 0), .fn_name = "max", .min = @as(usize, 1) });
+    // clj's `max` propagates NaN (see `min` — same reason via the `>`-fold).
+    for (args) |a| if (isNanFloat(a)) return a;
     var best = args[0];
     for (args[1..]) |a| {
         const pair = [_]Value{ a, best };
@@ -830,52 +845,81 @@ pub fn max(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return best;
 }
 
-/// `(int x)` / `(long x)` — coerce to a Long across the numeric tower.
-/// A float / BigDecimal / Ratio truncates toward zero; a char yields its
-/// codepoint; an integer / BigInt passes through its value. cw v1 has a
-/// single Long type so `int` and `long` share this body (no i32 narrowing
-/// — see the no-i32-type divergence). The exact-integer result rides
-/// `promote.wrapI64` so a value beyond i48 stays exact (D-165). A value
-/// outside i64 range raises (JVM's out-of-range coercion error).
+/// `(int x)` narrows across the numeric tower to the int RANGE, as clj's
+/// `RT.intCast` does: a value outside -2^31..2^31-1 raises rather than passing
+/// through. cljw carries a single Long type (F-005 / ADR-0059), so the result is
+/// an ordinary integer within that range and `(class (int 5))` is Long, the
+/// AD-069 divergence; the range check is clj's and is not optional. `long` does
+/// the tower coercion without narrowing (see `longCoerce`). cw v1 tier: A.
 pub fn intCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    try error_catalog.checkArity("int", args, 1, loc);
+    return coerceRanged(rt, args, "int", -2147483648, 2147483647, .zero, loc);
+}
+
+/// `(long x)` coerces across the numeric tower to cljw's single Long. A float
+/// truncates toward zero (NaN narrows to 0, Java's float-to-int rule); a
+/// BigDecimal / Ratio truncates; a char yields its codepoint; an integer /
+/// BigInt passes its value through. The exact-integer result rides
+/// `promote.wrapI64` so a value beyond i48 stays exact (D-165). A value outside
+/// i64 range raises, as clj's out-of-range coercion does. cw v1 tier: A.
+pub fn longCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("long", args, 1, loc);
     const v = args[0];
+    if (v.tag() == .float and std.math.isNan(v.asFloat())) return promote.wrapI64(rt, 0);
     const i = promote.truncToI64(rt, v) catch |err| switch (err) {
-        error.OutOfRange => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "int", .expected = "a value within Long range", .actual = "out-of-range number" }),
-        error.NotANumber => return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "int", .actual = @tagName(v.tag()) }),
+        // Out of range is clj's IllegalArgumentException, hence .value_error.
+        error.OutOfRange => return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "long", .expected = "a value within Long range", .actual = "out-of-range number" }),
+        error.NotANumber => return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "long", .actual = @tagName(v.tag()) }),
         else => return err,
     };
     return promote.wrapI64(rt, i);
 }
 
-/// Shared body for `byte` / `short`: truncate toward zero (like `int`), then
-/// range-check; clj throws IllegalArgumentException on overflow. cljw has no
-/// distinct Byte/Short types (F-005 / ADR-0059), so the result is an ordinary
-/// integer in range — `(class (byte 5))` is Long, an accepted divergence.
-fn coerceRanged(rt: *Runtime, args: []const Value, comptime name: []const u8, lo: i64, hi: i64, loc: SourceLocation) anyerror!Value {
+/// What a narrowing cast does with a NaN argument. clj is asymmetric here and
+/// this is oracle-verified, not inferred: `(int ##NaN)` and `(long ##NaN)` are
+/// 0 (Java's float-to-int rule), while `(byte ##NaN)` and `(short ##NaN)`
+/// raise IllegalArgumentException.
+const NanPolicy = enum { zero, raise };
+
+fn coerceRanged(rt: *Runtime, args: []const Value, comptime name: []const u8, lo: i64, hi: i64, nan: NanPolicy, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity(name, args, 1, loc);
     const v = args[0];
+    // An out-of-range value is a VALUE rejection, not a type mismatch: clj
+    // throws IllegalArgumentException here, so the Kind has to be .value_error
+    // for `(catch IllegalArgumentException …)` to behave as it does on clj.
+    const range = "a value within " ++ name ++ " range";
+    // clj range-checks a double BEFORE narrowing it, so 127.9 is out of byte
+    // range rather than truncating into it.
+    if (v.tag() == .float) {
+        const f = v.asFloat();
+        if (std.math.isNan(f)) return switch (nan) {
+            .zero => promote.wrapI64(rt, 0),
+            .raise => error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = name, .expected = range, .actual = "NaN" }),
+        };
+        if (f < @as(f64, @floatFromInt(lo)) or f > @as(f64, @floatFromInt(hi)))
+            return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = name, .expected = range, .actual = "out-of-range number" });
+        return promote.wrapI64(rt, @intFromFloat(f));
+    }
     const i = promote.truncToI64(rt, v) catch |err| switch (err) {
-        error.OutOfRange => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = name, .expected = "a value within " ++ name ++ " range", .actual = "out-of-range number" }),
+        error.OutOfRange => return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = name, .expected = range, .actual = "out-of-range number" }),
         error.NotANumber => return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = name, .actual = @tagName(v.tag()) }),
         else => return err,
     };
     if (i < lo or i > hi)
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = name, .expected = "a value within " ++ name ++ " range", .actual = "out-of-range number" });
+        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = name, .expected = range, .actual = "out-of-range number" });
     return promote.wrapI64(rt, i);
 }
 
 /// `(byte x)` — coerce to a byte-range integer (-128..127). cw v1 tier: A.
 pub fn byteCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    return coerceRanged(rt, args, "byte", -128, 127, loc);
+    return coerceRanged(rt, args, "byte", -128, 127, .raise, loc);
 }
 
-/// `(short x)` — coerce to a short-range integer (-32768..32767). cw v1 tier: A.
 pub fn shortCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    return coerceRanged(rt, args, "short", -32768, 32767, loc);
+    return coerceRanged(rt, args, "short", -32768, 32767, .raise, loc);
 }
 
 /// `(bigint x)` — coerce to an arbitrary-precision integer (`…N`). A BigInt
@@ -911,12 +955,14 @@ pub fn bigintCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     // from its round-trip decimal, e.g. `(bigint (Math/pow 2 60))`: exact
     // 1152921504606846976 vs clj's bigdec-based 1152921504606847000 (D-431 sweep).
     if (v.tag() == .float) return bigintFromFloat(rt, v.asFloat(), loc);
-    const i = promote.truncToI64(rt, v) catch |err| switch (err) {
-        error.OutOfRange => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a finite number", .actual = "out-of-range number" }),
+    // Any other number truncates toward zero at full width, as clj's
+    // `Ratio.bigIntegerValue` and `BigDecimal.toBigInteger` do.
+    var m = promote.truncToManaged(rt, v) catch |err| switch (err) {
         error.NotANumber => return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "bigint", .actual = @tagName(v.tag()) }),
         else => return err,
     };
-    return big_int_mod.allocFromI64(rt, i, .bigint);
+    defer m.deinit();
+    return big_int_mod.allocFromManaged(rt, &m, .bigint);
 }
 
 /// A float beyond Long range coerced to a BigInt: render via `printFloat` (cw's
@@ -931,41 +977,10 @@ fn bigintFromFloat(rt: *Runtime, f: f64, loc: SourceLocation) anyerror!Value {
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a representable float", .actual = "unrenderable float" });
     const bd = (try big_decimal_mod.allocFromDecimalString(rt, fw.buffered())) orelse
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a representable float", .actual = "unparseable float" });
-    return bigdecTruncToBigInt(rt, bd);
-}
-
-/// Truncate a BigDecimal toward zero into a BigInt. `value = unscaled·10^(−scale)`:
-/// scale ≤ 0 multiplies by `10^(−scale)`, scale > 0 divides by `10^scale`
-/// (`divTrunc` = round toward zero). Uses exact big-int `pow`/`mul`/`divTrunc`,
-/// so it never touches the ≥2^64 `setString` D-047 path.
-fn bigdecTruncToBigInt(rt: *Runtime, bd: Value) anyerror!Value {
-    const infra = rt.gc.infra;
-    const scale = big_decimal_mod.asScale(bd);
-    var result = try big_decimal_mod.asUnscaled(bd).m.clone();
-    defer result.deinit();
-    if (scale != 0) {
-        const exp: u32 = @intCast(@abs(scale));
-        var ten = try std.math.big.int.Managed.initSet(infra, 10);
-        defer ten.deinit();
-        var pow10 = try std.math.big.int.Managed.init(infra);
-        defer pow10.deinit();
-        try pow10.pow(&ten, exp);
-        if (scale < 0) {
-            var prod = try std.math.big.int.Managed.init(infra);
-            defer prod.deinit();
-            try prod.mul(&result, &pow10);
-            result.swap(&prod);
-        } else {
-            var q = try std.math.big.int.Managed.init(infra);
-            defer q.deinit();
-            var rmd = try std.math.big.int.Managed.init(infra);
-            defer rmd.deinit();
-            try q.divTrunc(&rmd, &result, &pow10);
-            result.swap(&q);
-        }
-    }
-    // `(bigint <large float>)` → a genuine BigInt (D-165).
-    return big_int_mod.allocFromManaged(rt, &result, .bigint);
+    // `(bigint <large float>)` is a genuine BigInt (D-165).
+    var m = try promote.truncToManaged(rt, bd);
+    defer m.deinit();
+    return big_int_mod.allocFromManaged(rt, &m, .bigint);
 }
 
 /// `(bigdec n/d)` — exact decimal of a Ratio, or ArithmeticException when the
@@ -997,8 +1012,8 @@ fn bigdecFromRatio(rt: *Runtime, v: Value, loc: SourceLocation) anyerror!Value {
 /// `BigDecimal(Double.toString(d))` by rendering via `printFloat` (cw's
 /// Double.toString, D-166) then parsing its plain-decimal form; a string parses
 /// its plain-decimal form; a ratio yields its exact decimal (see
-/// `bigdecFromRatio`). A scientific / >Long-unscaled float-string is deferred
-/// (D-191). JVM reference: clojure.core/bigdec. cw v1 tier: A (§A26 sweep).
+/// `bigdecFromRatio`). The shared decimal parser handles scientific notation
+/// and arbitrary-precision significands. JVM reference: clojure.core/bigdec.
 pub fn bigdecCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("bigdec", args, 1, loc);
@@ -1010,13 +1025,13 @@ pub fn bigdecCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
         .float => {
             var fbuf: [400]u8 = undefined;
             var fw: std.Io.Writer = .fixed(&fbuf);
-            print_mod.printFloat(&fw, v.asFloat()) catch return bigdecDeferred(loc);
-            return (try big_decimal_mod.allocFromDecimalString(rt, fw.buffered())) orelse bigdecDeferred(loc);
+            print_mod.printFloat(&fw, v.asFloat()) catch
+                return error_catalog.raise(.number_format_invalid, loc, .{ .fn_name = "bigdec", .text = "non-finite float" });
+            return (try big_decimal_mod.allocFromDecimalString(rt, fw.buffered())) orelse
+                error_catalog.raise(.number_format_invalid, loc, .{ .fn_name = "bigdec", .text = fw.buffered() });
         },
         .string => {
-            // `(bigdec "1.50")` → `1.50M` (scale from the decimal point). A
-            // scientific / >i64-unscaled / malformed string is a number-format
-            // error (clj NumberFormatException). Ratio stays deferred (D-191).
+            // `(bigdec "1.50")` → `1.50M`; malformed strings raise.
             const s = string_mod.asString(v);
             return (try big_decimal_mod.allocFromDecimalString(rt, s)) orelse
                 error_catalog.raise(.number_format_invalid, loc, .{ .fn_name = "bigdec", .text = s });
@@ -1026,14 +1041,6 @@ pub fn bigdecCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     }
 }
 
-fn bigdecDeferred(loc: SourceLocation) anyerror {
-    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "bigdec of a scientific/large float (D-191)" });
-}
-
-/// Parse a plain-decimal string (`[-]ddd[.ddd]`, no exponent) into a
-/// BigDecimal: the digits (sans `.`) are the unscaled significand, the
-/// fractional-digit count is the scale. Returns null for a scientific form or
-/// a >Long unscaled (deferred to D-191).
 /// Parse a plain-or-scientific decimal `[-]ddd[.ddd][eE][+-]ddd` into a
 /// BigDecimal Value (arbitrary-precision unscaled, signed scale). Returns null
 /// on malformed input (caller raises `number_format_invalid`). The unscaled
@@ -1071,19 +1078,19 @@ fn numCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 
 /// `(double x)` / `(float x)` — coerce any number to a float (cw v1 has one
 /// f64 float type, so both map to it). Matches clojure.core/double + /float.
-/// Covers the whole numeric tower: integer / char (exact), big_int / ratio /
+/// Covers the whole numeric tower: integer (exact), big_int / ratio /
 /// big_decimal (lossy, round-to-nearest — float-contagion is a Clojure
-/// feature). Non-number is a type error.
+/// feature). Character is not a Number on the JVM, so it is a type error.
 fn floatCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("double", args, 1, loc);
     const v = args[0];
     switch (v.tag()) {
-        .float, .integer, .char, .big_int, .ratio, .big_decimal => {},
+        .float, .integer, .big_int, .ratio, .big_decimal => {},
         else => |t| return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "double", .actual = @tagName(t) }),
     }
-    return Value.initFloat(toF64(v)); // shared converter (F-011)
+    return Value.initFloat(try promote.toF64(v)); // shared converter (F-011)
 }
 
 // --- string parsers (clojure.core 1.11) ---
@@ -1234,8 +1241,10 @@ const ENTRIES = [_]Entry{
     .{ .name = "int", .f = &intCoerce },
     .{ .name = "byte", .f = &byteCoerce },
     .{ .name = "short", .f = &shortCoerce },
-    // long ≡ int in cw v1 (a single i64 integer type — no 32-bit int).
-    .{ .name = "long", .f = &intCoerce },
+    // long carries the tower coercion without int's range check: cw v1 has a
+    // single i64 integer type, but clj's `int` still REJECTS a value outside
+    // int range, so the two cannot share one body (AD-069).
+    .{ .name = "long", .f = &longCoerce },
     .{ .name = "bigint", .f = &bigintCoerce },
     // biginteger ≡ bigint in cw v1: cljw collapses clj's BigInt/BigInteger
     // into one `.big_int` type (F-005), so `(biginteger x)` yields the same
@@ -1300,6 +1309,15 @@ test "plus identity / nullary / multi-arg integer / float contagion" {
     }, .{})).asFloat(), 1e-9);
 }
 
+test "floatCoerce accepts numbers and rejects Character (clj parity)" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    try testing.expectEqual(@as(f64, 3.0), (try floatCoerce(&fix.rt, &fix.env, &.{Value.initInteger(3)}, .{})).asFloat());
+    try testing.expectError(error.TypeError, floatCoerce(&fix.rt, &fix.env, &.{Value.initChar('A')}, .{}));
+}
+
 test "minus: negation with one arg, subtraction with N" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
@@ -1359,6 +1377,43 @@ test "equals / lt / gt / le / ge — numeric pairwise" {
     // (< 1) is true.
     try testing.expectError(error.ArityError, lt(&fix.rt, &fix.env, &.{}, .{}));
     try testing.expectEqual(Value.true_val, try lt(&fix.rt, &fix.env, &.{Value.initInteger(1)}, .{}));
+
+    // 1-arity is `([x] true)` in clj — it never type-checks `x`. `(> "abc")`,
+    // `(>= :k)`, `(== nil)` are all `true`, not type errors (g1 RC-1). Boolean
+    // and nil are non-numeric heap-free values, enough to exercise the path.
+    for ([_]Value{ Value.true_val, Value.nil_val }) |non_num| {
+        try testing.expectEqual(Value.true_val, try gt(&fix.rt, &fix.env, &.{non_num}, .{}));
+        try testing.expectEqual(Value.true_val, try ge(&fix.rt, &fix.env, &.{non_num}, .{}));
+        try testing.expectEqual(Value.true_val, try lt(&fix.rt, &fix.env, &.{non_num}, .{}));
+        try testing.expectEqual(Value.true_val, try le(&fix.rt, &fix.env, &.{non_num}, .{}));
+        try testing.expectEqual(Value.true_val, try equals(&fix.rt, &fix.env, &.{non_num}, .{}));
+    }
+    // ...but a 2-arity comparator still rejects a non-number.
+    try testing.expectError(error.TypeError, gt(&fix.rt, &fix.env, &.{ Value.initInteger(1), Value.true_val }, .{}));
+}
+
+test "min / max fold to the extreme and propagate NaN (clj parity)" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const nums = [_]Value{ Value.initInteger(3), Value.initInteger(1), Value.initInteger(2) };
+    try testing.expectEqual(Value.initInteger(1), try min(&fix.rt, &fix.env, &nums, .{}));
+    try testing.expectEqual(Value.initInteger(3), try max(&fix.rt, &fix.env, &nums, .{}));
+
+    // Any NaN operand ⇒ NaN, in any position — the `<`/`>`-fold alone drops it.
+    const nan = Value.initFloat(std.math.nan(f64));
+    const cases = [_][]const Value{
+        &.{ Value.initInteger(1), nan },
+        &.{ nan, Value.initInteger(1) },
+        &.{ Value.initInteger(1), Value.initInteger(2), nan, Value.initInteger(3) },
+    };
+    for (cases) |c| {
+        const rmin = try min(&fix.rt, &fix.env, c, .{});
+        const rmax = try max(&fix.rt, &fix.env, c, .{});
+        try testing.expect(rmin.tag() == .float and std.math.isNan(rmin.asFloat()));
+        try testing.expect(rmax.tag() == .float and std.math.isNan(rmax.asFloat()));
+    }
 }
 
 test "compare returns -1 / 0 / 1" {

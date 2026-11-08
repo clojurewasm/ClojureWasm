@@ -13,9 +13,8 @@
 //! descriptor registers a `host_trace` hook to mark it across a collect (the
 //! first host type to store a live Value in `state`, per host_instance.zig's
 //! D-294 note). `.next` advances the cursor in place. The receiver is coerced to
-//! a concrete seq once via `clojure.core/seq` (the full Seqable protocol — a
-//! vector/map/set needs that coercion, which `lazy_seq.seq` alone does not do);
-//! thereafter `lazy_seq.first`/`rest`/`seq` walk it.
+//! a concrete seq once via `clojure.core/seq`; thereafter the Seqable boundary's
+//! `first` / `next` (`runtime/seqable.zig`) walk it.
 
 const std = @import("std");
 const host_api = @import("../_host_api.zig");
@@ -26,9 +25,10 @@ const Env = @import("../../env.zig").Env;
 const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const host_instance = @import("../../host_instance.zig");
-const lazy_seq = @import("../../lazy_seq.zig");
+const seqable = @import("../../seqable.zig");
 const mark_sweep = @import("../../gc/mark_sweep.zig");
 const gc_heap_mod = @import("../../gc/gc_heap.zig");
+const root_set = @import("../../gc/root_set.zig");
 
 var iter_descriptor: ?*const type_descriptor.TypeDescriptor = null;
 
@@ -43,9 +43,15 @@ pub fn fromSeqable(rt: *Runtime, env: *Env, coll: Value, loc: SourceLocation) an
     const core = env.findNs("clojure.core") orelse return error.NoVTable;
     const seq_var = core.resolve("seq") orelse return error.NoVTable;
     const vt = rt.vtable orelse return error.NoVTable;
-    const cursor = try vt.callFn(rt, env, seq_var.deref(), &.{coll}, loc);
+    var roots = [_]Value{try vt.callFn(rt, env, seq_var.deref(), &.{coll}, loc)};
+    var sp: u16 = 1;
+    // GC-ROOT: A10 — the fresh cursor is not in the host trace until the
+    // Iterator allocation completes [ref: .dev/gc_rooting.md §A].
+    var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
     const td = iter_descriptor orelse return error.NoVTable;
-    return host_instance.alloc(rt, td, .{ @intFromEnum(cursor), 0, 0, 0 });
+    return host_instance.alloc(rt, td, .{ @intFromEnum(roots[0]), 0, 0, 0 });
 }
 
 /// `(.hasNext it)` — true while the cursor has not collapsed to nil.
@@ -62,10 +68,16 @@ fn next(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyer
     const cursor = cursorOf(args[0]);
     if (cursor.tag() == .nil)
         return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.util.Iterator/next" });
-    const head = try lazy_seq.first(rt, env, cursor);
-    const advanced = try lazy_seq.seq(rt, env, try lazy_seq.rest(rt, env, cursor));
+    var roots = [_]Value{try seqable.first(rt, env, cursor, loc)};
+    var sp: u16 = 1;
+    // GC-ROOT: A10 — a custom ISeq.first can allocate a head that its cursor
+    // does not retain; next can collect it [ref: .dev/gc_rooting.md §A].
+    var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
+    const advanced = try seqable.next(rt, env, cursor, loc);
     host_instance.setState(args[0], 0, @intFromEnum(advanced));
-    return head;
+    return roots[0];
 }
 
 /// GC-trace the cursor seq held in state[0]. Decode goes through `heapHeader`

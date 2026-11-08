@@ -31,7 +31,7 @@ assert_eq() { local n="$1" g="$2" w="$3"; [[ "$g" == "$w" ]] || fail "$n: got '$
 
 # Portable bounded run: GNU `timeout`, else coreutils `gtimeout`, else
 # unbounded (hosted mac runners ship neither; same pattern as
-# scripts/check_corpus_regression.sh).
+# scripts/corpus_regression.clj).
 run_bounded() {
     local secs="$1"; shift
     if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"

@@ -107,7 +107,7 @@ pub const Value = enum(u64) {
         tval = 56, // D8 — STM Ref TVal (ADR-0010 amendment 4; HeapTag-only — TVal is not NaN-boxed as a Value)
         matcher = 57,
         tuple = 58,
-        box = 59,
+        sub_vector = 59, // D11 — PersistentVector index-range VIEW (F-004 amend 2026-08-20; was `box`)
         wasm_module = 60, // D12 — wasm surfaces at the tail (Phase 16+)
         wasm_fn = 61,
         wasm_funcref = 62,
@@ -124,7 +124,28 @@ pub const Value = enum(u64) {
 
     /// Pack a heap pointer + HeapTag into a Value. The pointer must be
     /// 8-byte aligned so the low 3 bits are zero.
-    pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
+    ///
+    /// `ht` is `comptime` so a heap-only tag is a COMPILE ERROR at the call
+    /// site rather than a convention (ADR-0179). 182 of the 184 call sites
+    /// already pass an enum literal, so this costs them nothing; the one site
+    /// that computes its tag at runtime uses `encodeHeapPtrRuntime`.
+    pub fn encodeHeapPtr(comptime ht: HeapTag, ptr: anytype) Value {
+        comptime {
+            if (!heap_tag_mod.boxable(ht)) @compileError(
+                "encodeHeapPtr: '" ++ @tagName(ht) ++ "' is a heap-only tag — it lives on " ++
+                    "HeapHeader and is never a Value (ADR-0179 census). If it must become a " ++
+                    "Value, remove it from heap_tag.heap_only and say why.",
+            );
+        }
+        return encodeHeapPtrRuntime(ht, ptr);
+    }
+
+    /// The runtime-tag form, for the single site that re-encodes a trie node
+    /// preserving whichever tag its header already carries
+    /// (`collection/map.zig`). Same packing; the boxability check is an assert
+    /// instead of a compile error, because the tag is not known until run time.
+    pub fn encodeHeapPtrRuntime(ht: HeapTag, ptr: anytype) Value {
+        std.debug.assert(heap_tag_mod.boxable(ht));
         const addr: u64 = @intFromPtr(ptr);
         std.debug.assert(addr & nb.NB_ADDR_ALIGN_MASK == 0);
         const shifted = addr >> nb.NB_ADDR_ALIGN_SHIFT;
@@ -149,7 +170,8 @@ pub const Value = enum(u64) {
     /// Extract the heap pointer from a heap-tagged Value.
     pub fn decodePtr(self: Value, comptime T: type) T {
         const shifted = @intFromEnum(self) & nb.NB_ADDR_SHIFTED_MASK;
-        return @ptrFromInt(@as(usize, shifted) << nb.NB_ADDR_ALIGN_SHIFT);
+        const addr: u64 = shifted << nb.NB_ADDR_ALIGN_SHIFT;
+        return @ptrFromInt(@as(usize, @intCast(addr)));
     }
 
     /// Map a HeapTag integer to its parallel Tag entry. Per ADR-0027 §2 +
@@ -230,7 +252,7 @@ pub const Value = enum(u64) {
     /// supplies the concrete pointer type via `FnPtr`.
     pub fn asBuiltinFn(self: Value, comptime FnPtr: type) FnPtr {
         const raw = @intFromEnum(self) & nb.NB_PAYLOAD_MASK;
-        return @ptrFromInt(raw);
+        return @ptrFromInt(@as(usize, @intCast(raw)));
     }
 
     /// The raw builtin_fn function-pointer address as a `usize`, type-erased —

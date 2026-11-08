@@ -20,3 +20,18 @@
 ;;=> {:a 1, :b 2}
 (reduce conj {} [{:a 1} {:b 2} {:a 3}])
 ;;=> {:a 3, :b 2}
+;; (merge …) reduces with conj: a later 2-vector / map-entry arg is added AS an
+;; entry, not iterated as a map (regression — the old keys/assoc body threw on a
+;; plain vector). nil args skip; right-most key wins; 0-arity → nil.
+(merge {:a 1} [:b 2])
+;;=> {:a 1, :b 2}
+(merge {:a 1} (first {:b 2}))
+;;=> {:a 1, :b 2}
+(merge {:a 1} {:b 2} {:a 9})
+;;=> {:a 9, :b 2}
+(merge nil {:a 1})
+;;=> {:a 1}
+(merge {:a 1} nil)
+;;=> {:a 1}
+(merge)
+;;=> nil

@@ -151,4 +151,33 @@ got_mo=$(cd "$TMP/empty" && "$TMP/mo" 7)
 [[ "$got_mo" == "via main-opts: [7]" ]] || fail "main_opts_drive: got '$got_mo', want 'via main-opts: [7]'"
 echo "PASS main_opts_drive -> via main-opts: [7]"
 
+# (12) BUILD-TIME stdout must survive a redirect to a REGULAR FILE. Build-time
+#      eval runs the entry's top-level forms (A1-D2), and buildArtifact left
+#      rt.stdout null, so each println built a fresh offset-tracking writer that
+#      restarted at offset 0 — on a seekable fd every form's output overwrote
+#      the previous one (5 forms landed as "5\n"). A pipe hid it (no seek), and
+#      every other case here captures through command substitution, so the whole
+#      file redirected the build to /dev/null and never saw it. Assert the FILE
+#      case explicitly: the same one process-shared writer fix as (4), build side.
+cat >"$TMP/btstdout.clj" <<'CLJ'
+(println 1)
+(println 2)
+(println 3)
+(println 4)
+(println 5)
+CLJ
+"$BIN" build "$TMP/btstdout.clj" -o "$TMP/btstdout" >"$TMP/btstdout.log" 2>&1
+got_bt=$(cat "$TMP/btstdout.log")
+want_bt=$'1\n2\n3\n4\n5'
+[[ "$got_bt" == "$want_bt" ]] || fail "buildtime_stdout_to_file: got '$got_bt', want '$want_bt'"
+echo "PASS buildtime_stdout_to_file -> 5 lines, ordered + complete"
+
+# (13) …and the built binary still prints the same 5 lines at RUN, to a file
+#      too. Pins that the build-side writer fix did not consume or reorder the
+#      payload's own run-time output.
+"$TMP/btstdout" >"$TMP/btstdout.run.log" 2>&1
+got_btrun=$(cat "$TMP/btstdout.run.log")
+[[ "$got_btrun" == "$want_bt" ]] || fail "buildtime_stdout_run: got '$got_btrun', want '$want_bt'"
+echo "PASS buildtime_stdout_run -> 5 lines at run too"
+
 echo "ALL phase14_cljw_build PASS"

@@ -15,7 +15,27 @@
 (ns clojure.data.csv
   (:refer-clojure))
 
-(def write-csv
+(def ^{:doc "Writes data to writer in CSV-format. data is a sequence of
+  sequences, one per row. Options are key-value pairs:
+
+  :separator  — the field separator (default \\,)
+  :quote      — the quote character (default \\\")
+  :newline    — :lf or :cr+lf (default :lf)
+
+  Returns nil."
+       :arglists (quote ([writer data & options]))}
+  write-csv
   (fn [writer data & options]
     (.write writer (apply -write-csv-str data options))
     nil))
+
+;; `read-csv` is a Zig primitive (csv.zig), so its docs are attached here:
+;; `(:doc (meta v))` is the one place `clojure.repl/doc`, `find-doc` and the
+;; doc-coverage gate read.
+(alter-meta! (var read-csv) merge
+             {:doc "Reads CSV-data from the string s into a lazy sequence of vectors.
+
+  Valid options are
+    :separator (default \\,)
+    :quote (default \\\")"
+              :arglists (quote ([s] [s & options]))})

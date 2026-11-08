@@ -1,0 +1,28 @@
+;; disj / disj! / dissoc! variadic + 1-arg arities (CLJW-COMPLIANCE-B1).
+;; clj: disj/disj! are ([s] s) ([s k]) ([s k & ks]); dissoc! is ([m k]) ([m k & ks]).
+;; cljw held them to a fixed 2-arg. Set/map results are sort/keys-normalized to
+;; dodge AD-001 print-order divergence.
+
+;; disj — variadic, 1-arg identity, single-key, nil
+(sort (disj #{1 2 3 4} 1 2 3))
+;;=> (4)
+(sort (disj #{1 2}))
+;;=> (1 2)
+(sort (disj #{1 2} 1))
+;;=> (2)
+(disj #{1 2} 2)
+;;=> #{1}
+(disj nil 1)
+;;=> nil
+
+;; disj! — variadic + 1-arg identity
+(sort (persistent! (disj! (transient #{1 2 3}) 1 2)))
+;;=> (3)
+(sort (persistent! (disj! (transient #{1 2}))))
+;;=> (1 2)
+
+;; dissoc! — variadic (no 1-arg in clj)
+(sort (keys (persistent! (dissoc! (transient {:a 1 :b 2 :c 3}) :a :b))))
+;;=> (:c)
+(sort (keys (persistent! (dissoc! (transient {:a 1 :b 2}) :a))))
+;;=> (:b)

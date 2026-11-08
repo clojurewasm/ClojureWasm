@@ -74,8 +74,18 @@ const Fixture = struct {
 
     fn check(self: *Fixture, source: []const u8, expected: i64) !void {
         const r = evaluator.compare(&self.rt, &self.env, &self.table, self.arena.allocator(), source);
+        try expectLocParity(r, source);
         try testing.expect(r.equal);
         try testing.expectEqual(expected, (try r.tree_walk).asInteger());
+    }
+
+    /// Both backends raise the same error at the same source position
+    /// (ADR-0036 error half). For cases whose contract is the failure itself.
+    fn checkRaises(self: *Fixture, source: []const u8, expected: anyerror) !void {
+        const r = evaluator.compare(&self.rt, &self.env, &self.table, self.arena.allocator(), source);
+        try testing.expectError(expected, r.tree_walk);
+        try testing.expectError(expected, r.vm);
+        try expectLocParity(r, source);
     }
 
     /// Assert only that both backends agree (VM == TreeWalk) — for results whose
@@ -83,10 +93,50 @@ const Fixture = struct {
     /// `asInteger()` cannot be used. `r.equal` is the dual-backend parity oracle.
     fn checkEqual(self: *Fixture, source: []const u8) !void {
         const r = evaluator.compare(&self.rt, &self.env, &self.table, self.arena.allocator(), source);
+        try expectLocParity(r, source);
         _ = try r.tree_walk; // surface an eval error rather than a silent mismatch
         try testing.expect(r.equal);
     }
 };
+
+/// The shared error-location assertion every fixture check runs (ADR-0036
+/// error half): whenever either backend raises, both must report the same
+/// line:column. `loc_equal` is true when neither raised, so value cases pass
+/// through; a raise on one backend only, or at a different position, fails
+/// here with both positions printed.
+fn expectLocParity(r: evaluator.CompareResult, source: []const u8) !void {
+    if (r.loc_equal) return;
+    const tw = r.tree_walk_loc orelse evaluator.ErrorPos{ .line = 0, .column = 0 };
+    const v = r.vm_loc orelse evaluator.ErrorPos{ .line = 0, .column = 0 };
+    std.debug.print(
+        "error-location parity broken for: {s}\n  tree_walk {d}:{d} (raised: {})\n  vm        {d}:{d} (raised: {})\n",
+        .{ source, tw.line, tw.column, r.tree_walk_loc != null, v.line, v.column, r.vm_loc != null },
+    );
+    return error.TestUnexpectedResult;
+}
+
+test "diff: D-346 chunked collection literals preserve order and nested evaluation" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    var source: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer source.deinit();
+    // 600 elements crosses the compiler's literal step (512); include
+    // evaluated elements and a collection nested across the step boundary.
+    // The oracle compares value bits, so the result is one integer that
+    // reads the order and the nested element back:
+    // 600 + 7 + 599 + 606 + 600.
+    try source.writer.writeAll("(let* [x 7 v [");
+    for (0..600) |i| {
+        if (i == 511) try source.writer.writeAll("[x 8] ") else try source.writer.print("{d} ", .{i});
+    }
+    try source.writer.writeAll("]] (+ (count v) (get (get v 511) 0) (get v 599) (get {");
+    for (0..600) |i| try source.writer.print("{d} (+ x {d}) ", .{ i, i });
+    try source.writer.writeAll("} 599) (count #{");
+    for (0..600) |i| try source.writer.print("(+ x {d}) ", .{i});
+    try source.writer.writeAll("})))");
+    try f.check(source.written(), 2412);
+}
 
 test "diff: D-413 unresolved symbol → clean symbol_unresolved, not a panic" {
     // Regression for the dangling-`env.rt` fixture bug: analyzing an unresolved
@@ -97,9 +147,7 @@ test "diff: D-413 unresolved symbol → clean symbol_unresolved, not a panic" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    const r = evaluator.compare(&f.rt, &f.env, &f.table, f.arena.allocator(), "(re-matcher 1)");
-    try testing.expectError(error.NameError, r.tree_walk);
-    try testing.expectError(error.NameError, r.vm);
+    try f.checkRaises("(re-matcher 1)", error.NameError);
 }
 
 test "diff: D-563b def meta — user ^meta + compiler :line land on the Var in BOTH backends (op_var_meta ≡ evalDef meta_expr)" {
@@ -115,6 +163,63 @@ test "diff: arithmetic primitive" {
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
     try f.check("(+ 1 2 3)", 6);
+}
+
+test "diff: def in a function binds its analyzed Var across namespaces" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    try f.check(
+        "(ns def.scope.origin) " ++
+            "(defn assign [] (def value 41)) " ++
+            "(in-ns 'user) (def value 99) " ++
+            "(def.scope.origin/assign) " ++
+            "(+ def.scope.origin/value value)",
+        140,
+    );
+}
+
+test "diff: no-init def returns its analyzed Var without binding a caller Var" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    try f.check(
+        "(ns def.scope.origin) (defn declare-later [] (def unbound)) " ++
+            "(in-ns 'user) (let [v (def.scope.origin/declare-later)] " ++
+            "(if (and (identical? v #'def.scope.origin/unbound) " ++
+            "(not (bound? v)) (nil? (ns-resolve 'user 'unbound))) 1 0))",
+        1,
+    );
+}
+
+test "diff: def binds the captured identity even when a qualified name resolves elsewhere" {
+    // remove-ns is not a supported cljw primitive. Model two distinct Var
+    // identities with the same qualified name directly, without requiring
+    // namespace lifecycle support just to test def's capture contract.
+    const Node = @import("../eval/node.zig").Node;
+    for ([_]evaluator.BackendChoice{ .tree_walk, .vm }) |backend| {
+        var f: Fixture = undefined;
+        try Fixture.init(&f, testing.allocator);
+        defer f.deinit();
+        evaluator.installBackend(&f.rt, backend);
+        const caller = try f.env.intern(f.env.current_ns.?, "value", Value.initInteger(99), null);
+        var captured_ns: env_mod.Namespace = .{ .name = "user" };
+        var captured: env_mod.Var = .{ .ns = &captured_ns, .name = "value" };
+        const init: Node = .{ .constant = .{ .value = Value.initInteger(41) } };
+        const node: Node = .{ .def_node = .{ .var_ptr = &captured, .value_expr = &init } };
+        var locals: [256]Value = [_]Value{.nil_val} ** 256;
+        const result = switch (backend) {
+            .tree_walk => try tree_walk.eval(&f.rt, &f.env, &locals, &node),
+            .vm => blk: {
+                const chunk = try vm_compiler.compile(&f.rt, f.arena.allocator(), &node);
+                break :blk try vm.eval(&f.rt, &f.env, &locals, &chunk);
+            },
+        };
+        try testing.expectEqual(&captured, result.decodePtr(*env_mod.Var));
+        try testing.expectEqual(@as(i64, 41), captured.root.asInteger());
+        try testing.expect(captured.bound);
+        try testing.expectEqual(@as(i64, 99), caller.root.asInteger());
+    }
 }
 
 test "diff: op_add intrinsic (ADR-0130) — VM op_add ≡ builtin + (inline results)" {
@@ -145,6 +250,29 @@ test "diff: op_add deopt on alter-var-root of + (ADR-0130 F-011 hole)" {
     try f.check("(do (alter-var-root (var +) (fn* [_] (fn* [a b] 999))) (+ 1 2))", 999);
 }
 
+test "diff: inc/dec intrinsics (O-102) — VM op_inc/op_dec ≡ builtin (inline)" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    try f.check("(inc 41)", 42);
+    try f.check("(dec 43)", 42);
+    try f.check("(let* [x 9] (inc x))", 10);
+    try f.check("(let* [x 9] (dec x))", 8);
+    try f.check("(let* [x -1] (inc (inc x)))", 1);
+    try f.checkEqual("(inc 0.5)");
+    try f.checkEqual("(let* [x 1.5] (dec x))");
+    try f.check("(loop* [i 0] (if (< i 10) (recur (inc i)) i))", 10);
+    // Non-number: both backends raise through the builtin.
+    try f.checkEqual("(try (inc nil) (catch Exception _ :caught))");
+}
+
+test "diff: inc deopt on alter-var-root of inc (O-102)" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    try f.check("(do (alter-var-root (var inc) (fn* [_] (fn* [a] 777))) (let* [x 1] (inc x)))", 777);
+}
+
 test "diff: arith intrinsic family (ADR-0130 am1) — sub/mul/comparisons/= (inline)" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
@@ -164,6 +292,30 @@ test "diff: arith intrinsic family (ADR-0130 am1) — sub/mul/comparisons/= (inl
     try f.checkEqual("(= 1 1.0)");
     // shadowed op → .local_ref → no intrinsic: < is bound to -, so (< 10 3) → 7.
     try f.checkEqual("(let* [< -] (< 10 3))");
+}
+
+test "diff: float arith/compare intrinsic (O-065) — VM inline f64 ≡ builtin" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    // A double on either side takes the VM's f64 arm; TreeWalk always runs the
+    // builtin, so each pair below checks the inline arm against the tower.
+    try f.checkEqual("(+ 1.5 2)");
+    try f.checkEqual("(+ 2 1.5)");
+    try f.checkEqual("(- 1.5 3)");
+    try f.checkEqual("(* 1.5 1.5)");
+    try f.checkEqual("(+ 1.5 1.5)"); // integral double stays a double
+    try f.checkEqual("(* 0.1 3)");
+    try f.checkEqual("(< 1.5 2)");
+    try f.checkEqual("(<= 2 2.0)");
+    try f.checkEqual("(> 2.0 2)");
+    try f.checkEqual("(>= 1.5 2)");
+    try f.checkEqual("(< ##NaN 1)"); // NaN orders false
+    try f.checkEqual("(>= 1 ##NaN)");
+    try f.checkEqual("(= 2 2.0)"); // = still defers: false across categories
+    try f.checkEqual("(let* [x 1.5] (* x 2))"); // (local, const) → op_mul_local_const
+    try f.checkEqual("(let* [x 1.5 y 4] (< x y))"); // (local, local) → op_lt_locals
+    try f.checkEqual("(loop* [i 0 acc 0.0] (if (< i 10) (recur (+ i 1) (+ acc (* 1.5 i))) acc))");
 }
 
 test "diff: mod/rem/quot intrinsic (O-030) — VM op_mod/rem/quot ≡ builtin" {
@@ -190,7 +342,7 @@ test "diff: mod/rem/quot intrinsic (O-030) — VM op_mod/rem/quot ≡ builtin" {
 // only the Zig builtins + macros (no core.clj), and `not=` is a `.clj`-defined fn
 // (core.clj), so it is unresolved in this fixture and op_ne never fires here.
 // op_ne's fixnum fast path is unit-tested directly (intrinsic.zig
-// "fastBinaryFixnum comparisons are exact"); its end-to-end clj-parity is locked by
+// "fastBinaryNumber comparisons are exact"); its end-to-end clj-parity is locked by
 // the `not_equal` clj corpus (test/diff/clj_corpus/) on the real (core-loaded)
 // binary. The VM≡TreeWalk parity is structural: op_ne mirrors op_eq (diff-tested
 // above), and the non-fixnum path defers to the same .clj `not=` on both backends.
@@ -332,7 +484,7 @@ test "diff: map/set/list keys by value (D-092) — keyEqValue/valueHash backend-
     try f.check("(get {#{1 2} 7} #{2 1})", 7); // set key (order-indep)
     try f.check("(get {'(1 2) 5} '(1 2))", 5); // list key
     try f.check("(get {[1 2] 9} '(1 2))", 9); // cross vec≡list
-    try f.check("(count #{{:a 1} {:a 1} {:a 2}})", 2); // set-literal dedup of map elems
+    try f.check("(count (conj #{{:a 1} {:a 2}} {:a 1}))", 2); // set literal of map elems, content dedup (a repeated literal elem is an IAE, ADR-0200)
     try f.check("(count (conj #{{:a 1}} {:a 1}))", 1); // set elem content dedup
 }
 
@@ -770,7 +922,7 @@ test "diff: Java array aset/aget + seq (ADR-0105)" {
     // same BuiltinFn — this case locks that aset's in-place mutation + the
     // array-as-Seqable reduce path agree on TreeWalk and VM.
     try f.check(
-        \\(let* [a (cljw.internal/__array-make 3 0)]
+        \\(let* [a (cljw.internal/__array-make :long 3)]
         \\  (aset a 0 10) (aset a 1 20) (aset a 2 12)
         \\  (reduce + a))
     , 42);
@@ -1459,6 +1611,37 @@ test "aot: deserialized bytecode fn dispatches via tree_walk vtable evalChunk" {
     try testing.expectEqual(@as(i64, 6), result.asInteger());
 }
 
+test "aot: def inside a restored function retains its analyzed namespace" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    driver.installVTable(&f.rt);
+    const user_ns = f.env.current_ns.?;
+    const caller_var = try f.env.intern(user_ns, "value", Value.initInteger(99), null);
+    const owner = try f.env.findOrCreateNs("aot.def.owner");
+    f.env.current_ns = owner;
+
+    const arena = f.arena.allocator();
+    var reader = Reader.init(arena, "(fn* [] (def value 41))");
+    const form = (try reader.read()).?;
+    var af: root_set.AnalysisFrame = undefined;
+    root_set.beginAnalysis(&af, f.rt.gc.infra);
+    defer root_set.endAnalysis(&af);
+    const node = try analyze(arena, &f.rt, &f.env, null, form, &f.table);
+    const chunk = try vm_compiler.compile(&f.rt, arena, node);
+    const bytes = try serialize.serializeChunk(testing.allocator, chunk, 0, null);
+    defer testing.allocator.free(bytes);
+
+    f.env.current_ns = user_ns;
+    const restored = try serialize.deserializeChunk(arena, &f.rt, &f.env, bytes, null, false);
+    var locals: [256]Value = [_]Value{.nil_val} ** 256;
+    const fn_val = try vm.eval(&f.rt, &f.env, &locals, &restored);
+    const result = try tree_walk.callFunction(&f.rt, &f.env, fn_val, &.{}, .{});
+    try testing.expectEqual(owner.mappings.get("value").?, result.decodePtr(*env_mod.Var));
+    try testing.expectEqual(@as(i64, 41), owner.mappings.get("value").?.root.asInteger());
+    try testing.expectEqual(@as(i64, 99), caller_var.root.asInteger());
+}
+
 // The arg-precise caret column must be IDENTICAL on both
 // backends — a runtime error caret lands on the culprit operand, not the
 // enclosing call form, and TreeWalk (the oracle) and the VM (production) agree.
@@ -1688,4 +1871,49 @@ test "diff: op_get / op_nth collection intrinsics (O-043, both backends)" {
     // op_nth returning a nested collection (let-bound to avoid the no-core
     // fixture's literal-arg quirk in TreeWalk; the value path is what matters).
     try f.check("(let [v [[1 2] [3 4]]] (count (nth v 0 nil)))", 2);
+}
+
+/// Assert the error-location half of the dual-backend contract (ADR-0036):
+/// both backends must raise, and both must report the SAME source position.
+/// A raise at line 0 is rejected on either side: "both agree on nothing" is
+/// vacuous parity, and 0:0 is exactly what a dropped location looks like.
+fn checkErrorLoc(f: *Fixture, source: []const u8) !void {
+    const r = evaluator.compare(&f.rt, &f.env, &f.table, f.arena.allocator(), source);
+    const tw = r.tree_walk_loc orelse {
+        std.debug.print("tree_walk did not raise for: {s}\n", .{source});
+        return error.TestExpectedRaise;
+    };
+    const vm_pos = r.vm_loc orelse {
+        std.debug.print("vm did not raise for: {s}\n", .{source});
+        return error.TestExpectedRaise;
+    };
+    if (tw.line == 0 or vm_pos.line == 0 or !r.loc_equal) {
+        std.debug.print(
+            "error-location parity broken for: {s}\n  tree_walk {d}:{d}\n  vm        {d}:{d}\n",
+            .{ source, tw.line, tw.column, vm_pos.line, vm_pos.column },
+        );
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "diff: error source location survives BOTH backends (ADR-0036 error half)" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    // Control arm: a builtin raising through op_call already threads the call
+    // form's loc into `vt.callFn`, so this one held before the fix.
+    try checkErrorLoc(&f, "(/ 1 0)");
+    // `set!` on a var with no active thread binding → var_set_not_bound, raised
+    // by the VM's op_set_var directly rather than through `vt.callFn`.
+    try checkErrorLoc(&f, "(do (def svl 1) (set! svl 2))");
+    // Interop member on a receiver whose type has no such method → raised by
+    // the VM's op_method_call directly.
+    try checkErrorLoc(&f, "(.noSuchMember \"s\")");
+    // Constructor arity failure → raised inside constructInstance with the
+    // loc the backend hands it (TreeWalk n.loc, VM op_ctor_call instr_loc).
+    try checkErrorLoc(&f, "(MapEntry. 1)");
+    // Multi-line source: the position must be the inner form's own line and
+    // column, not the enclosing form's and not the last argument's.
+    try checkErrorLoc(&f, "(do\n  (def svl2 1)\n  (set! svl2\n        2))");
+    try checkErrorLoc(&f, "(let [x 1]\n  (MapEntry. x))");
 }

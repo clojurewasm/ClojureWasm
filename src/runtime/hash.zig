@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Murmur3 hash for ClojureWasm — Clojure-compatible hash values.
 //!
 //! Mirrors `clojure.lang.Murmur3` in Clojure JVM. All multiplications
@@ -12,6 +13,7 @@
 //! where UTF-8 is the natural encoding.
 
 const std = @import("std");
+const utf8_total = @import("utf8_total.zig");
 
 const C1: u32 = 0xcc9e2d51;
 const C2: u32 = 0x1b873593;
@@ -96,11 +98,13 @@ pub fn hashString(input: []const u8) u32 {
 /// from `hashString` (cljw-native UTF-8 bytes, AD-009) — this serves the
 /// `Murmur3/hashUnencodedChars` static (data.xml), where JVM value-parity is
 /// achievable because the input is pure code units, not value identity (D-376).
+/// Total over arbitrary bytes: ill-formed spans hash as U+FFFD, the unit the
+/// JVM's `String(bytes, UTF_8)` holds for them (`utf8_total`).
 pub fn hashUnencodedChars(utf8: []const u8) u32 {
     var h1: u32 = SEED;
     var unit_count: u32 = 0;
     var pending: ?u32 = null;
-    var it = std.unicode.Utf8View.initUnchecked(utf8).iterator();
+    var it = utf8_total.Iterator.init(utf8);
     while (it.nextCodepoint()) |cp| {
         var units: [2]u32 = .{ @as(u32, cp), 0 };
         var n: usize = 1;
@@ -126,10 +130,12 @@ pub fn hashUnencodedChars(utf8: []const u8) u32 {
 
 /// Java `String.hashCode`: the 31-fold over UTF-16 code units (surrogate
 /// pairs for astral codepoints). Feeds `hashInt` for clj's String hasheq
-/// and `hashCombine` for the Symbol/Keyword hasheq ns part.
+/// and `hashCombine` for the Symbol/Keyword hasheq ns part. Total over
+/// arbitrary bytes: ill-formed spans fold as U+FFFD (`utf8_total`), so the
+/// result equals the JVM's `new String(bytes, UTF_8).hashCode()`.
 pub fn javaStringHashCode(utf8: []const u8) i32 {
     var h: i32 = 0;
-    var it = std.unicode.Utf8View.initUnchecked(utf8).iterator();
+    var it = utf8_total.Iterator.init(utf8);
     while (it.nextCodepoint()) |cp| {
         if (cp >= 0x10000) {
             const v: u32 = @as(u32, cp) - 0x10000;
@@ -265,4 +271,33 @@ test "hashUnencodedChars matches JVM Murmur3 (clj oracle)" {
     try testing.expectEqual(@as(i32, 1689409188), @as(i32, @bitCast(hashUnencodedChars("hello world"))));
     try testing.expectEqual(@as(i32, 1524218000), @as(i32, @bitCast(hashUnencodedChars("あいう"))));
     try testing.expectEqual(@as(i32, -383720716), @as(i32, @bitCast(hashUnencodedChars("𠮷野家"))));
+}
+
+test "javaStringHashCode is total over invalid UTF-8 and matches the JVM" {
+    // clj (JDK 25/26): (let [s (String. (byte-array ...) "UTF-8")]
+    //                    [(.hashCode s) (hash s)])
+    try testing.expectEqual(@as(i32, 2031588), javaStringHashCode(&.{ 0xFF, 0x41 }));
+    try testing.expectEqual(@as(i32, 67548), javaStringHashCode(&.{ 0x41, 0xE2, 0x82 }));
+    try testing.expectEqual(@as(i32, 65533), javaStringHashCode(&.{ 0xED, 0xA0, 0x80 }));
+    try testing.expectEqual(@as(i32, 65008802), javaStringHashCode(&.{ 0xC0, 0xAF, 0x42 }));
+    try testing.expectEqual(@as(i32, 2017367872), javaStringHashCode(&.{ 0xF4, 0x90, 0x80, 0x80 }));
+    try testing.expectEqual(@as(i32, 1965378420), @as(i32, @bitCast(hashInt(javaStringHashCode(&.{ 0xFF, 0x41 })))));
+    try testing.expectEqual(@as(i32, -2085789285), @as(i32, @bitCast(hashInt(javaStringHashCode(&.{ 0xC0, 0xAF, 0x42 })))));
+}
+
+test "string hashes are total over random bytes (property)" {
+    var prng = std.Random.DefaultPrng.init(0x5eed_c1_1a);
+    const rand = prng.random();
+    var buf: [48]u8 = undefined;
+    var n: usize = 0;
+    while (n < 20_000) : (n += 1) {
+        const len = rand.uintAtMost(usize, buf.len);
+        rand.bytes(buf[0..len]);
+        const s = buf[0..len];
+        _ = javaStringHashCode(s);
+        _ = hashUnencodedChars(s);
+        _ = hashString(s);
+        // Equal bytes hash equal (the only obligation `=` places on hash).
+        try testing.expectEqual(javaStringHashCode(s), javaStringHashCode(s));
+    }
 }

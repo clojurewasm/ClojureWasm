@@ -53,9 +53,9 @@ out=$("$BIN" - <<'EOF' 2>&1 || true
 (.iterator (OM2. {}))
 EOF
 )
-echo "$out" | grep -qiE "iterator|member|no implementation|not.*found|unsupported" \
+grep -qiE "iterator|member|no implementation|not.*found|unsupported" <<<"$out" \
     || fail "case2: expected a method-not-found error for the dropped .iterator (got a value?), got '$out'"
-echo "$out" | grep -q "should-never-run" \
+grep -q "should-never-run" <<<"$out" \
     && fail "case2: the dropped iterator body RAN (silent no-op leak) — got '$out'"
 
 echo "PASS phase14_java_method_grouping (2 cases)"

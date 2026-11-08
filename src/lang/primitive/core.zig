@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Core predicate primitives for the `rt/` namespace.
 //!
 //! The bit-level predicates `nil?` / `true?` / `false?` / `identical?`
@@ -29,15 +30,20 @@ const hash_mod = @import("../../runtime/hash.zig");
 const sequence = @import("sequence.zig");
 const list = @import("../../runtime/collection/list.zig");
 const map = @import("../../runtime/collection/map.zig");
+const set_mod = @import("../../runtime/collection/set.zig");
 const print_mod = @import("../../runtime/print.zig");
 const charset_mod = @import("../../runtime/charset.zig");
 const writer_value_mod = @import("../../runtime/writer_value.zig");
 const text_io = @import("../../runtime/io/text_io.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
+const interface_membership = @import("../../runtime/interface_membership.zig");
 const protocol_mod = @import("../../runtime/protocol.zig");
 const class_name = @import("../../runtime/class_name.zig");
 const driver = @import("../../eval/driver.zig");
+const loader = @import("../../eval/loader.zig");
 const analyzer = @import("../../eval/analyzer/analyzer.zig");
+const math = @import("math.zig");
+const big_int = @import("../../runtime/numeric/big_int.zig");
 
 /// `(-instance-of? c x)` — ADR-0128: the fn-side `instance?`. `c` is a class
 /// VALUE (a `.type_descriptor`, produced when a class symbol evaluates via the
@@ -45,36 +51,38 @@ const analyzer = @import("../../eval/analyzer/analyzer.zig");
 /// `(map (partial instance? C) …)`, works exactly as in clj). Returns true iff
 /// `x` is an instance of `c`.
 ///
-/// `runtime/class_name.zig::isInstance` is the COMPLETE membership oracle
-/// (native exact / interface multi-tag / Throwable hierarchy / Object-universal /
-/// user TypeDescriptor walk; an opaque collapsed class — Integer / BigInteger —
-/// is in no table so it returns false, clj-faithful). So this primitive is just
-/// `fqcn → isInstance` with no opaque/Object/Number special-case (those dissolved
-/// into the oracle per ADR-0128). A non-class `c` raises (clj: ClassCastException).
+/// `runtime/class_name.zig` is the COMPLETE membership oracle (native exact /
+/// interface multi-tag / Throwable hierarchy / Object-universal / descriptor
+/// identity for a user class; an opaque collapsed class, Integer / BigInteger,
+/// is in no table so it returns false, clj-faithful). So this primitive only
+/// picks the entry point, with no opaque/Object/Number special-case (those
+/// dissolved into the oracle per ADR-0128). A non-class `c` raises (clj:
+/// ClassCastException).
 pub fn instanceOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("instance?", args, 2, loc);
-    // The class arg is either a class VALUE (`.type_descriptor` — String / Number /
-    // Object / a user deftype / an exception class / `clojure.lang.IFn` FQCN) OR a
-    // cljw interface-marker PROTOCOL (`.protocol` — bare `IFn`/`ISeq`/`IPersistentMap`/
-    // `IDeref`/… resolve to the defprotocol Var, the cljw representation of the clj
-    // interface). Both name a class in the membership oracle, so dispatch by fqcn.
-    const fqcn = switch (args[0].tag()) {
-        .type_descriptor => td_mod.asTypeDescriptorRef(args[0]).fqcn orelse return .false_val,
-        .protocol => protocol_mod.asProtocol(args[0]).fqcn(),
+    // The class arg is either a class VALUE (`.type_descriptor`: String / Number /
+    // Object / a user deftype / an exception class / a `clojure.lang.IFn` FQCN),
+    // answered through its descriptor so a user class is matched by identity
+    // (ADR-0201), OR a cljw interface-marker PROTOCOL (`.protocol`: bare `IFn` /
+    // `ISeq` / `IPersistentMap` / `IDeref` resolve to the defprotocol Var, the
+    // cljw representation of the clj interface), which names an interface.
+    const member = switch (args[0].tag()) {
+        .type_descriptor => class_name.isInstanceOfClass(args[1], td_mod.asTypeDescriptorRef(args[0])),
+        .protocol => class_name.isInstance(args[1], protocol_mod.asProtocol(args[0]).fqcn()),
         else => return error_catalog.raise(.type_arg_invalid, loc, .{
             .fn_name = "instance?",
             .expected = "class",
             .actual = @tagName(args[0].tag()),
         }),
     };
-    return if (class_name.isInstance(args[1], fqcn)) .true_val else .false_val;
+    return Value.initBoolean(member);
 }
 
 /// `(-class-isa? child parent)` — true iff both args are class values
 /// (TypeDescriptor) and `child`'s class is `parent` or a subclass of it, via the
-/// shared `class_name.classIsa` (Object/Number/IFn + interface markers + the host
+/// shared `class_name.classIsaOf` (Object/Number/IFn + interface markers + the host
 /// exception/parent hierarchy — shared with multimethod dispatch so the two
 /// cannot drift, D-464). The class-hierarchy arm of `isa?` (clj's
 /// `Class.isAssignableFrom` step); equality + the ad-hoc `derive` hierarchy stay
@@ -85,26 +93,44 @@ pub fn classIsaPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     try error_catalog.checkArity("__class-isa?", args, 2, loc);
     if (args[0].tag() != .type_descriptor or args[1].tag() != .type_descriptor)
         return .false_val;
-    const child = td_mod.asTypeDescriptorRef(args[0]).fqcn orelse return .false_val;
-    const parent = td_mod.asTypeDescriptorRef(args[1]).fqcn orelse return .false_val;
-    // The class-vs-class hierarchy step (ADR-0109 Object/Number/IFn + D-293
-    // interface markers + the exception/parent hierarchy) lives in the shared
-    // `class_name.classIsa` so `isa?` and multimethod dispatch cannot drift
-    // (D-464). The ad-hoc `derive` hierarchy + equality stay in the `.clj` isa?.
-    return if (class_name.classIsa(child, parent)) .true_val else .false_val;
+    // The class-vs-class hierarchy step lives in the shared
+    // `class_name.classIsaOf` so `isa?` and multimethod dispatch cannot drift
+    // (D-464): a user class by descriptor identity and by what it declares,
+    // never by its name (ADR-0201); a native class by name (ADR-0109
+    // Object/Number/IFn, D-293 interface markers, the exception/parent
+    // hierarchy). The ad-hoc `derive` hierarchy + equality stay in the `.clj`
+    // isa?.
+    const child = td_mod.asTypeDescriptorRef(args[0]);
+    const parent = td_mod.asTypeDescriptorRef(args[1]);
+    return Value.initBoolean(class_name.classIsaOf(child, parent));
 }
 
-/// `(ifn? x)` — true iff `x` is callable (implements IFn): a fn / builtin /
-/// multimethod / protocol-fn, OR a keyword / symbol / var / vector / map / set
-/// (all invocable as lookups, clj parity). Spec: clojure.core/ifn?.
+/// Java String's immediate interfaces plus Object. JVM's `Class.getInterfaces`
+/// includes Comparable, Serializable, CharSequence, Constable, ConstantDesc.
+/// The latter two are opaque host class descriptors in cljw.
+/// `Object` has no parent. This set is additive to ad-hoc hierarchy parents.
+pub fn classParentsPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("__class-parents", args, 1, loc);
+    if (args[0].tag() != .type_descriptor) return .nil_val;
+    const name = td_mod.asTypeDescriptorRef(args[0]).fqcn orelse return .nil_val;
+    if (!std.mem.eql(u8, name, "String") and !std.mem.eql(u8, name, "java.lang.String")) return .nil_val;
+    var result = set_mod.empty();
+    for ([_][]const u8{ "Object", "java.lang.Comparable", "java.io.Serializable", "java.lang.CharSequence", "java.lang.constant.Constable", "java.lang.constant.ConstantDesc" }) |parent_name| {
+        const descriptor = try rt.classDescriptor(parent_name);
+        result = try set_mod.conj(rt, result, try td_mod.makeTypeDescriptorRef(rt, descriptor));
+    }
+    return result;
+}
+
+/// `(ifn? x)` — `(instance? clojure.lang.IFn x)`: a fn / builtin / multimethod
+/// / protocol-fn, a keyword / symbol / var / vector / map / set (all invocable
+/// as lookups), or a deftype / reify declaring IFn. Spec: clojure.core/ifn?.
 pub fn ifnQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("ifn?", args, 1, loc);
-    return switch (args[0].tag()) {
-        .fn_val, .builtin_fn, .multi_fn, .protocol_fn, .keyword, .symbol, .var_ref, .vector, .array_map, .hash_map, .hash_set, .sorted_map, .sorted_set => .true_val,
-        else => .false_val,
-    };
+    return Value.initBoolean(class_name.implementsInterface(args[0], "IFn"));
 }
 
 /// `(thread-bound? & vars)` — true iff EVERY arg Var has an active thread
@@ -203,6 +229,32 @@ pub fn integerQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return if (t == .integer or t == .big_int) .true_val else .false_val;
 }
 
+/// True iff `v` is a FIXED-PRECISION integer (clojure.core/int?): an inline
+/// `.integer`, or a heap-boxed Long — a `.big_int` whose origin is `.long`
+/// (a Long that overflowed cljw's i48 inline range, D-165). A genuine
+/// `(bigint …)` / `5N` (origin `.bigint`) is NOT fixed-precision. This is the
+/// single classifier `int?` and the `pos-int?`/`neg-int?`/`nat-int?` family
+/// all consult, so the Long-vs-BigInt boundary is defined once.
+fn isFixedInt(v: Value) bool {
+    return switch (v.tag()) {
+        .integer => true,
+        .big_int => big_int.originOf(v) == .long,
+        else => false,
+    };
+}
+
+/// `(int? x)` — true iff `x` is a FIXED-PRECISION integer (Long). Unlike
+/// `integer?`, this EXCLUDES BigInt (matches clojure.core/int?): a genuine
+/// `(bigint …)` is `integer?` but not `int?`. cljw's heap-boxed Long (a Long
+/// past the i48 inline range, tagged `.big_int` origin `.long`, D-165) IS
+/// `int?` — it is a Long, only its storage differs.
+pub fn intQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("int?", args, 1, loc);
+    return if (isFixedInt(args[0])) .true_val else .false_val;
+}
+
 /// `(number? x)` — true iff `x` is any numeric (Long / Float / BigInt
 /// / Ratio / BigDecimal). Matches clojure.core/number?.
 pub fn numberQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -229,25 +281,33 @@ pub fn keywordQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return if (args[0].tag() == .keyword) .true_val else .false_val;
 }
 
-/// `(vector? x)` — true iff `x` is a persistent Vector.
+/// `(vector? x)` — `(instance? clojure.lang.IPersistentVector x)`: a vector,
+/// a subvec, a MapEntry (clj `MapEntry extends APersistentVector`, D-209 /
+/// ADR-0078), or a deftype / reify declaring IPersistentVector.
 pub fn vectorQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("vector?", args, 1, loc);
-    // A MapEntry IS-A vector (clj `MapEntry extends APersistentVector`,
-    // D-209 / ADR-0078).
-    const t = args[0].tag();
-    return if (t == .vector or t == .map_entry) .true_val else .false_val;
+    return Value.initBoolean(class_name.implementsInterface(args[0], "IPersistentVector"));
 }
 
 /// Implements clojure.core/map-entry? — true only for a distinct MapEntry
 /// (D-209 / ADR-0078): `(map-entry? (first {:a 1}))`→true, `(map-entry?
-/// [1 2])`→false. The discriminator a 2-vector cannot provide.
+/// [1 2])`→false. The discriminator a 2-vector cannot provide. clj defines it as
+/// `(instance? java.util.Map$Entry x)`, so a deftype / reify declaring
+/// java.util.Map$Entry (core.logic's Pair) is one too.
 pub fn mapEntryQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("map-entry?", args, 1, loc);
-    return if (args[0].tag() == .map_entry) .true_val else .false_val;
+    return switch (args[0].tag()) {
+        .map_entry => .true_val,
+        // A declared java.util.Map$Entry normalises to MapEntry; clojure.lang.
+        // IMapEntry extends it, so a type declaring only that is one too.
+        .typed_instance, .reified_instance => Value.initBoolean(class_name.isInstance(args[0], "MapEntry") or
+            class_name.isInstance(args[0], "IMapEntry")),
+        else => .false_val,
+    };
 }
 
 /// `(list? x)` — true iff `x` is a persistent List
@@ -259,38 +319,23 @@ pub fn listQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     return if (args[0].tag() == .list) .true_val else .false_val;
 }
 
-/// `(map? x)` — true iff `x` is an array-map / hash-map / sorted-map.
+/// `(map? x)` — `(instance? clojure.lang.IPersistentMap x)`: an array-map /
+/// hash-map / sorted-map, a defrecord, or a deftype / reify declaring
+/// IPersistentMap (e.g. data.priority-map's PersistentPriorityMap).
 pub fn mapQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("map?", args, 1, loc);
-    const v = args[0];
-    const t = v.tag();
-    if (t == .array_map or t == .hash_map or t == .sorted_map) return .true_val;
-    // A defrecord IS an IPersistentMap in clj (`(map? rec)` → true).
-    if (t == .typed_instance and v.decodePtr(*const td_mod.TypedInstance).descriptor.kind == .defrecord) return .true_val;
-    // A deftype/reify implementing clojure.lang.IPersistentMap is also a map:
-    // clj defines `(map? x)` as `(instance? clojure.lang.IPersistentMap x)`, so
-    // a custom map type (e.g. data.priority-map's PersistentPriorityMap) answers
-    // true. Consults the same membership oracle instance? uses.
-    if ((t == .typed_instance or t == .reified_instance) and
-        class_name.isInstance(v, "clojure.lang.IPersistentMap")) return .true_val;
-    return .false_val;
+    return Value.initBoolean(class_name.implementsInterface(args[0], "IPersistentMap"));
 }
 
-/// `(set? x)` — true iff `x` is a hash-set or sorted-set.
+/// `(set? x)` — `(instance? clojure.lang.IPersistentSet x)`: a hash-set /
+/// sorted-set, or a deftype / reify declaring IPersistentSet (an ordered set).
 pub fn setQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("set?", args, 1, loc);
-    const t = args[0].tag();
-    if (t == .hash_set or t == .sorted_set) return .true_val;
-    // A deftype/reify implementing clojure.lang.IPersistentSet is a set in clj
-    // ((set? x) == (instance? clojure.lang.IPersistentSet x)) — e.g. an ordered
-    // set. Mirrors the map?/sorted? deftype-membership fixes.
-    if ((t == .typed_instance or t == .reified_instance) and
-        class_name.isInstance(args[0], "clojure.lang.IPersistentSet")) return .true_val;
-    return .false_val;
+    return Value.initBoolean(class_name.implementsInterface(args[0], "IPersistentSet"));
 }
 
 /// Implements clojure.core/record?.
@@ -425,82 +470,93 @@ pub fn notFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     return if (args[0].isNil() or args[0] == Value.false_val) .true_val else .false_val;
 }
 
-/// `(coll? x)` — true iff `x` is any IPersistentCollection: list,
-/// cons, lazy-seq, chunked-cons, vector, array-map, hash-map,
-/// sorted-map, hash-set, sorted-set, persistent-queue, range,
-/// string-seq, array-seq, map-entry. Matches clojure.core/coll?.
+/// `(coll? x)` — `(instance? clojure.lang.IPersistentCollection x)`: every
+/// persistent collection and seq, a defrecord, or a deftype / reify declaring
+/// IPersistentCollection or an interface extending it (ISeq, IPersistentMap,
+/// ...). Matches clojure.core/coll?.
 pub fn collQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("coll?", args, 1, loc);
-    const t = args[0].tag();
-    return switch (t) {
-        .list, .cons, .lazy_seq, .chunked_cons, .vector, .array_map, .hash_map, .sorted_map, .hash_set, .sorted_set, .persistent_queue, .range, .string_seq, .array_seq, .map_entry => .true_val,
-        else => .false_val,
-    };
+    return Value.initBoolean(class_name.implementsInterface(args[0], "IPersistentCollection"));
 }
 
-/// `(counted? x)` — true iff `x` reports its size in O(1) (`Counted`). The
-/// `coll?` set MINUS `.lazy_seq` (a lazy seq has no cheap length) — clj-verified
-/// (range/cons/chunked/string-seq/array-seq/map-entry/queue ARE counted; lazy
-/// seqs and strings are NOT). Drives `bounded-count`'s fast path.
+/// `(counted? x)` — `(instance? clojure.lang.Counted x)`: `x` reports its size
+/// in O(1). Not a lazy seq, not a Cons (D-482), not a string. A deftype / reify
+/// declaring Counted or an interface extending it (Indexed, IPersistentMap,
+/// ...) is counted. Drives `bounded-count`'s fast path.
 pub fn countedQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("counted?", args, 1, loc);
-    return switch (args[0].tag()) {
-        .list, .cons, .chunked_cons, .vector, .array_map, .hash_map, .sorted_map, .hash_set, .sorted_set, .persistent_queue, .range, .string_seq, .array_seq, .map_entry => .true_val,
-        else => .false_val,
-    };
+    return Value.initBoolean(class_name.implementsInterface(args[0], "Counted"));
 }
 
-/// `(seq? x)` — true iff `x` implements ISeq: list, cons,
-/// lazy-seq, chunked-cons, range, string-seq, array-seq.
-/// vectors / maps / sets are NOT seqs in JVM Clojure
-/// (they become a seq via `(seq coll)`).
+/// `(seq? x)` — `(instance? clojure.lang.ISeq x)`: list, cons, lazy-seq,
+/// chunked-cons, range, string-seq, array-seq, or a deftype / reify declaring
+/// ISeq. Vectors / maps / sets are NOT seqs (they become one via `(seq coll)`).
 pub fn seqQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("seq?", args, 1, loc);
-    const t = args[0].tag();
-    return switch (t) {
-        .list, .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq => .true_val,
-        else => .false_val,
-    };
+    return Value.initBoolean(class_name.implementsInterface(args[0], "ISeq"));
 }
 
-/// `(sequential? x)` — true iff `x` implements Sequential
-/// (order-preserving collection): list / vector / cons / lazy-seq /
-/// chunked-cons / range / string-seq / array-seq /
-/// persistent-queue. maps / sets are NOT sequential.
+/// `(sequential? x)` — `(instance? clojure.lang.Sequential x)`: the ordered
+/// collections and seqs (maps / sets are NOT), or a deftype / reify declaring
+/// Sequential or an interface extending it (IPersistentVector,
+/// IPersistentList). A bare ISeq is not Sequential. `=` answers from the same
+/// function (equal.isSequential), so the two cannot disagree.
 pub fn sequentialQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("sequential?", args, 1, loc);
-    const t = args[0].tag();
-    // A `deftype` carrying the `Sequential` marker (e.g. `Eduction`) is
-    // sequential? true — same SSOT marker the printer consults (D-190/ADR-0068).
-    if (t == .typed_instance) {
-        const inst = args[0].decodePtr(*const td_mod.TypedInstance);
-        return if (inst.descriptor.declaresProtocol("Sequential")) .true_val else .false_val;
-    }
-    return switch (t) {
-        .list, .vector, .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq, .persistent_queue, .map_entry => .true_val,
-        else => .false_val,
-    };
+    return Value.initBoolean(class_name.implementsInterface(args[0], "Sequential"));
 }
 
-/// `(associative? x)` — true iff `x` implements Associative
-/// (vector + maps). Matches clojure.core/associative?.
+/// `(associative? x)` — `(instance? clojure.lang.Associative x)`: vector,
+/// maps, map-entry, a defrecord, or a deftype / reify declaring Associative or
+/// an interface extending it. Matches clojure.core/associative?.
 pub fn associativeQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("associative?", args, 1, loc);
-    const t = args[0].tag();
-    return switch (t) {
-        .vector, .array_map, .hash_map, .sorted_map, .map_entry => .true_val,
-        else => .false_val,
-    };
+    return Value.initBoolean(class_name.implementsInterface(args[0], "Associative"));
+}
+
+/// `(indexed? x)` — `(instance? clojure.lang.Indexed x)`: vector, subvec,
+/// map-entry, transient vector, or a deftype / reify declaring Indexed or an
+/// interface extending it. Matches clojure.core/indexed?.
+pub fn indexedQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("indexed?", args, 1, loc);
+    return Value.initBoolean(class_name.implementsInterface(args[0], "Indexed"));
+}
+
+/// `(reversible? x)` — `(instance? clojure.lang.Reversible x)`: vector, subvec,
+/// map-entry, sorted map / set, or a deftype / reify declaring Reversible or an
+/// interface extending it. Matches clojure.core/reversible?.
+pub fn reversibleQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("reversible?", args, 1, loc);
+    return Value.initBoolean(class_name.implementsInterface(args[0], "Reversible"));
+}
+
+/// `(seqable? x)` — clj `RT.canSeq`: nil, an array, or an instance of Seqable
+/// (every ISeq is one), Iterable, CharSequence or java.util.Map. A deftype /
+/// reify / host object answers from its declared interfaces.
+pub fn seqableQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("seqable?", args, 1, loc);
+    const v = args[0];
+    return Value.initBoolean(v.isNil() or v.tag() == .array or
+        class_name.implementsInterface(v, "Seqable") or
+        class_name.implementsInterface(v, "Iterable") or
+        class_name.implementsInterface(v, "CharSequence") or
+        class_name.implementsInterface(v, "Map"));
 }
 
 /// `(identity x)` — returns `x` unchanged. Useful as a place-holder
@@ -522,32 +578,32 @@ pub fn booleanFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     return if (args[0].isNil() or args[0] == Value.false_val) .false_val else .true_val;
 }
 
-/// `(pos-int? x)` — true iff x is a positive Long. BigInt arm is a
-/// follow-up; today BigInt → false (transient).
+/// `(pos-int? x)` ≡ `(and (int? x) (pos? x))` (matches clojure.core/pos-int?).
+/// True iff `x` is a positive FIXED-PRECISION integer. A heap-boxed Long
+/// (`.big_int` origin `.long`, D-165) qualifies; a genuine `(bigint …)` is
+/// `int?`-false, so `(pos-int? (bigint 5))` is false as in clj. Sign is read
+/// through `pos?` — the one numeric-comparison path — never restated here.
 pub fn posIntQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
-    _ = env;
     try error_catalog.checkArity("pos-int?", args, 1, loc);
-    if (args[0].tag() != .integer) return .false_val;
-    return if (args[0].asInteger() > 0) .true_val else .false_val;
+    if (!isFixedInt(args[0])) return .false_val;
+    return math.posQ(rt, env, args, loc);
 }
 
-/// `(neg-int? x)` — true iff x is a negative Long.
+/// `(neg-int? x)` ≡ `(and (int? x) (neg? x))` (matches clojure.core/neg-int?).
 pub fn negIntQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
-    _ = env;
     try error_catalog.checkArity("neg-int?", args, 1, loc);
-    if (args[0].tag() != .integer) return .false_val;
-    return if (args[0].asInteger() < 0) .true_val else .false_val;
+    if (!isFixedInt(args[0])) return .false_val;
+    return math.negQ(rt, env, args, loc);
 }
 
-/// `(nat-int? x)` — true iff x is a non-negative Long (includes 0).
+/// `(nat-int? x)` ≡ `(and (int? x) (not (neg? x)))` (matches
+/// clojure.core/nat-int?). True for a non-negative fixed-precision integer,
+/// zero included.
 pub fn natIntQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
-    _ = env;
     try error_catalog.checkArity("nat-int?", args, 1, loc);
-    if (args[0].tag() != .integer) return .false_val;
-    return if (args[0].asInteger() >= 0) .true_val else .false_val;
+    if (!isFixedInt(args[0])) return .false_val;
+    const neg = try math.negQ(rt, env, args, loc);
+    return if (neg == Value.true_val) .false_val else .true_val;
 }
 
 /// `(keyword s)` / `(keyword ns s)` — intern a keyword Value.
@@ -650,9 +706,9 @@ pub fn symbolFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             const var_ptr = x.decodePtr(*const env_mod.Var);
             return symbol_mod.intern(rt, var_ptr.ns.name, var_ptr.name);
         }
-        if (x.isNil()) return .nil_val;
         // Unlike `keyword` (which returns nil), clj's `symbol` THROWS on a
-        // non-convertible value — a catchable IllegalArgumentException.
+        // non-convertible value — a catchable IllegalArgumentException — and
+        // `nil` is non-convertible: `(symbol nil)` throws, it does not return nil.
         return error_catalog.raise(.symbol_conversion_invalid, loc, .{ .actual = @tagName(x.tag()) });
     } else if (args.len == 2) {
         if (args[1].tag() != .string)
@@ -838,9 +894,11 @@ fn writeToWriterValue(rt: *Runtime, env: *Env, wv: Value, bytes: []const u8) any
         else => null,
     };
     const td = maybe_td orelse
-        return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "*out* bound to a non-writer value" });
+        // clj throws a catchable ClassCastException at the first write through
+        // a mis-bound *out* — the binding is the user's data.
+        return error_catalog.raise(.type_arg_invalid, .{}, .{ .fn_name = "*out*", .expected = "a writer", .actual = "a non-writer value" });
     const me = td.lookupMethod(null, "write") orelse
-        return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "*out* bound to a value with no .write method" });
+        return error_catalog.raise(.type_arg_invalid, .{}, .{ .fn_name = "*out*", .expected = "a writer with a .write method", .actual = "a value without one" });
     const vt = rt.vtable orelse return error.NoVTable;
     _ = try vt.callFn(rt, env, me.method_val, &.{ wv, s_val }, .{});
 }
@@ -886,6 +944,28 @@ pub fn strFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         var dbuf: [24]u8 = undefined;
         const s = std.fmt.bufPrint(&dbuf, "{d}", .{args[0].asInteger()}) catch unreachable;
         return try string_mod.alloc(rt, s);
+    }
+    // PERF: when every arg is a string / immediate integer / nil, render into
+    // a stack buffer: no heap writer alloc+free, no per-arg writeStrValue
+    // switch. Output is byte-identical to writeStrValue for those tags (bare
+    // string, decimal int, nil → ""). Anything else, or an overflow of the
+    // buffer, takes the general path below. [refs: O-075]
+    simple: {
+        var sbuf: [256]u8 = undefined;
+        var len: usize = 0;
+        for (args) |arg| {
+            if (arg.tag() == .string) {
+                const s = string_mod.asString(arg);
+                if (s.len > sbuf.len - len) break :simple;
+                @memcpy(sbuf[len..][0..s.len], s);
+                len += s.len;
+            } else if (arg.isInt()) {
+                if (sbuf.len - len < 24) break :simple;
+                const s = std.fmt.bufPrint(sbuf[len..], "{d}", .{arg.asInteger()}) catch unreachable;
+                len += s.len;
+            } else if (arg.tag() != .nil) break :simple;
+        }
+        return try string_mod.alloc(rt, sbuf[0..len]);
     }
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     defer aw.deinit();
@@ -943,7 +1023,7 @@ fn formatIntArg(val: Value, loc: SourceLocation) error_mod.ClojureWasmError!i64 
 fn formatFloatArg(val: Value, loc: SourceLocation) error_mod.ClojureWasmError!f64 {
     return switch (val.tag()) {
         .float => val.asFloat(),
-        .big_decimal => big_decimal_mod.toFloat(val),
+        .big_decimal => try big_decimal_mod.toFloat(val),
         else => error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "format", .expected = "a float (Double or BigDecimal) for %f/%e/%g", .actual = @tagName(val.tag()) }),
     };
 }
@@ -1163,6 +1243,10 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
                 defer stmp.deinit();
                 if (args[src].tag() == .nil) {
                     try stmp.writer.writeAll("null");
+                } else if (args[src].tag() == .big_int or args[src].tag() == .big_decimal) {
+                    // JVM `%s` calls `.toString`: plain digits, no `N`/`M`
+                    // reader suffix (`(format "%s" 1N)` → "1").
+                    try print_mod.writeStrValue(rt, env, &stmp.writer, args[src]);
                 } else {
                     try writeArgsSpaced(rt, env, &stmp.writer, args[src .. src + 1], false);
                 }
@@ -1225,16 +1309,22 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
                 const truthy = args[src].isTruthy();
                 try tw.writeAll(if (conv == 'B') (if (truthy) "TRUE" else "FALSE") else (if (truthy) "true" else "false"));
             },
-            // `%c` character conversion: arg must be a char. clj rejects a Long
-            // (65) with IllegalFormatConversionException ⊂ IllegalArgumentException,
-            // so cljw raises `arg_value_invalid` (→ IllegalArgumentException), not
-            // the ClassCastException of a plain type slot (D-459). UTF-8 codepoint.
-            'c' => {
-                if (args[src].tag() != .char)
-                    return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "format", .expected = "character for %c", .actual = @tagName(args[src].tag()) });
-                var cbuf: [4]u8 = undefined;
-                const cn = std.unicode.utf8Encode(args[src].asChar(), &cbuf) catch 0;
-                try tw.writeAll(cbuf[0..cn]);
+            // `%c`/`%C` character conversion. Java Formatter renders nil as
+            // "null"/"NULL" and `%C` upper-cases the character. cljw cannot
+            // distinguish JVM Integer from Long, so integer rejection remains
+            // the intentional D-267/AD-029 divergence. UTF-8 codepoint.
+            'c', 'C' => {
+                if (args[src].tag() == .nil) {
+                    try tw.writeAll(if (conv == 'C') "NULL" else "null");
+                } else {
+                    if (args[src].tag() != .char)
+                        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "format", .expected = "character for %c", .actual = @tagName(args[src].tag()) });
+                    var cbuf: [4]u8 = undefined;
+                    const cn = std.unicode.utf8Encode(args[src].asChar(), &cbuf) catch 0;
+                    if (conv == 'C') {
+                        for (cbuf[0..cn]) |ch| try tw.writeByte(std.ascii.toUpper(ch));
+                    } else try tw.writeAll(cbuf[0..cn]);
+                }
             },
             // `%t<X>`/`%T<X>` date/time conversions (D-470). Arg = a
             // java.util.Date or a Long (epoch millis, Java semantics).
@@ -1471,7 +1561,9 @@ pub fn subsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     // against the count (it does NOT clamp — `(subs "hello" 2 10)` throws
     // StringIndexOutOfBounds, not "llo"). D-164-adjacent string-parity fix.
     const len = charset_mod.codepointCount(s) catch
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "subs on invalid UTF-8" });
+        // Bad string DATA (cljw strings are byte slices; clj cannot produce
+        // this, but a catch that works there must work here).
+        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "subs", .expected = "valid UTF-8", .actual = "invalid UTF-8" });
     const start_i = args[1].asInteger();
     if (start_i < 0 or @as(u64, @intCast(@max(start_i, 0))) > len)
         return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "subs" });
@@ -1487,7 +1579,7 @@ pub fn subsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         end = @intCast(end_i);
     }
     const slice = charset_mod.substring(s, start, end) catch {
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "subs on invalid UTF-8 boundary" });
+        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "subs", .expected = "a codepoint boundary", .actual = "an invalid UTF-8 boundary" });
     };
     return string_mod.alloc(rt, slice);
 }
@@ -1506,16 +1598,45 @@ const Entry = struct {
 /// `(eval form)` — evaluate a runtime data Value as code (ADR-0058 / D-197).
 /// Delegates to `driver.evalValue` (valueToForm → analyze → evalForm), which
 /// dispatches to the active backend, so eval is backend-neutral. A top-level
-/// form has no enclosing locals; the transient arena holds the reconstructed
-/// form + node and is freed after (the result Value is GC-allocated, survives).
+/// form has no enclosing locals.
+///
+/// The form, Node and compiled chunks live on `rt.load_arena` (session
+/// lifetime), the arena `require` uses, for the same reason: a fn the eval'd
+/// form `def`s or returns keeps its bytecode chunks, and `traceFunction` walks
+/// their constant pools on every collect. A transient arena freed on return
+/// left `(eval '(defn g …))` holding freed chunks; the next collect traced
+/// garbage (GPF / segfault at 0x0, index-out-of-bounds in `traceArrayMap`).
+/// The cost is that eval-heavy code keeps each form's analysis for the session,
+/// as a JVM eval keeps each generated class.
 pub fn evalFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("eval", args, 1, loc);
-    var arena = std.heap.ArenaAllocator.init(rt.gpa);
-    defer arena.deinit();
+    // clj analyses only a COLLECTION or a SYMBOL; every other value is
+    // self-evaluating and comes back unchanged (the final `else` of
+    // Compiler.eval). An already-evaluated value has no source form to analyse,
+    // which is why `(eval (fn [x] x))` is that fn and not an attempt to re-read
+    // a runtime value as code. Without this, a value with no Form spelling (a
+    // closure, a builtin, a deftype instance) raised instead of evaluating.
+    // The seq VIEWS belong on the analysed side: `(eval (seq [1 2]))` is the
+    // form `(1 2)` in clj, which fails to call 1, not the seq itself.
+    switch (args[0].tag()) {
+        .list, .cons, .lazy_seq, .chunked_cons, .range, .array_seq, .string_seq, .vector, .sub_vector, .array_map, .hash_map, .hash_set, .symbol => {},
+        else => return args[0],
+    }
     // A fresh top-level locals frame (the eval'd form's own `let*` / macro
     // expansions index into it), sized like the runner's top-level frame.
     var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
-    return driver.evalValue(rt, env, &locals, arena.allocator(), args[0], loc);
+    return driver.evalValue(rt, env, &locals, rt.load_arena.allocator(), args[0], loc);
+}
+
+/// `(cljw.internal/__load-source label source)` — read and evaluate the forms
+/// of `source` one at a time (`loader.loadSource`); the substrate of
+/// `load-string` and `load-file`. `label` names the source in errors and in
+/// `:file` meta. => the last form's value.
+pub fn loadSourceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("__load-source", args, 2, loc);
+    for (args) |a| if (!a.isString())
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "load-string", .actual = @tagName(a.tag()) });
+    return loader.loadSource(rt, env, string_mod.asString(args[0]), string_mod.asString(args[1]), loc);
 }
 
 pub fn hashFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -1598,7 +1719,9 @@ pub fn gensymFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 }
 
 /// `(rt/__resolve sym)` — the Var that `sym` resolves to, as a `.var_ref`
-/// Value. A qualified `ns/name` symbol consults that namespace; an
+/// Value. A qualified `ns/name` symbol consults that namespace — resolved
+/// the way every other `s/name` site resolves a prefix, so a REQUIRE ALIAS
+/// works (`(resolve 'str/blank?)` under `[clojure.string :as str]`); an
 /// unqualified name the current namespace (own mappings, then refers).
 /// nil when the symbol — or its named namespace — does not resolve. The
 /// `.clj` `resolve` wraps this; the var_ref derefs to the Var's value and
@@ -1614,7 +1737,7 @@ pub fn resolvePrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     }
     const sym = symbol_mod.asSymbol(args[0]);
     const ns: *env_mod.Namespace = if (sym.ns) |ns_name|
-        (env.findNs(ns_name) orelse
+        (env.findNsOrAlias(ns_name) orelse
             // A qualified ns miss may be a class symbol (clojure.lang.BigInt,
             // java.lang.String) — clj's `resolve` returns the Class. D-421.
             return (try analyzer.resolveClassValue(rt, env, sym.ns, sym.name)) orelse Value.nil_val)
@@ -1659,6 +1782,12 @@ pub fn alterVarRootFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
                 rt.core_arith_pristine = false;
                 break;
             }
+        }
+    }
+    // inc/dec (op_inc / op_dec) share the arith deopt flag.
+    for (rt.unary_vars) |cached| {
+        if (cached) |pv| {
+            if (@intFromPtr(pv) == @intFromPtr(v)) rt.core_arith_pristine = false;
         }
     }
     // Same deopt for the collection-accessor intrinsics (op_get / op_nth, O-043):
@@ -1859,6 +1988,70 @@ fn dumpHostClassesFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
     return string_mod.alloc(rt, aw.writer.buffered());
 }
 
+/// `(cljw.internal/__dump-placement)` — machine-readable dump of where every
+/// interned Var's implementation actually lives. One `V <ns>/<name> <impl>
+/// <flags>` line per Var in every registered namespace's own `mappings`
+/// (`refers` are the SAME Var seen from elsewhere, so including them would
+/// double-count).
+///
+/// `<impl>` is derived from the root value's tag, which is the code truth for
+/// the ADR-0033 placement question:
+///
+///   - `zig`   — the root is a `builtin_fn`: a Zig-implemented primitive
+///               interned from `lang/primitive/**` (ADR-0033 Pattern B1, or a
+///               B2 `-name` leaf — the `zig-leaf` flag separates those two).
+///   - `clj`   — the root is a `fn_val`: produced by a `(def …)` in a bundled
+///               `.clj` (Pattern A composition, a B2 one-line shim, or C-thin).
+///   - `value` — not a function at all (a var holding data, e.g. `*out*`).
+///   - `unbound` — declared without a root (`(def x)` / `internDeclare`).
+///
+/// `<flags>` is a comma-separated subset of `private,macro,dynamic,zig-leaf,
+/// unsupported`, or `-` when none are set.
+///
+/// Feeds `scripts/gen_placement.sh` + the `placement_drift` gate (ADR-0178).
+/// The hand-maintained `data/placement.yaml` covered 49 of 683 publics and had
+/// drifted to the point of contradicting the code — it is generated from this
+/// dump now, for the same reason `__dump-host-classes` exists (ADR-0174 D9).
+/// Line order is map-iteration order; consumers sort.
+fn dumpPlacementFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("__dump-placement", args, 0, loc);
+    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+    defer aw.deinit();
+    var ns_it = env.namespaces.iterator();
+    while (ns_it.next()) |ns_entry| {
+        const ns = ns_entry.value_ptr.*;
+        var v_it = ns.mappings.iterator();
+        while (v_it.next()) |v_entry| {
+            const v = v_entry.value_ptr.*;
+            const impl: []const u8 = if (!v.bound)
+                "unbound"
+            else switch (v.root.tag()) {
+                .builtin_fn => "zig",
+                .fn_val, .multi_fn => "clj",
+                else => "value",
+            };
+            try aw.writer.print("V {s}/{s} {s} ", .{ ns.name, v_entry.key_ptr.*, impl });
+            var wrote_flag = false;
+            inline for (.{
+                .{ v.flags.private, "private" },
+                .{ v.flags.macro_, "macro" },
+                .{ v.flags.dynamic, "dynamic" },
+                .{ v.flags.zig_leaf, "zig-leaf" },
+                .{ v.flags.unsupported, "unsupported" },
+            }) |pair| {
+                if (pair[0]) {
+                    if (wrote_flag) try aw.writer.writeAll(",");
+                    try aw.writer.writeAll(pair[1]);
+                    wrote_flag = true;
+                }
+            }
+            if (!wrote_flag) try aw.writer.writeAll("-");
+            try aw.writer.writeAll("\n");
+        }
+    }
+    return string_mod.alloc(rt, aw.writer.buffered());
+}
+
 /// `(enumeration-seq e)` / `(iterator-seq i)` — clojure.core fns that wrap a
 /// `java.util.Enumeration` / `Iterator`. cljw has no such host iteration type
 /// (ADR-0059), so these ship as explicit-error stubs (the allowed transient-stub
@@ -1882,6 +2075,7 @@ fn iteratorSeqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
 const ENTRIES = [_]Entry{
     .{ .name = "__unsupported-host-ref", .f = &unsupportedHostRefFn },
     .{ .name = "__dump-host-classes", .f = &dumpHostClassesFn },
+    .{ .name = "__dump-placement", .f = &dumpPlacementFn },
     .{ .name = "enumeration-seq", .f = &enumerationSeqFn },
     .{ .name = "iterator-seq", .f = &iteratorSeqFn },
     .{ .name = "hash", .f = &hashFn },
@@ -1895,11 +2089,13 @@ const ENTRIES = [_]Entry{
     .{ .name = "var-get", .f = &varGetFn },
     .{ .name = "var-set", .f = &varSetFn },
     .{ .name = "eval", .f = &evalFn },
+    .{ .name = "__load-source", .f = &loadSourceFn },
     .{ .name = "gensym", .f = &gensymFn },
     .{ .name = "__resolve", .f = &resolvePrim },
     .{ .name = "alter-var-root", .f = &alterVarRootFn },
     .{ .name = "__instance-of?", .f = &instanceOf },
     .{ .name = "__class-isa?", .f = &classIsaPrim },
+    .{ .name = "__class-parents", .f = &classParentsPrim },
     .{ .name = "ifn?", .f = &ifnQ },
     .{ .name = "var?", .f = &varQ },
     .{ .name = "thread-bound?", .f = &threadBoundQ },
@@ -1912,7 +2108,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "integer?", .f = &integerQ },
     // int? and double? are exact aliases: cw v1 has a single integer tag and
     // a single float tag, so int? ≡ integer? and double? ≡ float?.
-    .{ .name = "int?", .f = &integerQ },
+    .{ .name = "int?", .f = &intQ },
     .{ .name = "double?", .f = &floatQ },
     .{ .name = "NaN?", .f = &nanQ },
     .{ .name = "infinite?", .f = &infiniteQ },
@@ -1939,6 +2135,9 @@ const ENTRIES = [_]Entry{
     .{ .name = "seq?", .f = &seqQ },
     .{ .name = "sequential?", .f = &sequentialQ },
     .{ .name = "associative?", .f = &associativeQ },
+    .{ .name = "indexed?", .f = &indexedQ },
+    .{ .name = "reversible?", .f = &reversibleQ },
+    .{ .name = "seqable?", .f = &seqableQ },
     .{ .name = "identity", .f = &identity },
     .{ .name = "boolean", .f = &booleanFn },
     .{ .name = "pos-int?", .f = &posIntQ },

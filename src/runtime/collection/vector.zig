@@ -23,7 +23,8 @@
 //! then `leaf.slots[i & 0x1F]`.
 //!
 //! Supports nth / count read-side ops, conj + pop (pushTail / popTail
-//! patterns), assoc, and subvec. Per-tag trace fns are registered at
+//! patterns), assoc, and copyRange (a materializing slice; the O(1)
+//! `subvec` VIEW lives in `sub_vector.zig`). Per-tag trace fns are registered at
 //! Runtime.init; EMPTY is a comptime const singleton (no GC trace
 //! needed because it never lives on the GC heap).
 
@@ -92,18 +93,34 @@ pub const HamtNode = extern struct {
     }
 };
 
-/// 32-element tail array. `len` tracks the populated prefix (1..32);
-/// `slots[0..len]` are the live Values. When `len` reaches 32 the
-/// tail promotes to a leaf HamtNode under `root` (5.4.b conj).
+/// The vector's last 1..32 elements. The slots are the cell's trailing
+/// storage, sized to exactly `len` (one GC cell, the ADR-0184 shape): every
+/// tail change copies the tail anyway (persistent conj / pop / assoc), so a
+/// 32-slot reserve buys nothing and made a 2-vector's tail a 272-byte cell.
+/// When `len` reaches 32 the tail promotes to a leaf HamtNode under `root`
+/// (5.4.b conj).
+// PERF: exact-size tail cell, 32 bytes for a 2-vector instead of 272 [refs: O-091]
 pub const TailNode = extern struct {
     header: HeapHeader,
     _pad: [2]u8 = .{ 0, 0 },
     len: u32 = 0,
-    slots: [BRANCH_FACTOR]Value = @splat(Value.nil_val),
 
     comptime {
         std.debug.assert(@alignOf(TailNode) >= 8);
         std.debug.assert(@offsetOf(TailNode, "header") == 0);
+        std.debug.assert(@sizeOf(TailNode) % @alignOf(Value) == 0);
+    }
+
+    /// The live elements, `len` of them.
+    pub fn items(self: *const TailNode) []const Value {
+        const base: [*]const Value = @ptrCast(@alignCast(@as([*]const u8, @ptrCast(self)) + @sizeOf(TailNode)));
+        return base[0..self.len];
+    }
+
+    /// The live elements, writable: only for a tail still being built.
+    pub fn itemsMut(self: *TailNode) []Value {
+        const base: [*]Value = @ptrCast(@alignCast(@as([*]u8, @ptrCast(self)) + @sizeOf(TailNode)));
+        return base[0..self.len];
     }
 };
 
@@ -128,13 +145,37 @@ pub fn empty() Value {
     return Value.encodeHeapPtr(.vector, &EMPTY);
 }
 
+/// A fresh HamtNode holding a copy of `slots`. Writes the header and the 32
+/// slots once; `.{ .header = … }` + `@memcpy` wrote every slot twice (nil
+/// default, then the copy). PERF: [refs: O-074]
+inline fn copyHamt(rt: *Runtime, slots: *const [BRANCH_FACTOR]Value) !*HamtNode {
+    const c = try rt.gc.alloc(HamtNode);
+    c.header = HeapHeader.init(.hamt_node);
+    c._pad = .{ 0, 0, 0, 0, 0, 0 };
+    c.slots = slots.*;
+    return c;
+}
+
+/// A fresh TailNode of length `len` (1..32) whose live prefix is `prefix`
+/// (len >= prefix.len). Slots in `[prefix.len, len)` are nil until the caller
+/// fills them, so the trace never reads an uninitialised slot. PERF: [refs: O-074]
+inline fn newTail(rt: *Runtime, len: u32, prefix: []const Value) !*TailNode {
+    std.debug.assert(len >= 1 and len <= BRANCH_FACTOR and prefix.len <= len);
+    const t = try rt.gc.allocWithTail(TailNode, @as(usize, len) * @sizeOf(Value));
+    t.header = HeapHeader.init(.tail_node);
+    t._pad = .{ 0, 0 };
+    t.len = len;
+    const slots = t.itemsMut();
+    @memcpy(slots[0..prefix.len], prefix);
+    @memset(slots[prefix.len..], Value.nil_val);
+    return t;
+}
+
 /// HamtNode.dupe — shallow copy with a fresh header. Used inside
 /// popTail's recursion when descending into a slot that already
 /// exists but isn't being modified at this level.
 fn dupeHamt(parent: *const HamtNode, rt: *Runtime) !*HamtNode {
-    const c = try rt.gc.alloc(HamtNode);
-    c.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&c.slots, &parent.slots);
+    const c = try copyHamt(rt, &parent.slots);
     return c;
 }
 
@@ -160,7 +201,7 @@ pub fn traceHamtNode(gc_ptr: *anyopaque, header: *HeapHeader) void {
 pub fn traceTailNode(gc_ptr: *anyopaque, header: *HeapHeader) void {
     const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
     const t: *TailNode = @ptrCast(@alignCast(header));
-    for (t.slots[0..t.len]) |slot| {
+    for (t.items()) |slot| {
         if (slot.heapHeader()) |h| mark_sweep.mark(gc, h);
     }
 }
@@ -205,21 +246,16 @@ pub fn conj(rt: *Runtime, v: Value, x: Value) !Value {
     // Fast path: tail has space (< BRANCH_FACTOR elements).
     const tail_size = if (old.tail) |t| t.len else 0;
     if (tail_size < BRANCH_FACTOR) {
-        const new_tail = try rt.gc.alloc(TailNode);
-        new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_size + 1 };
-        if (old.tail) |t| {
-            @memcpy(new_tail.slots[0..tail_size], t.slots[0..tail_size]);
-        }
-        new_tail.slots[tail_size] = x;
+        const prefix: []const Value = if (old.tail) |t| t.items() else &.{};
+        const new_tail = try newTail(rt, tail_size + 1, prefix);
+        new_tail.itemsMut()[tail_size] = x;
         return try newVector(rt, old.count + 1, old.shift, old.root, new_tail, old.meta);
     }
 
     // Tail-full path: promote the old tail to a leaf HamtNode under
     // root; new tail holds just `x`. The promoted leaf goes into the
     // root trie via pushTail, possibly growing the trie depth.
-    const tail_as_leaf = try rt.gc.alloc(HamtNode);
-    tail_as_leaf.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&tail_as_leaf.slots, &old.tail.?.slots);
+    const tail_as_leaf = try copyHamt(rt, old.tail.?.items()[0..BRANCH_FACTOR]);
 
     const old_count = old.count;
     var new_shift = old.shift;
@@ -248,9 +284,7 @@ pub fn conj(rt: *Runtime, v: Value, x: Value) !Value {
         new_shift = 0;
     }
 
-    const new_tail = try rt.gc.alloc(TailNode);
-    new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = 1 };
-    new_tail.slots[0] = x;
+    const new_tail = try newTail(rt, 1, &.{x});
     return try newVector(rt, old_count + 1, new_shift, new_root, new_tail, old.meta);
 }
 
@@ -272,9 +306,7 @@ pub fn pop(rt: *Runtime, v: Value) !Value {
     // Fast path: tail has > 1 element — copy tail with len-1.
     const tail_size = if (old.tail) |t| t.len else 0;
     if (tail_size > 1) {
-        const new_tail = try rt.gc.alloc(TailNode);
-        new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_size - 1 };
-        @memcpy(new_tail.slots[0 .. tail_size - 1], old.tail.?.slots[0 .. tail_size - 1]);
+        const new_tail = try newTail(rt, tail_size - 1, old.tail.?.items()[0 .. tail_size - 1]);
         return try newVector(rt, old.count - 1, old.shift, old.root, new_tail, old.meta);
     }
 
@@ -282,9 +314,7 @@ pub fn pop(rt: *Runtime, v: Value) !Value {
     // become the new tail. May collapse trie depth if the root's
     // first slot is empty after the pull.
     const new_tail_leaf = arrayFor(old, old.count - 2);
-    const new_tail = try rt.gc.alloc(TailNode);
-    new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = BRANCH_FACTOR };
-    @memcpy(&new_tail.slots, &new_tail_leaf.slots);
+    const new_tail = try newTail(rt, BRANCH_FACTOR, &new_tail_leaf.slots);
 
     var new_root: ?*HamtNode = null;
     var new_shift = old.shift;
@@ -322,10 +352,8 @@ pub fn assoc(rt: *Runtime, v: Value, i: u32, x: Value) !Value {
 
     if (i >= tailoff(old.count)) {
         const tail_size = if (old.tail) |t| t.len else 0;
-        const new_tail = try rt.gc.alloc(TailNode);
-        new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_size };
-        @memcpy(new_tail.slots[0..tail_size], old.tail.?.slots[0..tail_size]);
-        new_tail.slots[i - tailoff(old.count)] = x;
+        const new_tail = try newTail(rt, tail_size, old.tail.?.items());
+        new_tail.itemsMut()[i - tailoff(old.count)] = x;
         return try newVector(rt, old.count, old.shift, old.root, new_tail, old.meta);
     }
 
@@ -338,9 +366,7 @@ pub fn assoc(rt: *Runtime, v: Value, i: u32, x: Value) !Value {
 /// duplicate the node at each level, overwrite the slot on the path
 /// to `i`, recurse until shift==0 then overwrite the leaf slot.
 fn assocInRoot(rt: *Runtime, level: u32, node: *const HamtNode, i: u32, x: Value) !*HamtNode {
-    const dup = try rt.gc.alloc(HamtNode);
-    dup.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&dup.slots, &node.slots);
+    const dup = try copyHamt(rt, &node.slots);
 
     if (level == 0) {
         dup.slots[i & MASK] = x;
@@ -353,19 +379,14 @@ fn assocInRoot(rt: *Runtime, level: u32, node: *const HamtNode, i: u32, x: Value
     return dup;
 }
 
-/// Slice a vector to `[start, end)`. Per clojure JVM `subvec`:
-///   - 0 ≤ start ≤ end ≤ count v (else error.SubvecOutOfBounds)
-///   - subvec v 0 (count v) is equivalent to v (we copy structurally
-///     anyway for simplicity; the result is a fresh Vector)
-///
-/// Implementation choice: eager copy via repeated `conj`. The lazy
-/// SubVector wrapper (clojure JVM's actual approach with structural
-/// sharing of the parent) requires a new SubVector type + Tag slot +
-/// polymorphic op dispatch; it is tracked as D-044, gated on a
-/// measured structural-sharing benefit. Eager copy is O(n) where
-/// n = end - start; typical subvec call sites (small ranges over
-/// large vectors) keep the cost bounded.
-pub fn subvec(rt: *Runtime, v: Value, start: u32, end: u32) !Value {
+/// Materialize `[start, end)` as a FRESH standalone vector (eager O(n) copy
+/// via repeated `conj`). This is NOT `clojure.core/subvec` — that is the O(1)
+/// shared-structure VIEW in `sub_vector.zig`. `copyRange` exists for callers
+/// that must DROP the elements outside the range (e.g. `LinkedBlockingQueue`
+/// compaction, which frees the drained head), where a view would retain the
+/// whole parent. Bounds: `0 ≤ start ≤ end ≤ count v` (else
+/// `error.SubvecOutOfBounds`).
+pub fn copyRange(rt: *Runtime, v: Value, start: u32, end: u32) !Value {
     std.debug.assert(v.tag() == .vector);
     const old = v.decodePtr(*const Vector);
     if (start > end or end > old.count) return error.SubvecOutOfBounds;
@@ -399,9 +420,7 @@ pub fn fromSlice(rt: *Runtime, items: []const Value) !Value {
     const off = tailoff(n); // multiple of 32; in-root element count
     const tail_len = n - off; // 1..32 for n > 0
 
-    const tail = try rt.gc.alloc(TailNode);
-    tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_len };
-    @memcpy(tail.slots[0..tail_len], items[off..n]);
+    const tail = try newTail(rt, tail_len, items[off..n]);
 
     if (off == 0) {
         // n ≤ 32: tail-only, no root (matches conj's tail fast path).
@@ -414,9 +433,7 @@ pub fn fromSlice(rt: *Runtime, items: []const Value) !Value {
     defer rt.gc.infra.free(level_nodes);
     var li: u32 = 0;
     while (li < leaf_count) : (li += 1) {
-        const leaf = try rt.gc.alloc(HamtNode);
-        leaf.* = .{ .header = HeapHeader.init(.hamt_node) };
-        @memcpy(&leaf.slots, items[li * BRANCH_FACTOR ..][0..BRANCH_FACTOR]);
+        const leaf = try copyHamt(rt, items[li * BRANCH_FACTOR ..][0..BRANCH_FACTOR]);
         level_nodes[li] = leaf;
     }
 
@@ -491,9 +508,7 @@ fn pushTail(
     tail_leaf: *HamtNode,
 ) !*HamtNode {
     const sub_index = (tail_offset >> @as(u5, @intCast(level))) & MASK;
-    const new_parent = try rt.gc.alloc(HamtNode);
-    new_parent.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&new_parent.slots, &parent.slots);
+    const new_parent = try copyHamt(rt, &parent.slots);
 
     if (level == SHIFT_BITS) {
         // Parent is one above leaf level — slot it directly.
@@ -534,16 +549,12 @@ fn popTail(rt: *Runtime, level: u32, parent: *const HamtNode, new_count: u32) !?
         if (new_child == null and sub_index == 0) {
             return null; // whole subtree gone
         }
-        const new_parent = try rt.gc.alloc(HamtNode);
-        new_parent.* = .{ .header = HeapHeader.init(.hamt_node) };
-        @memcpy(&new_parent.slots, &parent.slots);
+        const new_parent = try copyHamt(rt, &parent.slots);
         new_parent.slots[sub_index] = if (new_child) |c| Value.encodeHeapPtr(.hamt_node, c) else Value.nil_val;
         return new_parent;
     }
     if (sub_index == 0) return null;
-    const new_parent = try rt.gc.alloc(HamtNode);
-    new_parent.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&new_parent.slots, &parent.slots);
+    const new_parent = try copyHamt(rt, &parent.slots);
     new_parent.slots[sub_index] = Value.nil_val;
     return new_parent;
 }
@@ -574,7 +585,7 @@ pub fn nth(v: Value, i: u32) Value {
     if (i >= tailoff(vec.count)) {
         // In-tail path: trivial index into the 32-slot tail.
         const t = vec.tail orelse return Value.nil_val;
-        return t.slots[i - tailoff(vec.count)];
+        return t.items()[i - tailoff(vec.count)];
     }
 
     // In-root path: walk down the HAMT via `(i >>> level) & MASK` at
@@ -631,31 +642,43 @@ test "HamtNode struct layout: header at 0, 32 slots inlined" {
     try testing.expect(@alignOf(HamtNode) >= 8);
 }
 
-test "TailNode struct layout: header at 0, 32 slots + len" {
+/// A stack TailNode with its `n` trailing slots, laid out as one GC cell is.
+fn StackTail(comptime n: usize) type {
+    return extern struct {
+        node: TailNode,
+        slots: [n]Value,
+    };
+}
+
+test "TailNode struct layout: header at 0, slots trail the 8-byte head" {
     try testing.expectEqual(@as(usize, 0), @offsetOf(TailNode, "header"));
-    const default_tail: TailNode = .{ .header = HeapHeader.init(.tail_node) };
-    try testing.expectEqual(@as(usize, BRANCH_FACTOR), default_tail.slots.len);
+    try testing.expectEqual(@as(usize, 16), @sizeOf(TailNode));
     try testing.expect(@alignOf(TailNode) >= 8);
+    try testing.expectEqual(@sizeOf(TailNode), @offsetOf(StackTail(2), "slots"));
+}
+
+test "a tail cell is sized to its length" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    const before = fix.rt.gc.stats.bytes_allocated;
+    _ = try fromSlice(&fix.rt, &.{ Value.initInteger(1), Value.initInteger(2) });
+    // Vector head + a 2-slot tail, not a 32-slot one.
+    const tail_bytes = @sizeOf(TailNode) + 2 * @sizeOf(Value);
+    try testing.expectEqual(@as(usize, @sizeOf(Vector) + tail_bytes), fix.rt.gc.stats.bytes_allocated - before);
 }
 
 test "nth in-tail path: handcrafted vector of 3 elements" {
-    var tail = TailNode{
-        .header = HeapHeader.init(.tail_node),
-        .len = 3,
-        .slots = blk: {
-            var s: [BRANCH_FACTOR]Value = @splat(Value.nil_val);
-            s[0] = Value.initInteger(10);
-            s[1] = Value.initInteger(20);
-            s[2] = Value.initInteger(30);
-            break :blk s;
-        },
+    var tail = StackTail(3){
+        .node = .{ .header = HeapHeader.init(.tail_node), .len = 3 },
+        .slots = .{ Value.initInteger(10), Value.initInteger(20), Value.initInteger(30) },
     };
     var vec = Vector{
         .header = HeapHeader.init(.vector),
         .count = 3,
         .shift = 0,
         .root = null,
-        .tail = &tail,
+        .tail = &tail.node,
     };
     const v = Value.encodeHeapPtr(.vector, &vec);
 
@@ -837,13 +860,13 @@ test "assoc out-of-bounds: returns error.AssocOutOfBounds" {
     try testing.expectError(error.AssocOutOfBounds, assoc(&fix.rt, v, 5, Value.nil_val));
 }
 
-test "subvec inner range: preserves slice values + new count" {
+test "copyRange inner range: preserves slice values + new count" {
     var fix = RuntimeFixture.init();
     defer fix.deinit();
 
     var v = empty();
     for (0..10) |i| v = try conj(&fix.rt, v, Value.initInteger(@intCast(i)));
-    const sv = try subvec(&fix.rt, v, 2, 7);
+    const sv = try copyRange(&fix.rt, v, 2, 7);
 
     try testing.expectEqual(@as(u32, 5), count(sv));
     try testing.expectEqual(@as(i48, 2), nth(sv, 0).asInteger());
@@ -853,13 +876,13 @@ test "subvec inner range: preserves slice values + new count" {
     try testing.expectEqual(@as(u32, 10), count(v));
 }
 
-test "subvec full range: equivalent to original vector" {
+test "copyRange full range: equivalent to original vector" {
     var fix = RuntimeFixture.init();
     defer fix.deinit();
 
     var v = empty();
     for (0..5) |i| v = try conj(&fix.rt, v, Value.initInteger(@intCast(i)));
-    const sv = try subvec(&fix.rt, v, 0, count(v));
+    const sv = try copyRange(&fix.rt, v, 0, count(v));
 
     try testing.expectEqual(@as(u32, 5), count(sv));
     for (0..5) |i| {
@@ -867,24 +890,24 @@ test "subvec full range: equivalent to original vector" {
     }
 }
 
-test "subvec empty range: returns empty vector" {
+test "copyRange empty range: returns empty vector" {
     var fix = RuntimeFixture.init();
     defer fix.deinit();
 
     var v = empty();
     for (0..5) |i| v = try conj(&fix.rt, v, Value.initInteger(@intCast(i)));
-    const sv = try subvec(&fix.rt, v, 3, 3);
+    const sv = try copyRange(&fix.rt, v, 3, 3);
 
     try testing.expectEqual(@as(u32, 0), count(sv));
 }
 
-test "subvec out-of-bounds: errors" {
+test "copyRange out-of-bounds: errors" {
     var fix = RuntimeFixture.init();
     defer fix.deinit();
 
     const v = try conj(&fix.rt, empty(), Value.initInteger(1));
-    try testing.expectError(error.SubvecOutOfBounds, subvec(&fix.rt, v, 0, 5));
-    try testing.expectError(error.SubvecOutOfBounds, subvec(&fix.rt, v, 5, 0));
+    try testing.expectError(error.SubvecOutOfBounds, copyRange(&fix.rt, v, 0, 5));
+    try testing.expectError(error.SubvecOutOfBounds, copyRange(&fix.rt, v, 5, 0));
 }
 
 test "fromSlice matches conj-built vector at all boundary sizes" {
@@ -960,21 +983,16 @@ test "nth in-root path: handcrafted shift=5 vector with 33 elements" {
             break :blk s;
         },
     };
-    var tail = TailNode{
-        .header = HeapHeader.init(.tail_node),
-        .len = 1,
-        .slots = blk: {
-            var s: [BRANCH_FACTOR]Value = @splat(Value.nil_val);
-            s[0] = Value.initInteger(132); // index 32 = first tail elem
-            break :blk s;
-        },
+    var tail = StackTail(1){
+        .node = .{ .header = HeapHeader.init(.tail_node), .len = 1 },
+        .slots = .{Value.initInteger(132)}, // index 32 = first tail elem
     };
     var vec = Vector{
         .header = HeapHeader.init(.vector),
         .count = 33,
         .shift = 0, // root IS the leaf (1 level)
         .root = &leaf0,
-        .tail = &tail,
+        .tail = &tail.node,
     };
     const v = Value.encodeHeapPtr(.vector, &vec);
 

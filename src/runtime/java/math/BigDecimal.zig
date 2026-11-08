@@ -2,7 +2,7 @@
 //! Java surface for `java.math.BigDecimal`.
 //!
 //! Backend: impl-only
-//! Impl deps: big_decimal
+//! Impl deps: big_decimal, number_methods (the java.lang.Number surface)
 //! Clojure peer: clojure.core/bigdec, clojure.core/+, clojure.core/-,
 //!   clojure.core/*, clojure.core// (numeric tower auto-promotion)
 //!
@@ -31,6 +31,7 @@ const host_enum = @import("../../host_enum.zig");
 const nb = @import("../../value/nan_box.zig");
 const string_collection = @import("../../collection/string.zig");
 const java_array = @import("../../collection/java_array.zig");
+const number_methods = @import("../../number_methods.zig");
 
 fn requireBd(v: Value, name: []const u8, loc: SourceLocation) !void {
     if (v.tag() != .big_decimal)
@@ -143,9 +144,7 @@ fn toBigIntegerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     _ = env;
     try error_catalog.checkArity("toBigInteger", args, 1, loc);
     try requireBd(args[0], "toBigInteger", loc);
-    // setScale(0, ROUND_DOWN=1) truncates toward zero (DOWN never needs rounding);
-    // the resulting scale-0 BigDecimal's unscaled value IS the integer.
-    const truncated = try big_decimal.setScale(rt, args[0], 0, 1);
+    const truncated = try big_decimal.truncate(rt, args[0]);
     return big_int.allocFromManaged(rt, big_decimal.asUnscaled(truncated).m, .bigint);
 }
 
@@ -401,46 +400,6 @@ fn equalsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return Value.initBoolean((try big_decimal.compareValue(rt, args[0], args[1])) == .eq);
 }
 
-/// Truncate `bd` toward zero to an integer Value (fixnum when it fits the i48
-/// window, else a promoted Long). Shared by intValue/longValue.
-fn truncatedInteger(rt: *Runtime, bd: Value, narrow_i32: bool) !Value {
-    const truncated = try big_decimal.setScale(rt, bd, 0, 1); // DOWN — toward zero
-    const c = big_decimal.asUnscaled(truncated).m.toConst();
-    const full: i64 = c.toInt(i64) catch blk: {
-        // Magnitude beyond i64: JVM narrowing takes the low bits (exotic for a bigdec).
-        const lo: u64 = if (c.limbs.len > 0) c.limbs[0] else 0;
-        const signed: i64 = @bitCast(lo);
-        break :blk if (c.positive) signed else -%signed;
-    };
-    const narrowed: i64 = if (narrow_i32) @as(i32, @truncate(full)) else full;
-    if (narrowed >= nb.NB_I48_MIN and narrowed <= nb.NB_I48_MAX) return Value.initInteger(narrowed);
-    return big_int.allocFromI64(rt, narrowed, .long);
-}
-
-/// `(.intValue bd)` / `(.longValue bd)` — truncate toward zero then narrow (JVM).
-fn intValueFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
-    try error_catalog.checkArity("intValue", args, 1, loc);
-    try requireBd(args[0], "intValue", loc);
-    return truncatedInteger(rt, args[0], true);
-}
-
-fn longValueFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
-    try error_catalog.checkArity("longValue", args, 1, loc);
-    try requireBd(args[0], "longValue", loc);
-    return truncatedInteger(rt, args[0], false);
-}
-
-/// `(.doubleValue bd)` — nearest f64 (JVM `BigDecimal.doubleValue`).
-fn doubleValueFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
-    _ = rt;
-    try error_catalog.checkArity("doubleValue", args, 1, loc);
-    try requireBd(args[0], "doubleValue", loc);
-    return Value.initFloat(big_decimal.toFloat(args[0]));
-}
-
 /// `(.movePointLeft bd n)` — `bd ÷ 10ⁿ` (scale +n; JVM `BigDecimal.movePointLeft`).
 fn movePointLeftFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
@@ -500,12 +459,13 @@ fn setScale(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 /// (D-097). Driven from `lang/primitive.zig` at runtime init (Layer 2 — Layer 0
 /// `runtime/` may not import this surface). Idempotent: a non-empty table
 /// short-circuits. Allocations land on `rt.gc.infra` (freed by the
-/// native-descriptor pass in `Runtime.deinit`).
+/// native-descriptor pass in `Runtime.deinit`). The java.lang.Number surface
+/// (`.intValue` / `.longValue` / `.shortValue` / `.byteValue` /
+/// `.doubleValue` / `.floatValue`) is `number_methods.value_specs`, shared
+/// with Long / Double / BigInt / Ratio; `.compareTo` / `.equals` stay here,
+/// since BigDecimal's are scale-aware.
 pub fn installNativeMethods(rt: *Runtime) !void {
-    const td = try rt.nativeDescriptor(.big_decimal);
-    if (td.method_table.len != 0) return; // idempotent re-run
-    const gpa = rt.gc.infra;
-    const specs = .{
+    const own = .{
         .{ "setScale", &setScale },
         .{ "scale", &scaleFn },
         .{ "toPlainString", &toPlainStringFn },
@@ -533,19 +493,8 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "min", &minFn },
         .{ "compareTo", &compareToFn },
         .{ "equals", &equalsFn },
-        .{ "intValue", &intValueFn },
-        .{ "longValue", &longValueFn },
-        .{ "doubleValue", &doubleValueFn },
     };
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
-    inline for (specs, 0..) |spec, i| {
-        entries[i] = .{
-            .protocol_name = "",
-            .method_name = try gpa.dupe(u8, spec[0]),
-            .method_val = Value.initBuiltinFn(spec[1]),
-        };
-    }
-    td.method_table = entries;
+    try number_methods.installSpecs(rt, try rt.nativeDescriptor(.big_decimal), own ++ number_methods.value_specs);
 }
 
 /// Populate the static `cljw.java.math.BigDecimal` descriptor's `method_table`

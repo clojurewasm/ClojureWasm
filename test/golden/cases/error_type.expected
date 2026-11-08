@@ -1,0 +1,11 @@
+--- exit ---
+1
+--- stdout ---
+before
+--- stderr ---
+Type error at <ROOT>/test/golden/cases/error_type.clj:2:5
+  +: expected number, got string
+
+  1 | (println "before")
+  2 | (+ 1 "not a number")
+           ^--- +: expected number, got string

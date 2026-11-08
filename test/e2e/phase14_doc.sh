@@ -6,7 +6,7 @@
 # D-183 Var-metadata surface. `doc` lives in `clojure.repl` (D-513; the
 # in-core copy is removed), so non-REPL contexts require it explicitly —
 # clj parity: `clj -e '(doc f)'` is unresolved there too, and the REPL
-# auto-refer is covered by phase15_repl_discovery. The trailing `nil` is
+# auto-refer is covered by suites.test-reporters-test. The trailing `nil` is
 # `doc`'s (println) return, printed by `cljw -e`.
 #
 # Layer 2 (e2e CLI) per ADR-0021.

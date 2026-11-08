@@ -9,6 +9,7 @@
 //! Tag `.@"volatile" = 35` is day-1 reserved (heap_tag.zig:94, Group C3).
 
 const std = @import("std");
+const atomics = @import("atomics.zig");
 const value = @import("value/value.zig");
 const Value = value.Value;
 const HeapHeader = value.HeapHeader;
@@ -48,14 +49,14 @@ pub fn isVolatile(v: Value) bool {
 /// per clj (use an atom when you need atomic compound mutation).
 pub fn current(v: Value) Value {
     const cell = v.decodePtr(*const Volatile);
-    return @atomicLoad(Value, &cell.current, .acquire);
+    return atomics.load(Value, &cell.current, .acquire);
 }
 
 /// Mutate the held value in place (`vreset!` / `vswap!`), atomic-release for
 /// cross-thread visibility (not an atomic compound op — see `current`).
 pub fn setCurrent(v: Value, newval: Value) void {
     const cell: *Volatile = @constCast(v.decodePtr(*const Volatile));
-    @atomicStore(Value, &cell.current, newval, .release);
+    atomics.store(Value, &cell.current, newval, .release);
 }
 
 /// Per-tag trace fn — the volatile owns one Value (`current`).

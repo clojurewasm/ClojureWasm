@@ -1,0 +1,38 @@
+;; `(empty x)` returns nil for any value that is NOT an IPersistentCollection —
+;; a number, char, keyword, symbol, boolean, ratio, BigInt, or a Java array
+;; (B2 sweep). cljw used to RAISE "No implementation of -empty ... for type
+;; 'Long'"; clj answers nil. Collections still empty to their own category
+;; (vector -> [], map -> {}, set -> #{}, any ISeq / range -> ()).
+
+(empty 5)
+;;=> nil
+(empty "abc")
+;;=> nil
+(empty \a)
+;;=> nil
+(empty :kw)
+;;=> nil
+(empty 'sym)
+;;=> nil
+(empty true)
+;;=> nil
+(empty 1.5)
+;;=> nil
+(empty 5N)
+;;=> nil
+(empty 1/2)
+;;=> nil
+(empty (to-array [1 2 3]))
+;;=> nil
+(empty [1 2])
+;;=> []
+(empty {:a 1})
+;;=> {}
+(empty '(1 2))
+;;=> ()
+(empty #{1 2})
+;;=> #{}
+(empty (range 3))
+;;=> ()
+(empty (seq [1 2]))
+;;=> ()

@@ -12,6 +12,16 @@ cd "$(dirname "$0")/../.."
 BIN="zig-out/bin/cljw"
 fail() { echo "FAIL $1" >&2; exit 1; }
 
+# Portable bounded run: GNU `timeout`, else coreutils `gtimeout`, else
+# unbounded (hosted mac runners ship neither). The D-347 case relies on this as
+# a backstop only — a green run trips the guest's own fuel trap long before it.
+run_bounded() {
+    local secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@"
+    else "$@"; fi
+}
+
 # Honor the gate's shared-binary contract (CLJW_SKIP_BUILD): skip our own build
 # to avoid clobbering the shared binary mid-run. Standalone, build -Dwasm
 # ReleaseSafe (NOT bare -Dwasm = Debug; ADR-0132). zwasm resolves via the
@@ -25,16 +35,35 @@ fi
 out="$("$BIN" test/e2e/fixtures/wasm_run_probe.clj 2>&1)" || fail "cljw exited non-zero:
 $out"
 
-echo "$out" | grep -q "PASS wasm-run-basic" || fail "argv/stdin/stdout/stderr capture failed:
+grep -q "PASS wasm-run-basic" <<<"$out" || fail "argv/stdin/stdout/stderr capture failed:
 $out"
-echo "$out" | grep -q "PASS wasm-run-exit-code" || fail "non-zero exit not returned as data:
+grep -q "PASS wasm-run-exit-code" <<<"$out" || fail "non-zero exit not returned as data:
 $out"
-echo "$out" | grep -q "PASS wasm-run-env" || fail "the :env option (D-348) failed to parse/run:
+grep -q "PASS wasm-run-env" <<<"$out" || fail "the :env option (D-348) failed to parse/run:
 $out"
-echo "$out" | grep -q "NOT-CAUGHT" && fail "a wasm/run error escaped (catch …):
+grep -q "PASS wasm-run-cache$" <<<"$out" || fail "a cached wasm/run differed from an uncached one (D-350):
 $out"
-echo "$out" | grep -q "^DONE$" || fail "fixture did not run to completion:
+grep -q "PASS wasm-run-cache-fuel" <<<"$out" || fail "fuel did not apply to a cached module (D-350):
 $out"
+grep -q "cache-bad-type: CAUGHT" <<<"$out" || fail "a non-boolean :cache was not rejected (D-350):
+$out"
+grep -q "NOT-CAUGHT" <<<"$out" && fail "a wasm/run error escaped (catch …):
+$out"
+grep -q "^DONE$" <<<"$out" || fail "fixture did not run to completion:
+$out"
+
+# D-347 (SE): (wasm/run …) must be fuel-metered BY DEFAULT, like (wasm/load …).
+# Before the fix the C-API run path got a `.{}` Limits whose axes all default to
+# null = unmetered, so an infinite loop in an untrusted guest hung the host
+# forever while the same loop under wasm/load was fuel-trapped. The bound here
+# is the assertion: a spinning guest must come back, and quickly.
+start=$(date +%s)
+out="$(run_bounded 60 "$BIN" -e '(println :exit (:exit (wasm/run "test/e2e/fixtures/wasm_spin.wasm")))' 2>&1 || true)"
+elapsed=$(( $(date +%s) - start ))
+grep -q ":exit 1" <<<"$out" || fail "an infinite-loop guest was not fuel-trapped (D-347) after ${elapsed}s:
+$out"
+[[ "$elapsed" -lt 45 ]] || fail "fuel trap took ${elapsed}s — the default budget is not being applied (D-347)"
+echo "PASS wasm-run-fuel-metered-by-default -> trapped in ${elapsed}s"
 
 echo
 echo "Phase 16 / wasm/run WASI command smoke: all green."

@@ -29,8 +29,10 @@
 //! `tag_ops.tag_trace_table` from the owning module — `tree_walk.zig`
 //! / `lazy_seq.zig` / `type_descriptor.zig`) and reach via the
 //! transitive trace, not via root enumeration. Sources 5 / 9 yield
-//! nothing in cw v1 by construction (ProtocolFn caches don't exist;
-//! CallSite holds namespace-owned pointers, not GC edges). Source 6
+//! nothing in cw v1 by construction (a ProtocolFn's dispatch cache
+//! is a memo of a value its descriptor's method_table already roots, read
+//! only under a matching generation, ADR-0206; CallSite holds
+//! namespace-owned pointers, not GC edges). Source 6
 //! (`refer` borrows) is closed-at-construction at `env.zig:229`'s
 //! `referAll` (the dupe lifts the borrowed name onto `infra_alloc`),
 //! so no GC walker is needed. The RootIterator's enum slot for each
@@ -45,6 +47,7 @@
 //! auto-registry in cw v1.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const testing = std.testing;
 
 const value_mod = @import("../value/value.zig");
@@ -115,6 +118,14 @@ pub const EvalFrame = struct {
     /// primitive-pushed frame (e.g. `reduceFn`) that owns no chunk. `var_ref` /
     /// `ns` constants are skipped by `Value.heapHeader()` like everywhere else.
     constants: []const Value = &.{},
+    /// The EXECUTING callable (ADR-0184 A). A collectable Function must stay
+    /// reachable while it runs: the VM drops the callee below `op_top` at
+    /// flatten (vm.zig flattenPush), and tree_walk's callMethodImpl holds it
+    /// only as a raw `*Function` whose `m` points INTO `f.methods` — with no
+    /// Value root, a mid-execution collect would sweep the fn cell out from
+    /// under its own recur loop. `.nil_val` for frames with no callable
+    /// (top-level chunks, primitive-pushed frames).
+    callee: Value = .nil_val,
     parent: ?*EvalFrame,
 };
 
@@ -228,6 +239,9 @@ pub fn endAnalysisPersist(frame: *AnalysisFrame, gc: *GcHeap) void {
 /// are filtered here so the registry holds only real heap objects.
 pub fn pushAnalysisRoot(v: Value) !void {
     if (v.heapHeader() == null) return;
+    // D-566: an analysis root pushed by an unregistered non-owner thread is
+    // invisible to a peer's collect, the same hazard `GcHeap.allocSized` asserts.
+    std.debug.assert(analysisMutatorAllowed());
     // Safe-build tripwire: a constant producer outside any bracket is an
     // unrooted-window bug at the NEXT collect — fail loud at the source.
     std.debug.assert(analysis_frame_head != null);
@@ -331,7 +345,7 @@ var registry_mutex: std.Io.Mutex = .init;
 
 /// Live registered-worker count, mirroring the non-null slots in
 /// `thread_registry`. Maintained under `registry_mutex` (register/unregister)
-/// but exposed lock-free via `registeredCountRelaxed` so `safepoint.stopWorld`
+/// but exposed lock-free via `registeredCountLockFree` so `safepoint.stopWorld`
 /// can re-read the rendezvous target while holding `sp_mutex` — taking
 /// `registry_mutex` under `sp_mutex` would invert the lock order against the
 /// unregister path (registry_mutex → sp_mutex wake). The array scan in
@@ -351,20 +365,150 @@ var registered_count: std.atomic.Value(u32) = .init(0);
 /// dormant D-244 #4 path, validated separately under user awareness.
 pub threadlocal var is_registered_worker: bool = false;
 
+/// The calling OS thread's id; `0` on single-threaded targets, where every
+/// caller is the one main thread (wasm32-wasi, ADR-0193).
+pub fn currentThreadId() std.Thread.Id {
+    if (comptime builtin.single_threaded) return 0;
+    return std.Thread.getCurrentId();
+}
+
+/// Owner of the most recently initialised `GcHeap` (D-566). `pushAnalysisRoot`
+/// has no heap in hand, so it checks against this stamp instead of a
+/// per-heap field. Every heap in a process is built on its main thread (the
+/// `runMain` entry thread in production, the test runner's thread in unit
+/// tests), so the latest stamp names that thread.
+var heap_owner_thread_id: std.atomic.Value(std.Thread.Id) = .init(0);
+
+/// Stamp the owning main thread; called by `GcHeap.init`. A registered worker
+/// building a heap is already allowed everywhere and must not steal the stamp
+/// from the main thread.
+pub fn noteHeapOwner(id: std.Thread.Id) void {
+    if (is_registered_worker) return;
+    heap_owner_thread_id.store(id, .release);
+}
+
+/// True iff the calling thread may push analysis roots: a registered worker or
+/// the heaps' owning main thread (D-566, see `GcHeap.mutatorAllowed`).
+pub fn analysisMutatorAllowed() bool {
+    return is_registered_worker or currentThreadId() == heap_owner_thread_id.load(.acquire);
+}
+
+/// Live worker-thread accounting for the PROCESS-EXIT teardown guard
+/// (D-548(a) / ADR-0176). The spawner increments BEFORE `Thread.spawn`
+/// (decrementing on spawn failure); the worker decrements as its very LAST
+/// action (its first-declared defer), AFTER every heap-touching cleanup
+/// (result store, `gc.unpin`, `unregisterThread`). Distinct from
+/// `registered_count`: this covers the whole thread lifetime including the
+/// pre-register and post-unregister spans. While nonzero, graceful Runtime
+/// teardown is FORBIDDEN — the app exit boundary hard-exits instead
+/// (`thread.exitBarrier`): a detached worker's thunk/epilogue reads the
+/// GC heap and mutates gpa-backed structures, and `rt.deinit` freeing them
+/// underneath produced the D-548(a) glibc heap-corruption aborts
+/// (`malloc_consolidate(): unaligned fastbin chunk detected`). The worker's
+/// seq_cst decrement pairs with the boundary's seq_cst read: count==0 proves
+/// every epilogue completed, so teardown is safe.
+var live_workers: std.atomic.Value(u32) = .init(0);
+
+/// Spawner-side: account a worker about to be spawned (call BEFORE
+/// `Thread.spawn`; call `noteWorkerExited` to roll back on spawn failure).
+pub fn noteWorkerSpawned() void {
+    _ = live_workers.fetchAdd(1, .seq_cst);
+}
+
+/// Worker-side final act (or spawner-side rollback): the thread's heap access
+/// is complete. Must be the worker fn's FIRST-declared defer.
+pub fn noteWorkerExited() void {
+    _ = live_workers.fetchSub(1, .seq_cst);
+}
+
+/// Snapshot for the exit-boundary teardown guard.
+pub fn liveWorkerCount() u32 {
+    return live_workers.load(.seq_cst);
+}
+
+/// Bounded wait for worker quiescence (ADR-0176). Returns true iff
+/// `live_workers` reached 0 within `max_wait_ns` — then graceful teardown is
+/// safe. Worker EPILOGUES (result store → unpin → unregister → final
+/// decrement) never block, so a completed thunk's worker quiesces in µs; a
+/// timeout therefore means a thunk is genuinely still RUNNING, and the caller
+/// must abandon teardown (hard exit / skip-freeing) instead. Polling sleep, no
+/// condvar: this runs at most twice per process (exit barrier + deinit guard),
+/// never on a hot path.
+pub fn awaitQuiescentWorkers(max_wait_ns: u64) bool {
+    if (liveWorkerCount() == 0) return true;
+    const io_def = @import("../concurrency/io_default.zig");
+    var waited: u64 = 0;
+    while (waited < max_wait_ns) {
+        io_def.sleep(1_000_000); // 1ms
+        waited += 1_000_000;
+        if (liveWorkerCount() == 0) return true;
+    }
+    return false;
+}
+
+/// Build the CALLING thread's standard worker context: all four TLS root
+/// slots plus the caller-supplied opaque `tx_slot` (opaque because root_set
+/// must not import lock_tx — see `ThreadGcContext.tx_slot`). Must run ON the
+/// worker thread (the addresses taken are its threadlocals). One shared
+/// builder so a future worker family cannot silently drop a slot (the
+/// slot-drift hazard the ADR-0175 review named).
+pub fn workerContext(tx_slot: *const ?*anyopaque) ThreadGcContext {
+    return .{
+        .frame_slot = &env_mod.current_frame,
+        .analysis_frame_slot = &analysis_frame_head,
+        .eval_frame_slot = &eval_frame_head,
+        .self_guard_slot = &gc_self_guard,
+        .tx_slot = tx_slot,
+    };
+}
+
 /// Register a worker thread's published roots. Locked (workers register
 /// at `Thread.spawn`). Returns `error.TooManyThreads` past the cap.
+///
+/// Registration is itself a GC SAFEPOINT (ADR-0175). A worker spawned while a
+/// stop-the-world collect was arming is invisible to that collect's rendezvous
+/// target (it was not yet in the registry), so `stopWorld` can return with
+/// target 0 and start walking roots while this thread comes to life. Without
+/// the post-publish park below, the newborn would run mutator code (push
+/// binding/eval frames, pop an agent action) CONCURRENTLY with the collector's
+/// `nextThreadRoots` walk — the spawn-to-register window (the
+/// phase16_gc_torture agent-drain GP fault on the 4-vCPU Linux runner).
+///
+/// The seq_cst pairing makes the handshake airtight (Dekker shape): the
+/// collector stores `gc_requested` then reads `registered_count`; this thread
+/// adds `registered_count` then loads `gc_requested`. Under seq_cst it is
+/// impossible that BOTH the collector misses this thread's count AND this
+/// thread misses the collector's flag — so either the collector waits for our
+/// park, or we park here before touching the heap. The park runs AFTER
+/// `registry_mutex` is released (a parked thread must never hold it — peers
+/// registering and the next walk would block behind a thread the collector
+/// will not wake). A freshly registered ctx publishes only empty TLS roots, so
+/// a collector already mid-walk reading our slot sees an empty contribution.
+///
+/// CONTRACT for callers: (a) no lock may be held at the call site (the park
+/// must not strand a lock the collector's world could need); (b) code run
+/// BEFORE this call must touch only spawner-pinned objects and pure bit-ops
+/// (an unregistered thread's roots are invisible to the collector); (c) on
+/// `TooManyThreads` the worker must NOT run its mutator body — it reports its
+/// domain failure without GC allocation and exits (an unregistered mutator is
+/// exactly the corruption this safepoint closes).
 pub fn registerThread(ctx: *ThreadGcContext) error{TooManyThreads}!void {
-    io_default.lockMutex(&registry_mutex);
-    defer io_default.unlockMutex(&registry_mutex);
-    for (&thread_registry) |*slot| {
-        if (slot.* == null) {
-            slot.* = ctx;
-            is_registered_worker = true;
-            _ = registered_count.fetchAdd(1, .release);
-            return;
-        }
+    {
+        io_default.lockMutex(&registry_mutex);
+        defer io_default.unlockMutex(&registry_mutex);
+        const idx: usize = blk: {
+            for (&thread_registry, 0..) |*slot, i| {
+                if (slot.* == null) break :blk i;
+            }
+            return error.TooManyThreads;
+        };
+        // Release-store so a lock-free walker (`threadContextAt`) that sees the
+        // slot also sees the fully-initialised ctx it points at.
+        @atomicStore(?*ThreadGcContext, &thread_registry[idx], ctx, .release);
+        is_registered_worker = true;
+        _ = registered_count.fetchAdd(1, .seq_cst);
     }
-    return error.TooManyThreads;
+    if (safepoint.gc_requested.load(.seq_cst)) safepoint.park();
 }
 
 /// Deregister a worker thread's context (at `Thread.join`). No-op if absent.
@@ -376,8 +520,8 @@ pub fn unregisterThread(ctx: *ThreadGcContext) void {
         defer io_default.unlockMutex(&registry_mutex);
         for (&thread_registry) |*slot| {
             if (slot.* == ctx) {
-                slot.* = null;
-                _ = registered_count.fetchSub(1, .release);
+                @atomicStore(?*ThreadGcContext, slot, null, .release);
+                _ = registered_count.fetchSub(1, .seq_cst);
                 removed = true;
                 break;
             }
@@ -394,9 +538,13 @@ pub fn unregisterThread(ctx: *ThreadGcContext) void {
 }
 
 /// Lock-free snapshot of the registered-worker count for `safepoint.stopWorld`'s
-/// rendezvous-target recompute (see `registered_count`).
-pub fn registeredCountRelaxed() u32 {
-    return registered_count.load(.acquire);
+/// rendezvous-target recompute (see `registered_count` — taking `registry_mutex`
+/// under `sp_mutex` would invert the unregister path's lock order). Seq_cst: the
+/// collector reads this AFTER its seq_cst `gc_requested` store, pairing with
+/// `registerThread`'s seq_cst count-add + flag-load so a registering newborn is
+/// either counted here or parks there (ADR-0175 spawn-window handshake).
+pub fn registeredCountLockFree() u32 {
+    return registered_count.load(.seq_cst);
 }
 
 /// Count of currently-registered worker contexts (test/introspection).
@@ -417,8 +565,11 @@ pub fn registeredThreadCount() usize {
 /// single-thread collect sees an empty registry → no-op. `markTxFn` receives the
 /// opaque `current_tx` value (the worker's `?*LockingTransaction`, reinterpreted).
 pub fn markRegisteredTxs(context: *anyopaque, markTxFn: *const fn (*anyopaque, ?*anyopaque) void) void {
-    for (thread_registry) |slot| {
-        if (slot) |ctx| markTxFn(context, ctx.tx_slot.*);
+    for (&thread_registry) |*slot| {
+        // Acquire-load: a newborn may register mid-collect (it then parks at
+        // its registration safepoint with all-empty roots — ADR-0175), so the
+        // slot read must be atomic against that concurrent release-store.
+        if (@atomicLoad(?*ThreadGcContext, slot, .acquire)) |ctx| markTxFn(context, ctx.tx_slot.*);
     }
 }
 
@@ -428,9 +579,12 @@ pub fn markRegisteredTxs(context: *anyopaque, markTxFn: *const fn (*anyopaque, ?
 // worker), read through its published TLS pointers. `.end` terminates the walk
 // past the registry cap. A sparse (null) registry slot yields an all-empty
 // contribution and the cursor advances. Reading the registry array during the
-// walk is safe because (a) it is empty until Phase-B real threads (#3a/#3b are
-// runtime-inert), and (b) the #3b-step2 safepoint guarantees no concurrent
-// register/unregister during collect.
+// walk is safe because (a) slot reads are atomic acquire-loads paired with the
+// register/unregister release-stores, (b) a newborn registering mid-collect
+// parks at its registration safepoint BEFORE running any mutator code, so a
+// mid-walk registration contributes only its empty TLS roots (ADR-0175), and
+// (c) unregistration cannot happen mid-collect — the rendezvous completed, so
+// every already-registered worker is parked (or blocked-counted).
 const ThreadRoots = struct {
     frame_head: ?*env_mod.BindingFrame,
     eval_head: ?*EvalFrame,
@@ -447,7 +601,7 @@ fn threadContextAt(idx: usize) ThreadSource {
     } };
     const ri = idx - 1;
     if (ri >= MAX_GC_THREADS) return .end;
-    if (thread_registry[ri]) |ctx| return .{ .roots = .{
+    if (@atomicLoad(?*ThreadGcContext, &thread_registry[ri], .acquire)) |ctx| return .{ .roots = .{
         .frame_head = ctx.frame_slot.*,
         .eval_head = ctx.eval_frame_slot.*,
         .self_guard = ctx.self_guard_slot.*,
@@ -488,6 +642,10 @@ pub const RootIterator = struct {
         env_idx: usize = 0,
         ns_it: ?env_mod.NamespaceMap.ValueIterator = null,
         var_it: ?env_mod.VarMap.ValueIterator = null,
+        /// The namespace whose `retired` Vars (ns-unmap'd, still referenced)
+        /// are walked once its `mappings` are exhausted, and the next index.
+        retired_ns: ?*const env_mod.Namespace = null,
+        retired_idx: usize = 0,
         /// Most-recently yielded Var so the iterator can yield its
         /// `meta` slot on the next `next()` call before advancing.
         pending_meta: ?*const env_mod.Var = null,
@@ -530,7 +688,7 @@ pub const RootIterator = struct {
         eval_part: EvalPart = .stack,
 
         pub const Phase = enum { binding, eval, self_guard, analysis };
-        pub const EvalPart = enum { stack, locals, constants };
+        pub const EvalPart = enum { stack, locals, constants, callee };
     };
 
     pub const PermanentRootsCursor = struct {
@@ -603,10 +761,25 @@ pub const RootIterator = struct {
                 }
                 c.var_it = null;
             }
+            // Then the Namespace's retired Vars: ns-unmap'd, so unreachable by
+            // name, but compiled code and captured #'ns/x values still hold
+            // them, so their roots must keep rooting.
+            if (c.retired_ns) |ns| {
+                if (c.retired_idx < ns.retired.items.len) {
+                    const v = ns.retired.items[c.retired_idx];
+                    c.retired_idx += 1;
+                    c.pending_meta = v;
+                    if (v.root.heapHeader()) |hdr| return hdr;
+                    continue;
+                }
+                c.retired_ns = null;
+            }
             // Advance Namespace iterator within current Env.
             if (c.ns_it) |*ns_it| {
                 if (ns_it.next()) |ns_pp| {
                     c.var_it = ns_pp.*.mappings.valueIterator();
+                    c.retired_ns = ns_pp.*;
+                    c.retired_idx = 0;
                     // Namespace-level meta (D-239): a heap meta map roots as
                     // the walk enters the ns (immediate/nil falls through).
                     if (ns_pp.*.meta.heapHeader()) |hdr| return hdr;
@@ -693,15 +866,19 @@ pub const RootIterator = struct {
                             c.eval_part = .constants;
                             c.slot_idx = 0;
                         }
-                        while (c.slot_idx < ef.constants.len) {
-                            const v = ef.constants[c.slot_idx];
-                            c.slot_idx += 1;
-                            if (v.heapHeader()) |hdr| return hdr;
+                        if (c.eval_part == .constants) {
+                            while (c.slot_idx < ef.constants.len) {
+                                const v = ef.constants[c.slot_idx];
+                                c.slot_idx += 1;
+                                if (v.heapHeader()) |hdr| return hdr;
+                            }
+                            c.eval_part = .callee;
                         }
-                        // This eval frame done → its parent.
+                        // The executing callable (ADR-0184 A), then the parent.
                         c.eval_frame = ef.parent;
                         c.slot_idx = 0;
                         c.eval_part = .stack;
+                        if (ef.callee.heapHeader()) |hdr| return hdr;
                         continue;
                     }
                     // Eval chain exhausted → self-guard phase.
@@ -767,7 +944,7 @@ pub fn enumerate(ctx: WalkContext) RootIterator {
 
 // --- tests ---
 
-const Cell = extern struct { header: HeapHeader = HeapHeader.init(.string), payload: u64 = 0 };
+const Cell = extern struct { header: HeapHeader = HeapHeader.init(.symbol), payload: u64 = 0 };
 
 const RuntimeFixture = struct {
     threaded: std.Io.Threaded,
@@ -808,7 +985,7 @@ test "permanent_roots walker yields each pinned heap Value (skipping immediates)
     defer gc.deinit();
 
     const cell_a = try gc.alloc(Cell);
-    cell_a.* = .{ .header = HeapHeader.init(.string) };
+    cell_a.* = .{ .header = HeapHeader.init(.symbol) };
     const cell_b = try gc.alloc(Cell);
     cell_b.* = .{ .header = HeapHeader.init(.vector) };
 
@@ -891,7 +1068,7 @@ test "ns_vars walker yields Var.root across two Envs sharing a Runtime" {
     // Each Env has the bootstrap namespaces (clojure.core / user / cljw.internal). Define one Var
     // with a heap-Value root in each.
     const cell1 = try gc.alloc(Cell);
-    cell1.* = .{ .header = HeapHeader.init(.string) };
+    cell1.* = .{ .header = HeapHeader.init(.symbol) };
     const cell2 = try gc.alloc(Cell);
     cell2.* = .{ .header = HeapHeader.init(.vector) };
 
@@ -924,7 +1101,7 @@ test "current_frame walker yields heap Values across nested binding frames" {
     const var_y = try env.intern(ns, "y", Value.nil_val, null);
 
     const cell_x = try gc.alloc(Cell);
-    cell_x.* = .{ .header = HeapHeader.init(.string) };
+    cell_x.* = .{ .header = HeapHeader.init(.symbol) };
     const cell_y = try gc.alloc(Cell);
     cell_y.* = .{ .header = HeapHeader.init(.vector) };
 
@@ -988,11 +1165,11 @@ test "union walk: a registered worker's frame + macro + operand stack are walked
     const var_w = try env.intern(ns, "w", Value.nil_val, null);
 
     const cell_frame = try gc.alloc(Cell);
-    cell_frame.* = .{ .header = HeapHeader.init(.string) };
+    cell_frame.* = .{ .header = HeapHeader.init(.symbol) };
     const cell_macro = try gc.alloc(Cell);
     cell_macro.* = .{ .header = HeapHeader.init(.vector) };
     const cell_stack = try gc.alloc(Cell);
-    cell_stack.* = .{ .header = HeapHeader.init(.string) };
+    cell_stack.* = .{ .header = HeapHeader.init(.symbol) };
     const cell_local = try gc.alloc(Cell);
     cell_local.* = .{ .header = HeapHeader.init(.vector) };
     const cell_guard = try gc.alloc(Cell);
@@ -1053,7 +1230,7 @@ test "thread_roots walks this thread's operand stack via eval_frame_head (D-244 
     defer gc.deinit();
 
     const cell_stack = try gc.alloc(Cell);
-    cell_stack.* = .{ .header = HeapHeader.init(.string) };
+    cell_stack.* = .{ .header = HeapHeader.init(.symbol) };
     const cell_local = try gc.alloc(Cell);
     cell_local.* = .{ .header = HeapHeader.init(.vector) };
 
@@ -1088,7 +1265,7 @@ test "thread_roots eval sub-walk reads stack[0..sp] only, never the undefined re
     defer gc.deinit();
 
     const cell_live = try gc.alloc(Cell);
-    cell_live.* = .{ .header = HeapHeader.init(.string) };
+    cell_live.* = .{ .header = HeapHeader.init(.symbol) };
     const cell_above_sp = try gc.alloc(Cell);
     cell_above_sp.* = .{ .header = HeapHeader.init(.vector) };
 
@@ -1121,7 +1298,7 @@ test "thread_roots eval sub-walk follows the eval-frame parent chain (D-244 #3b)
     defer gc.deinit();
 
     const cell_outer = try gc.alloc(Cell);
-    cell_outer.* = .{ .header = HeapHeader.init(.string) };
+    cell_outer.* = .{ .header = HeapHeader.init(.symbol) };
     const cell_inner = try gc.alloc(Cell);
     cell_inner.* = .{ .header = HeapHeader.init(.vector) };
 
@@ -1156,7 +1333,7 @@ test "thread_roots walks this thread's in-flight fabrication self-guard via gc_s
     defer gc.deinit();
 
     const cell = try gc.alloc(Cell);
-    cell.* = .{ .header = HeapHeader.init(.string) };
+    cell.* = .{ .header = HeapHeader.init(.symbol) };
 
     // Null gc_self_guard → the self-guard sub-walk yields nothing (inert).
     {

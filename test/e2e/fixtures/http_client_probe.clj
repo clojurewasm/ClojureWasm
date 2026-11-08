@@ -14,6 +14,15 @@
   (assert (= "echo:hi-from-client" (:body r)) (pr-str (:body r)))
   (println "PASS http-client-post-body"))
 
+;; NINE request headers — the :headers map promotes to hash_map (>8 entries,
+;; Discussion #12 bug class); the client used to reject it as "not a map of
+;; string→string". The server echoes x-h1 + x-h9 back, proving all arrived.
+(let [r (cljw.http.client/get "http://127.0.0.1:8157/h9"
+          {:headers {"x-h1" "a" "x-h2" "b" "x-h3" "c" "x-h4" "d" "x-h5" "e"
+                     "x-h6" "f" "x-h7" "g" "x-h8" "h" "x-h9" "i"}})]
+  (assert (= "h9:ai" (:body r)) (pr-str (:body r)))
+  (println "PASS http-client-9-headers"))
+
 ;; A bad URL arg is a catchable cljw exception, not a crash.
 (println "bad-url-caught:"
   (try (cljw.http.client/get 42) "NOT-CAUGHT"

@@ -7,8 +7,18 @@
 # corpus + the FULL test/e2e suite against it — so an oracle-only e2e /
 # rendering regression cannot hide behind the vm-default gate.
 #
-# Cadence: on-demand / Phase boundaries (ADR-0049 per-commit-cost concern),
-# NEVER per-commit. Runtime ≈ one serial e2e pass (~5 min).
+# Cadence: **ON-DEMAND ONLY — this is not wired into any gate** (2026-08-12).
+# It used to run in the CI nightly (CLJW_CI_PARITY=1), which made CI verify
+# something the local gate did not; `scripts/check_gate_parity.sh` now fails if
+# it is put back into a launcher. What that tier reported on its last run was a
+# 5-second wall-clock bound for an nREPL port file, failing on a loaded shared
+# runner in a config nothing else ran — the same bind measures 0.08-0.14 s
+# locally on this very build. What it never had to carry is the correctness
+# parity people assume from its name: the F-012 dual-backend diff oracle runs in
+# `zig build test` on BOTH backends in every gate. This sweep adds the e2e SHELL
+# suite on the non-default backend — worth running by hand after touching
+# backend-divergent code, not worth a second gate configuration.
+# Runtime ≈ one serial e2e pass (~5 min).
 #
 # SKIPS lists e2e steps that intrinsically exercise the DEFAULT backend
 # (AOT bytecode / build pipeline) and are meaningless or false-failing on
@@ -26,13 +36,14 @@
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
+source "$(dirname "$0")/lib_build_lock.sh"
 
 # e2e basenames (minus .sh) that are DEFAULT-BACKEND-specific by design.
 SKIPS=(
     # (populated empirically; empty = the whole suite is backend-neutral)
 )
 
-restore() { zig build -Dwasm -Doptimize=ReleaseSafe >/dev/null 2>&1 || true; }
+restore() { with_build_lock zig build -Dwasm -Doptimize=ReleaseSafe >/dev/null 2>&1 || true; }
 trap restore EXIT
 
 # Portable bounded run: GNU `timeout`, else macOS coreutils `gtimeout`, else
@@ -49,13 +60,13 @@ run_bounded() {
 }
 
 echo "check_vm_parity: building -Dbackend=tree_walk -Doptimize=ReleaseSafe…"
-if ! zig build -Dwasm -Doptimize=ReleaseSafe -Dbackend=tree_walk >/tmp/vmp_build.txt 2>&1; then
+if ! with_build_lock zig build -Dwasm -Doptimize=ReleaseSafe -Dbackend=tree_walk >/tmp/vmp_build.txt 2>&1; then
     echo "check_vm_parity: tree-walk BUILD FAILED (see /tmp/vmp_build.txt)"; exit 1
 fi
 export CLJW_SKIP_BUILD=1
 
 fails=0
-if bash scripts/check_corpus_regression.sh >/tmp/vmp_corpus.txt 2>&1; then
+if bb scripts/corpus_regression.clj >/tmp/vmp_corpus.txt 2>&1; then
     echo "  corpus                    : ok  ($(tail -1 /tmp/vmp_corpus.txt))"
 else
     echo "  corpus                    : FAIL ($(tail -1 /tmp/vmp_corpus.txt))"; fails=$((fails + 1))
@@ -76,7 +87,7 @@ for t in test/e2e/*.sh; do
     if run_bounded 180 bash "$t" >/tmp/vmp_e2e.txt 2>&1; then
         : # green — stay quiet (the suite is ~250 steps)
     else
-        echo "  FAIL on tree-walk         : $name  ($(grep -iE 'FAIL|error' /tmp/vmp_e2e.txt | head -1 | cut -c1-100))"
+        echo "  FAIL on tree-walk         : $name  ($(grep -iE 'FAIL|error' /tmp/vmp_e2e.txt | sed -n 1p | cut -c1-100))"
         fails=$((fails + 1))
     fi
 done

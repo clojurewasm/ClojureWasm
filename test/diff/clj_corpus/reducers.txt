@@ -1,0 +1,62 @@
+(into [] (clojure.core.reducers/map inc [1 2 3 4]))
+;;=> [2 3 4 5]
+(into [] (clojure.core.reducers/filter even? [1 2 3 4 5 6]))
+;;=> [2 4 6]
+(into [] (clojure.core.reducers/remove even? [1 2 3 4 5 6]))
+;;=> [1 3 5]
+(into [] (clojure.core.reducers/mapcat (fn [x] [x (* 10 x)]) [1 2 3]))
+;;=> [1 10 2 20 3 30]
+(into [] (clojure.core.reducers/flatten [1 [2 [3 4]] 5]))
+;;=> [1 2 3 4 5]
+(into [] (clojure.core.reducers/take-while (fn [x] (< x 4)) [1 2 3 4 5 1]))
+;;=> [1 2 3]
+(into [] (clojure.core.reducers/take 3 [1 2 3 4 5]))
+;;=> [1 2 3]
+(into [] (clojure.core.reducers/drop 3 [1 2 3 4 5]))
+;;=> [4 5]
+(into [] ((clojure.core.reducers/map inc) [1 2 3]))
+;;=> [2 3 4]
+(into [] (clojure.core.reducers/map inc (clojure.core.reducers/filter odd? [1 2 3 4 5])))
+;;=> [2 4 6]
+(clojure.core.reducers/reduce + [1 2 3 4])
+;;=> 10
+(clojure.core.reducers/reduce + 100 [1 2 3 4])
+;;=> 110
+(clojure.core.reducers/reduce (fn [acc k v] (+ acc v)) 0 {:a 1 :b 2 :c 3})
+;;=> 6
+(clojure.core.reducers/fold + (vec (range 100)))
+;;=> 4950
+(clojure.core.reducers/fold + + (vec (range 2000)))
+;;=> 1999000
+(clojure.core.reducers/fold 4 + + (vec (range 50)))
+;;=> 1225
+(clojure.core.reducers/fold + nil)
+;;=> 0
+(clojure.core.reducers/fold + (list 1 2 3 4))
+;;=> 10
+(clojure.core.reducers/fold + (range 10))
+;;=> 45
+(clojure.core.reducers/fold + (clojure.core.reducers/map inc (vec (range 100))))
+;;=> 5050
+(count (clojure.core.reducers/foldcat (vec (range 1500))))
+;;=> 1500
+(into [] (clojure.core.reducers/foldcat [1 2 3]))
+;;=> [1 2 3]
+((clojure.core.reducers/monoid + (fn [] 0)))
+;;=> 0
+((clojure.core.reducers/monoid + (fn [] 0)) 3 4)
+;;=> 7
+(count (clojure.core.reducers/cat [1 2] [3 4 5]))
+;;=> 5
+(seq (clojure.core.reducers/cat [1 2] [3 4 5]))
+;;=> (1 2 3 4 5)
+(reduce + 0 (clojure.core.reducers/cat [1 2] [3 4 5]))
+;;=> 15
+(reduce (fn [a b] (if (> a 3) (reduced a) (+ a b))) 0 (clojure.core.reducers/mapcat (fn [x] [x x]) [1 2 3 4]))
+;;=> 4
+(reduce (fn [a b] (if (> a 3) (reduced a) (+ a b))) 0 (clojure.core.reducers/take-while (fn [_] true) [1 2 3 4 5]))
+;;=> 6
+(into [] (clojure.core.reducers/map inc nil))
+;;=> []
+(into [] (clojure.core.reducers/map inc (list 1 2 3)))
+;;=> [2 3 4]

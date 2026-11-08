@@ -55,6 +55,24 @@ fn valueOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     };
 }
 
+/// `(Boolean. x)` / `(new Boolean x)`: a String parses like `parseBoolean`
+/// (case-insensitive "true", anything else false), nil is false (it matches
+/// the String ctor), a boolean is itself. Answers the plain `true`/`false`,
+/// not a box (ADR-0059), so `(if (Boolean. "false") …)` takes the false
+/// branch where clj's non-nil box is truthy (AD-073). Any other argument
+/// matches no ctor. JVM reference: java.lang.Boolean#Boolean(boolean|String).
+fn ctor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("Boolean.", args, 1, loc);
+    return switch (args[0].tag()) {
+        .string => Value.initBoolean(parseBool(string_mod.asString(args[0]))),
+        .nil => .false_val,
+        .boolean => args[0],
+        else => error_catalog.raise(.ctor_unmatched, loc, .{ .class = "java.lang.Boolean" }),
+    };
+}
+
 /// Implements `(Boolean/toString b)` — the string "true" / "false".
 /// JVM reference: java.lang.Boolean#toString(boolean).
 /// cw v1 tier: A (§A26 clj differential sweep).
@@ -118,6 +136,7 @@ fn initBoolean(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anye
     const specs = .{
         .{ "parseBoolean", &parseBoolean },
         .{ "valueOf", &valueOf },
+        .{ "<init>", &ctor },
         .{ "toString", &toString },
         .{ "logicalAnd", &Logical(.land, "logicalAnd").call },
         .{ "logicalOr", &Logical(.lor, "logicalOr").call },

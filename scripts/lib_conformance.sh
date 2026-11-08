@@ -39,7 +39,7 @@
 # accepted_divergences.md two-way classification; [pending] is the in-push
 # transient only).
 #
-# Methodology (inherited from scripts/clj_diff_sweep.sh — see its header):
+# Methodology (inherited from scripts/clj_diff_sweep.clj — see its header):
 #   - clj runs ONCE per batch: requires prepended (no stdout line), each expr
 #     try/prn-wrapped (1 output line each, errors → `<clj-error> Class`),
 #     `timeout 60` + `-J-Xmx2g` (the 2026-06-12 OOM backstop). Bound every
@@ -60,8 +60,7 @@ BIN="$ROOT/zig-out/bin/cljw"
 CLJ="${CLJ:-clj}"
 DIR="test/conformance"
 
-[ -x "$BIN" ] || { echo "building cljw…" >&2; zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null; }
-
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 # ---------- lib context ----------
 # Sets: CTX_DIR (cwd for cljw), CLJ_DIR (cwd for clj) and SDEPS_ARGS.
 # cljw: test/conformance/verified_projects/<lib>/ when present (its deps.edn auto-loads), else
@@ -102,11 +101,11 @@ run_cljw() {
     local errf
     errf="$(mktemp /tmp/lib_conf_err.XXXXXX)"
     out="$(printf '%s\n(prn %s)\n' "$prog" "$expr" \
-        | (cd "$CTX_DIR" && timeout 20 "$BIN" - 2>"$errf") | head -1)"
+        | (cd "$CTX_DIR" && timeout 20 "$BIN" - 2>"$errf") | sed -n 1p)"
     if [ -z "$out" ]; then
         # First NON-diagnostic stderr line ("note: …" = the deps.edn
         # Maven-skip advisory, not the error).
-        out="$(grep -v '^note: ' "$errf" | head -1)"
+        out="$(grep -v '^note: ' "$errf" | sed -n 1p)"
     fi
     rm -f "$errf"
     printf '%s\n' "$out"
@@ -276,7 +275,7 @@ all_libs() {
         echo "> Per-lib FUNCTION-surface conformance vs the clj oracle (D-405,"
         echo "> ROADMAP §1.5 track 1). Corpus format + methodology: the script header."
         echo "> Known-DIFF lines carry D-NNN / AD-NNN tags per"
-        echo "> \`.claude/rules/accepted_divergences.md\`; load-only status lives in"
+        echo "> \`memory 20260909234822-74759eeb (accepted_divergences)\`; load-only status lives in"
         echo "> \`docs/works/ladder.md\`, load-proof projects in \`test/conformance/verified_projects/\`."
         echo
         echo "| lib | golden ok | known-DIFF | coverage |"

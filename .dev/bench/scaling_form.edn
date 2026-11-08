@@ -1,0 +1,24 @@
+(let [SIZES [1000 4000 16000]
+      OPS   2000
+      ms    (fn [f] (let [t0 (System/nanoTime)] (f) (/ (- (System/nanoTime) t0) 1e6)))
+      probe (fn [build op]
+              (vec (for [s SIZES]
+                     (let [c (build s)]
+                       (dotimes [_ 300] (op c s))          ; warm (JIT on clj)
+                       (double (ms #(dotimes [_ OPS] (op c s))))))))
+      V     (fn [s] (vec (range s)))
+      M     (fn [s] (into {} (map (fn [i] [i i]) (range s))))
+      L     (fn [s] (apply list (range s)))]
+  {:vec/conj       (probe V (fn [c _] (conj c 1)))
+   :vec/nth        (probe V (fn [c s] (nth c (quot s 2))))
+   :vec/assoc      (probe V (fn [c s] (assoc c (quot s 2) 0)))
+   :vec/pop        (probe V (fn [c _] (pop c)))
+   :vec/subvec     (probe V (fn [c s] (subvec c 1 s)))
+   :vec/rest       (probe V (fn [c _] (rest c)))
+   :vec/seq        (probe V (fn [c _] (seq c)))
+   :vec/next       (probe V (fn [c _] (next c)))
+   :map/assoc      (probe M (fn [c s] (assoc c (+ s 1) 0)))
+   :map/get        (probe M (fn [c s] (get c (quot s 2))))
+   :map/dissoc     (probe M (fn [c s] (dissoc c (quot s 2))))
+   :list/count     (probe L (fn [c _] (count c)))
+   :list/conj      (probe L (fn [c _] (conj c 1)))})

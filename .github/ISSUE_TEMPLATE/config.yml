@@ -1,15 +1,16 @@
-# Issues are paused for ClojureWasm (small, resource-limited project).
-# Route everything to Discussions; disable blank issues.
+# Issues are DISABLED on this repository and always were, so nothing in this
+# directory currently renders. The templates are kept for forks, which get a
+# working set of report forms the moment they enable Issues; this config keeps
+# blank issues off so every report starts from one of them.
 blank_issues_enabled: false
 contact_links:
-  - name: 💬 Questions, bugs & Clojure divergences → Discussions
-    url: https://github.com/clojurewasm/ClojureWasm/discussions
+  - name: 💬 Questions, ideas, "is this supposed to work?"
+    url: https://github.com/BuddhiLW/ClojureWasm/discussions
     about: >-
-      Issues and Pull Requests are currently paused. Please start a Discussion
-      and mention @chaploud. Reports of behaviour that differs from JVM Clojure
-      are especially welcome.
+      Anything open-ended belongs in Discussions rather than an issue — usage
+      questions, design conversations, showing what you built.
   - name: 🔒 Report a security vulnerability (private)
-    url: https://github.com/clojurewasm/ClojureWasm/security/advisories/new
+    url: https://github.com/BuddhiLW/ClojureWasm/security/advisories/new
     about: >-
       Do NOT report security problems in public. Use private vulnerability
-      reporting — see SECURITY.md.
+      reporting — see SECURITY.md for scope and what to include.

@@ -2,7 +2,7 @@
 # scripts/check_module_docstring.sh
 #
 # Verifies that every new `src/**/*.zig` file opens with the canonical
-# two-line module-docstring header per `.claude/rules/module_docstring.md`:
+# two-line module-docstring header per `memory 20260909235200-7c602907 (module_docstring)`:
 #
 #   // SPDX-License-Identifier: EPL-2.0
 #   //! <one-line summary of what this module is for>
@@ -87,7 +87,7 @@ for f in "${violation_list[@]}"; do
   echo "  - $f"
 done
 echo ""
-echo "Canonical form (per .claude/rules/module_docstring.md):"
+echo "Canonical form (per memory 20260909235200-7c602907 (module_docstring)):"
 echo "  // SPDX-License-Identifier: EPL-2.0"
 echo "  //! <one-line summary>"
 

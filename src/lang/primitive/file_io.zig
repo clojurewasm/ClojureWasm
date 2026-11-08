@@ -21,6 +21,7 @@ const keyword_mod = @import("../../runtime/keyword.zig");
 const print_mod = @import("../../runtime/print.zig");
 const host_instance = @import("../../runtime/host_instance.zig");
 const host_stream = @import("../../runtime/io/host_stream.zig");
+const text_io = @import("../../runtime/io/text_io.zig");
 
 /// Coerce the file arg of `slurp`/`spit` to a path string: a `.string` directly,
 /// or a `java.io.File` host instance (its path lives in `state[0]`, ADR-0126) —
@@ -56,9 +57,13 @@ fn raiseFileIoError(op: []const u8, path: []const u8, e: anyerror, loc: SourceLo
 pub fn slurp(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("slurp", args, 1, loc);
+    // The `*in*` / with-in-str reader is a text_io Reader (not a host_stream
+    // stream): drain its unread remainder (blocking to stdin EOF for `*in*`).
+    if (try text_io.drainRemaining(rt, args[0])) |rest_bytes|
+        return try string_collection.alloc(rt, rest_bytes);
     // D-471 IOFactory arm: an open Reader/InputStream drains its remainder
     // (clj's slurp routes any IOFactory-coercible arg through io/reader).
-    if (host_stream.drainRemaining(args[0])) |rest_bytes|
+    if (try host_stream.drainRemaining(rt, args[0])) |rest_bytes|
         return try string_collection.alloc(rt, rest_bytes);
     const path = coerceToPath(rt, args[0]) orelse
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "slurp", .actual = @tagName(args[0].tag()) });

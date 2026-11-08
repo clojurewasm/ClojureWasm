@@ -1,0 +1,127 @@
+# The registry of everything runnable in this repository.
+#
+# Format, pipe-delimited:  id|layer|gated|tags|command
+#   id      unique selector for `cljw-test --only`
+#   layer   ADR-0021 / ADR-0186 layer number, or `-` for a check with no layer
+#   gated   yes  = part of "the suite is green"
+#           no   = deliberately outside the gate; the tags say why
+#   tags    comma-separated; `network`, `timing`, `measurement`, `slow`,
+#           `failfast`, `config`, `self-locking` are meaningful to the runner
+#   command run from the repository root
+#
+# A runnable script with no row here FAILS scripts/check_runner_reach.sh.
+# Opting out is a row with gated=no, never an absence.
+
+# --- composite entry points -------------------------------------------------
+# `full` is THE gate configuration, as data. Both launchers resolve to this
+# row: scripts/ci_gate.sh runs it through this CLI, scripts/run_gate.sh reaps
+# orphans and runs the same command. scripts/check_gate_parity.sh executes
+# `--only full --dry-run` and compares, so the agreement is run, not asserted.
+full|1,2,3,5,6,7|yes|composite,serial|bash test/run_all.sh --serial-e2e
+gate|1,2,3,5,6,7|yes|composite|bash scripts/run_gate.sh
+smoke|1,3,7|yes|composite,fast|bash test/run_all.sh --smoke
+ci|1,2,3,5,6,7|yes|composite,config|bash scripts/ci_gate.sh
+
+# --- layer 1 / 3 / 7: the compiled suite ------------------------------------
+unit_vm|1,3,7|yes|fast|zig build test -Dwasm -Doptimize=ReleaseSafe
+unit_tree_walk|1,3,7|yes|fast|zig build test -Dwasm -Dbackend=tree_walk -Doptimize=ReleaseSafe
+prop_engine|7|yes|fast|zig test src/testing/prop.zig
+lint|-|yes|fast|zig build lint -- --max-warnings 0
+fmt|-|yes|fast|zig fmt --check src/
+mutation_harness|-|yes|fast,via-gate|python3 -m unittest scripts/mutation/test_mutate.py
+
+# --- layer 2: e2e -----------------------------------------------------------
+# The ~400 e2e steps run inside `gate`. One of them: cljw-test --step <name>.
+wasm_gate|2|no|config|bash scripts/run_wasm_gate.sh
+
+# --- layer 5: conformance ---------------------------------------------------
+tier_a|5|yes|slow|bash test/clj/run_tier_a.sh
+verify_projects|5|no|network,failfast|bash scripts/verify_projects.sh
+
+# --- layer 6: golden snapshots ----------------------------------------------
+golden|6|yes||bash test/golden/run.sh
+
+# --- layer 8: mutation — a measurement, never a gate ------------------------
+mutation|8|no|measurement,slow,self-locking|bash scripts/mutation/run.sh
+
+# --- layer 4: bench — timing, never a gate ----------------------------------
+bench_langs|4|no|timing|bash bench/compare_langs.sh
+bench_build|4|no|timing|bash bench/build_bench.sh
+bench_run|4|no|timing|bash bench/run_bench.sh
+bench_wasm|4|no|timing|bash bench/wasm_bench.sh
+bench_wasm_jit|4|no|timing|bash bench/wasm_jit_vs_interp.sh
+bench_release_metrics|4|no|timing|bash bench/release_metrics.sh
+perf|4|no|timing|bash scripts/perf.sh
+
+# --- checks reachable from the gate -----------------------------------------
+# These already run inside test/run_all.sh; the rows exist so the registry is
+# the complete inventory and check_runner_reach.sh has nothing to report.
+check_accepted_divergences|-|yes|via-gate|bash scripts/check_accepted_divergences.sh --gate
+check_capability_claims|-|yes|via-gate|bash scripts/check_capability_claims.sh
+check_clj_attribution|-|yes|via-gate|bash scripts/check_clj_attribution.sh --gate
+check_compat_members|-|yes|via-gate|bash scripts/check_compat_members.sh
+check_core_surface|-|yes|via-gate|bash scripts/check_core_surface.sh
+check_corpus_regression|-|yes|via-gate,native-clojure|bb scripts/corpus_regression.clj
+check_debt_id_refs|-|yes|via-gate|bash scripts/check_debt_id_refs.sh --gate
+check_debt_category|-|yes|via-gate|bash scripts/check_debt_category.sh --gate
+check_doc_coverage|-|yes|via-gate|bash scripts/check_doc_coverage.sh
+check_changelog_reachability|-|yes|via-gate|bash scripts/check_changelog_reachability.sh --gate
+check_e2e_dup|-|yes|via-gate|bash scripts/check_e2e_dup.sh
+check_e2e_count|-|yes|via-gate|bash scripts/check_e2e_count.sh
+check_e2e_reach|-|yes|via-gate|bash scripts/check_e2e_reach.sh --gate
+check_entrypoint_surface|-|yes|via-gate|bash scripts/check_entrypoint_surface.sh
+check_epipe_head|-|yes|via-gate|bash scripts/check_epipe_head.sh
+check_epipe_grep|-|yes|via-gate|bash scripts/check_epipe_grep.sh
+check_feature_keyword|-|yes|via-gate|bash scripts/check_feature_keyword.sh --gate
+check_gate_parity|-|yes|via-gate|bash scripts/check_gate_parity.sh
+check_host_interface|-|yes|via-gate|bash scripts/check_host_interface.sh --gate
+check_dual_backend_parity|-|yes|via-gate|bash scripts/check_dual_backend_parity.sh --gate
+check_lazy_ns_replay|-|yes|via-gate|bash scripts/check_lazy_ns_replay.sh
+check_module_docstring|-|yes|via-gate|bash scripts/check_module_docstring.sh --check
+check_provisional_sync|-|yes|via-gate|bash scripts/check_provisional_sync.sh --gate
+check_placement_status|-|yes|via-gate|bash scripts/check_placement_status.sh
+check_portable_timeout|-|yes|via-gate|bash scripts/check_portable_timeout.sh
+check_reference_clones|-|yes|via-gate|bash scripts/check_reference_clones.sh
+check_release_deps|-|yes|via-gate|bash scripts/check_release_deps.sh
+check_special_form_enum|-|yes|via-gate|bash scripts/check_special_form_enum.sh
+check_repr_decode|-|yes|via-gate|bash scripts/check_repr_decode.sh --gate
+check_surface_marker|-|yes|via-gate|bash scripts/check_surface_marker.sh --gate
+check_test_reach|-|yes|via-gate|bash scripts/check_test_reach.sh --gate
+zone_check|-|yes|via-gate|bash scripts/zone_check.sh --gate
+binary_size_report|-|yes|via-gate|bash scripts/binary_size_report.sh --check zig-out/bin/cljw
+
+# --- checks NOT reachable from the gate -------------------------------------
+# Every row below is a declared exclusion, and its tag says which KIND:
+#
+#   hook       payload-driven PreToolUse hook. It reads a JSON payload on stdin
+#              and acts on the command being run, so a batch invocation has
+#              nothing to inspect — it fails closed by design.
+#   authoring  inspects a commit or a document being written; no meaning in a
+#              batch run of the suite.
+#   on-demand  outside the gate by a RECORDED decision, not by neglect. Each
+#              such script's own header names the decision.
+#   dormant    the discipline it enforces is suspended by an ADR; the script is
+#              kept because the ADR's resumption clause needs it.
+#   todo:      UNRESOLVED. check_runner_reach.sh fails on it — an exclusion
+#              either has one of the settled kinds above or the script goes.
+check_compat_tiers_sync|-|no|on-demand,informational|bash scripts/check_compat_tiers_sync.sh
+check_facts_immutable|-|no|hook|bash scripts/check_facts_immutable.sh
+check_learning_doc|-|no|hook,dormant|bash scripts/check_learning_doc.sh
+check_md_tables|-|no|hook|bash scripts/check_md_tables.sh
+check_no_op_stub|-|no|on-demand,informational|bash scripts/check_no_op_stub.sh
+check_smell_audit|-|no|hook|bash scripts/check_smell_audit.sh
+check_tier_d_error_msg|-|no|on-demand,informational|bash scripts/check_tier_d_error_msg.sh
+check_vm_parity|-|no|on-demand|bash scripts/check_vm_parity.sh
+# Authoring-time checks: they inspect a commit or a document being written, so
+# they have no meaning in a batch run of the suite.
+check_roadmap_amendment|-|no|authoring|bash scripts/check_roadmap_amendment.sh
+check_stale_git_lock|-|no|authoring|bash scripts/check_stale_git_lock.sh
+check_gate_cadence|-|no|authoring|bash scripts/check_gate_cadence.sh
+check_runner_reach|-|yes|meta|bash scripts/check_runner_reach.sh
+# Not test units: a fingerprint helper the resume ledger consumes, and a
+# PostToolUse hook. Registered so the inventory is complete.
+gate_state_hash|-|no|internal|bash scripts/gate_state_hash.sh
+gate_continue_remind|-|no|hook|bash scripts/gate_continue_remind.sh
+# CI housekeeping: bounds the Zig build cache before the workflow saves it.
+# Not gated — it deletes build products, which a test run must never do.
+prune_zig_cache|-|no|internal|bash scripts/prune_zig_cache.sh

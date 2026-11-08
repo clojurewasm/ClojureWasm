@@ -23,6 +23,7 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const date_impl = @import("../../time/date.zig");
 const instant = @import("../../time/instant.zig");
+const instant_value = @import("../../time/instant_value.zig");
 
 /// `(java.util.Date.)` → a Date for the current epoch-ms (wall clock).
 /// `(java.util.Date. ms)` → a Date for the given epoch-ms (long).
@@ -37,6 +38,17 @@ fn dateCtor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = "java.util.Date.", .expected = 1 });
 }
 
+/// `(java.util.Date/from instant)` — JVM `Date.from(Instant)`: the epoch
+/// millis of the instant (sub-millisecond nanos truncated toward the past).
+fn from(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.util.Date/from", args, 1, loc);
+    if (!instant_value.isInstant(args[0]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.util.Date/from", .expected = "an Instant", .actual = @tagName(args[0].tag()) });
+    const secs = @divFloor(instant_value.epochMsOf(args[0]), 1000);
+    return date_impl.make(rt, secs * 1000 + @divFloor(instant_value.nanosOf(args[0]), 1_000_000));
+}
+
 fn initDate(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     // ADR-0174 merge: ONE descriptor carries the ctor AND the instance
     // methods (Date values point at it). Each side appends behind its own
@@ -45,6 +57,7 @@ fn initDate(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerro
     if (td.lookupMethod(null, "<init>") == null) {
         try type_descriptor.appendMethodEntries(td, gpa, .{
             .{ "<init>", &dateCtor },
+            .{ "from", &from },
         });
     }
     td.print_tag = "inst"; // impl-first path sets it too; assign is idempotent

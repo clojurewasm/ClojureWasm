@@ -271,6 +271,9 @@ pub fn forEachStaticMember(rt_ptr: anytype, context_ns: ?*Namespace, class_head:
         if (!cb(ctx, .{ .name = sf.name, .ns = null, .kind = .static_field })) return;
     }
     for (td.method_table) |me| {
+        // `<init>` is the constructor entry `new` / `(Class. …)` consults, not
+        // a member a user can call as `Class/<init>`.
+        if (std.mem.eql(u8, me.method_name, "<init>")) continue;
         if (!memberMatches(member_prefix, me.method_name)) continue;
         if (!cb(ctx, .{ .name = me.method_name, .ns = null, .kind = .static_method })) return;
     }
@@ -326,19 +329,16 @@ pub fn lookupVar(env: *Env, context_ns: ?*Namespace, sym: []const u8) ?*Var {
     return null;
 }
 
-/// Read a Var's docstring: the Zig-intern `doc` field, else the `.clj`
-/// def's `^{:doc …}` meta map entry (a string Value).
+/// Read a Var's docstring: the `:doc` entry of its meta map (a string
+/// Value) — the same place `(:doc (meta v))` reads.
 pub fn varDoc(v: *const Var) ?[]const u8 {
-    if (v.doc) |d| return d;
     const meta_v = metaGet(v.meta, "doc") orelse return null;
     if (meta_v.tag() != .string) return null;
     return string_mod.asString(meta_v);
 }
 
-/// A Var's `:arglists` as a Value (a list of vectors) from the def
-/// meta, or null. Zig-intern Vars carry only the pre-rendered
-/// `arglists` STRING field — callers wanting a display string should
-/// try `v.arglists` first, then print this Value.
+/// A Var's `:arglists` as a Value (a list of vectors) from its meta
+/// map, or null. Callers wanting a display string print this Value.
 pub fn varArglistsValue(v: *const Var) ?Value {
     return metaGet(v.meta, "arglists");
 }

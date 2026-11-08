@@ -27,10 +27,17 @@ run() { printf '%s\n' "$1" | "$BIN" - 2>&1; }
 assert_eq 'class_sorted_map' "$(last "$(run '(prn (class (sorted-map 1 2)))')")" 'PersistentTreeMap'
 assert_eq 'class_sorted_set' "$(last "$(run '(prn (class (sorted-set 1)))')")" 'PersistentTreeSet'
 assert_eq 'class_var'        "$(last "$(run '(prn (class (var inc)))')")" 'Var'
+assert_eq 'class_lazy_seq'   "$(last "$(run '(prn (class (lazy-seq [1])))')")" 'LazySeq'
+assert_eq 'class_cons'       "$(last "$(run '(prn (class (cons 1 [2])))')")" 'Cons'
+assert_eq 'print_cons'       "$(last "$(run '(prn (cons 1 [2]))')")" '(1 2)'
 # the simple name resolves as a class value and instance? round-trips
 assert_eq 'inst_treemap'  "$(last "$(run '(prn (instance? PersistentTreeMap (sorted-map 1 2)))')")" 'true'
 assert_eq 'inst_treeset'  "$(last "$(run '(prn (instance? PersistentTreeSet (sorted-set 1)))')")" 'true'
 assert_eq 'inst_var'      "$(last "$(run '(prn (instance? Var (var inc)))')")" 'true'
+assert_eq 'inst_lazy_fqcn' "$(last "$(run '(prn (instance? clojure.lang.LazySeq (lazy-seq [1])))')")" 'true'
+assert_eq 'inst_cons_fqcn' "$(last "$(run '(prn (instance? clojure.lang.Cons (cons 1 [2])))')")" 'true'
+assert_eq 'cons_meta_roundtrip' "$(last "$(run '(prn (meta (with-meta (cons 1 [2]) {:a 1})))')")" '{:a 1}'
+assert_eq 'inst_lazy_false' "$(last "$(run '(prn (instance? clojure.lang.LazySeq [1]))')")" 'false'
 # interface views unaffected (sorted map is still an IPersistentMap)
 assert_eq 'sorted_is_map' "$(last "$(run '(prn (instance? IPersistentMap (sorted-map 1 2)))')")" 'true'
 # a non-member is false (no over-match)

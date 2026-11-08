@@ -72,6 +72,25 @@ fn hashUnencodedChars(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     return Value.initInteger(@as(i32, @bitCast(h)));
 }
 
+/// `(clojure.lang.Murmur3/hashLong n)` — Murmur3 of a 64-bit integer. JVM
+/// bit-parity (the input is the integer's own bits, not a cljw value hash).
+fn hashLong(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("clojure.lang.Murmur3/hashLong", args, 1, loc);
+    const n = try error_catalog.expectInteger(args[0], "clojure.lang.Murmur3/hashLong", loc);
+    return Value.initInteger(@as(i32, @bitCast(hash.hashLong(n))));
+}
+
+/// `(clojure.lang.Murmur3/hashInt n)` — Murmur3 of a 32-bit integer.
+fn hashInt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("clojure.lang.Murmur3/hashInt", args, 1, loc);
+    const n: i32 = @truncate(try error_catalog.expectInteger(args[0], "clojure.lang.Murmur3/hashInt", loc));
+    return Value.initInteger(@as(i32, @bitCast(hash.hashInt(n))));
+}
+
 fn initMurmur3(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent re-run
     const specs = .{
@@ -79,6 +98,8 @@ fn initMurmur3(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anye
         .{ "hashUnordered", &hashUnordered },
         .{ "mixCollHash", &mixCollHash },
         .{ "hashUnencodedChars", &hashUnencodedChars },
+        .{ "hashLong", &hashLong },
+        .{ "hashInt", &hashInt },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

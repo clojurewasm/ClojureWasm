@@ -1,0 +1,26 @@
+(clojure.walk/macroexpand-all '(-> a b c))
+;;=> (c (b a))
+(clojure.walk/macroexpand-all '(when true 1))
+;;=> (if true (do 1))
+(clojure.walk/macroexpand-all ''(-> a b))
+;;=> (quote (b a))
+(clojure.walk/macroexpand-all '[(-> a b) (-> c d)])
+;;=> [(b a) (d c)]
+(clojure.walk/macroexpand-all '{:k (-> a b)})
+;;=> {:k (b a)}
+(clojure.walk/macroexpand-all 'foo)
+;;=> foo
+(clojure.walk/macroexpand-all 5)
+;;=> 5
+(clojure.walk/macroexpand-all '(if (-> a b) (-> c d) (-> e f)))
+;;=> (if (b a) (d c) (f e))
+(clojure.walk/macroexpand-all '(let [x 1] (-> x inc)))
+;;=> (let* [x 1] (inc x))
+(clojure.walk/macroexpand-all '(when-not false 1))
+;;=> (if false nil (do 1))
+(clojure.walk/macroexpand-all '(when-not false))
+;;=> (if false nil (do))
+(clojure.walk/macroexpand-all '(when-not false 1 2))
+;;=> (if false nil (do 1 2))
+(clojure.walk/macroexpand-all '(when true 1))
+;;=> (if true (do 1))

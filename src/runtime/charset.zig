@@ -69,12 +69,27 @@ pub fn substring(s: []const u8, start: usize, end: usize) Utf8Error![]const u8 {
     return s[byte_start..byte_end];
 }
 
+/// True when every byte is < 0x80 (vectorised by the optimiser).
+fn isAllAscii(s: []const u8) bool {
+    var acc: u8 = 0;
+    for (s) |c| acc |= c;
+    return acc < 0x80;
+}
+
 /// Allocate the FULL-Unicode uppercase of `s` (JVM String.toUpperCase
 /// semantics, D-057): SpecialCasing 1:n expansions (ß→SS, ﬁ→FI, ŉ→ʼN)
 /// then the simple map, via the generated `unicode_case` tables. The
 /// result may be LONGER than the input (1:n), so it grows an ArrayList.
 /// Caller owns the returned slice.
 pub fn upperCaseAlloc(alloc: std.mem.Allocator, s: []const u8) ![]u8 {
+    // PERF: an all-ASCII input folds byte-for-byte (every ASCII codepoint's
+    // full Unicode mapping is its ASCII fold, one byte to one byte), so skip
+    // the per-codepoint table walk. [refs: O-071]
+    if (isAllAscii(s)) {
+        const buf = try alloc.alloc(u8, s.len);
+        for (s, buf) |c, *o| o.* = std.ascii.toUpper(c);
+        return buf;
+    }
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
     var iter = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
@@ -94,6 +109,12 @@ pub fn upperCaseAlloc(alloc: std.mem.Allocator, s: []const u8) ![]u8 {
 /// the table's has-a-mapping approximation (full General_Category data is
 /// not carried — covers Greek/Latin, the rule's real population).
 pub fn lowerCaseAlloc(alloc: std.mem.Allocator, s: []const u8) ![]u8 {
+    // PERF: all-ASCII fast path; no Σ can occur in ASCII. [refs: O-071]
+    if (isAllAscii(s)) {
+        const buf = try alloc.alloc(u8, s.len);
+        for (s, buf) |c, *o| o.* = std.ascii.toLower(c);
+        return buf;
+    }
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
     var iter = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
@@ -473,11 +494,22 @@ pub fn codepointLastIndexOf(haystack: []const u8, needle: []const u8) ?usize {
 /// Replace every non-overlapping `needle` with `replacement` (string ⇒
 /// string semantics). Allocates a fresh slice on `alloc`; on `needle`
 /// match the substitution does NOT recurse (a la JVM
-/// `String.replace` — replacement bytes are not re-scanned). Empty
-/// `needle` returns a copy of `haystack` (matches JVM behaviour of
-/// not infinite-looping on empty needle).
+/// `String.replace` — replacement bytes are not re-scanned). An empty
+/// `needle` matches at every codepoint boundary, including both ends.
 pub fn replaceAllStringAlloc(alloc: std.mem.Allocator, haystack: []const u8, needle: []const u8, replacement: []const u8) ![]u8 {
-    if (needle.len == 0) return try alloc.dupe(u8, haystack);
+    if (needle.len == 0) {
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(alloc);
+        try out.appendSlice(alloc, replacement);
+        var iter = std.unicode.Utf8Iterator{ .bytes = haystack, .i = 0 };
+        var byte_start: usize = 0;
+        while (iter.nextCodepoint()) |_| {
+            try out.appendSlice(alloc, haystack[byte_start..iter.i]);
+            try out.appendSlice(alloc, replacement);
+            byte_start = iter.i;
+        }
+        return try out.toOwnedSlice(alloc);
+    }
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(alloc);
     var i: usize = 0;
@@ -498,7 +530,12 @@ pub fn replaceAllStringAlloc(alloc: std.mem.Allocator, haystack: []const u8, nee
 /// Replace the FIRST occurrence of `needle` with `replacement`.
 /// Allocation rules match `replaceAllStringAlloc`.
 pub fn replaceFirstStringAlloc(alloc: std.mem.Allocator, haystack: []const u8, needle: []const u8, replacement: []const u8) ![]u8 {
-    if (needle.len == 0) return try alloc.dupe(u8, haystack);
+    if (needle.len == 0) {
+        var out = try alloc.alloc(u8, replacement.len + haystack.len);
+        @memcpy(out[0..replacement.len], replacement);
+        @memcpy(out[replacement.len..], haystack);
+        return out;
+    }
     const hit = std.mem.find(u8, haystack, needle) orelse return try alloc.dupe(u8, haystack);
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(alloc);
@@ -666,10 +703,16 @@ test "replaceAllStringAlloc replaces every occurrence" {
     try testing.expectEqualStrings("heLLo worLd", out);
 }
 
-test "replaceAllStringAlloc returns copy when needle empty" {
+test "replaceAllStringAlloc inserts at every boundary when needle empty" {
     const out = try replaceAllStringAlloc(testing.allocator, "hi", "", "x");
     defer testing.allocator.free(out);
-    try testing.expectEqualStrings("hi", out);
+    try testing.expectEqualStrings("xhxix", out);
+}
+
+test "replaceFirstStringAlloc inserts before input when needle empty" {
+    const out = try replaceFirstStringAlloc(testing.allocator, "hi", "", "x");
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("xhi", out);
 }
 
 test "replaceFirstStringAlloc replaces only first" {

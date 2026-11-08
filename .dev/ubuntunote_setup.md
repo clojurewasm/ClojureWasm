@@ -6,7 +6,8 @@
 cw v1's Linux x86_64 verification host. **Native x86_64
 hardware** replaces the OrbStack `my-ubuntu-amd64` Rosetta-
 translated path retired per ADR-0049 (2026-05-28). Mirrors
-zwasm v2's identical setup (`~/Documents/MyProducts/zwasm_from_scratch/.dev/ubuntunote_setup.md`)
+zwasm v2's identical setup (`.dev/ubuntunote_setup.md` in the zwasm repo,
+<https://github.com/zwasm/zwasm/blob/main/.dev/ubuntunote_setup.md>)
 so the same Linux host serves both projects' gates.
 
 ## Why a real x86_64 box
@@ -56,7 +57,7 @@ Expected: `ok` + `nix (Determinate Nix ...) ...`.
 
 The full bring-up procedure (hostname, mDNS, apt baseline, Nix
 install) lives in
-[`zwasm_from_scratch/.dev/ubuntunote_setup.md`](../../zwasm_from_scratch/.dev/ubuntunote_setup.md)
+[zwasm `.dev/ubuntunote_setup.md`](https://github.com/zwasm/zwasm/blob/main/.dev/ubuntunote_setup.md)
 §§ 1-3 (Ubuntu hostname + mDNS + apt + Determinate Nix). cw v1
 inherits that host unchanged; only the **clone step** differs.
 
@@ -114,12 +115,12 @@ cw's per-commit gate is **Mac host only** as of 2026-05-28:
 
 `ubuntunote` ideally stays up 24/7 for cross-project gate
 availability. Sleep / Wake-on-LAN handling is documented in
-`zwasm_from_scratch/.dev/ubuntunote_setup.md` § Lifecycle (same
+zwasm's `.dev/ubuntunote_setup.md` § Lifecycle (same
 host, same procedure).
 
 ## Apt vs Nix decision
 
-See `zwasm_from_scratch/.dev/ubuntunote_setup.md` § "What apt vs
+See zwasm's `.dev/ubuntunote_setup.md` § "What apt vs
 Nix decision look like" for the full table. cw inherits the
 same split: apt for pre-Nix bootstrap + SSH + mDNS; Nix flake
 for Zig + zlinter + project-pinned dev tools.
@@ -140,7 +141,7 @@ Per ADR-0049:
 
 - ADR-0049 (this retirement).
 - `scripts/run_remote_ubuntu.sh` (the wrapper).
-- `~/Documents/MyProducts/zwasm_from_scratch/.dev/ubuntunote_setup.md`
+- zwasm's `.dev/ubuntunote_setup.md`, <https://github.com/zwasm/zwasm/blob/main/.dev/ubuntunote_setup.md>
   (full Ubuntu bring-up procedure; cw inherits sections 1-3).
 - `.dev/orbstack_setup.md` (deprecated dev-convenience host).
 - D-120 (CI Linux gate activation; opportunistic).

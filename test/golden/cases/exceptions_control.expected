@@ -1,0 +1,11 @@
+--- exit ---
+0
+--- stdout ---
+finally-1
+1
+finally-2
+[:info "x" {:a 1}]
+"Divide by zero"
+"caught: plain"
+{:depth 1}
+--- stderr ---

@@ -15,9 +15,14 @@
 //!
 //! Methods (D-431 per-class completeness): <init> + append (+ sub-range arity) /
 //! toString / length / isEmpty / charAt / deleteCharAt / insert / setLength /
-//! reverse. The index/mutate methods are codepoint-indexed (ADR-0014, like
-//! String); `.length` returns BYTE length (pre-existing; == codepoint count for
-//! ASCII, the common StringBuilder content).
+//! reverse / subSequence / substring. Every index and length is a codepoint
+//! count (ADR-0014, like String).
+//!
+//! Of the interfaces cljw knows, a StringBuilder implements java.lang.CharSequence
+//! alone. The descriptor declares it (`host_supertypes`, which `instance?`
+//! reads), and length / charAt / subSequence are also registered under the
+//! `CharSequence` protocol, which is how `seq` / `count` / `nth` reach them
+//! (runtime/char_sequence.zig, clj RT's CharSequence arms).
 
 const std = @import("std");
 const host_api = @import("../_host_api.zig");
@@ -30,13 +35,14 @@ const error_catalog = @import("../../error/catalog.zig");
 const host_instance = @import("../../host_instance.zig");
 const string_collection = @import("../../collection/string.zig");
 const print_mod = @import("../../print.zig");
+const char_sequence = @import("../../char_sequence.zig");
 
 const ByteList = std.ArrayList(u8);
 
 var sb_descriptor: ?*const type_descriptor.TypeDescriptor = null;
 
 fn listOf(recv: Value) *ByteList {
-    return @ptrFromInt(host_instance.asHostInstance(recv).state[0]);
+    return @ptrFromInt(@as(usize, @intCast(host_instance.asHostInstance(recv).state[0])));
 }
 
 /// Append `v`'s `str`-rendering to `lp`. Shared by `<init>` (1-arg) and append.
@@ -44,7 +50,15 @@ fn appendStr(rt: *Runtime, env: *Env, lp: *ByteList, v: Value) !void {
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     defer aw.deinit();
     try print_mod.writeStrValue(rt, env, &aw.writer, v);
-    try lp.appendSlice(rt.gc.infra, aw.writer.buffered());
+    try appendCharged(rt, lp, aw.writer.buffered());
+}
+
+/// Append `bytes` to `lp`, charging any buffer growth to the collect trigger:
+/// the builder's cell is a few words however large the buffer gets.
+fn appendCharged(rt: *Runtime, lp: *ByteList, bytes: []const u8) !void {
+    const before = lp.capacity;
+    try lp.appendSlice(rt.gc.infra, bytes);
+    if (lp.capacity > before) rt.gc.noteOwnedAlloc(lp.capacity - before);
 }
 
 /// `(StringBuilder.)` / `(StringBuilder. "seed")` / `(StringBuilder. n)` —
@@ -84,7 +98,7 @@ fn append(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
     const to = byteOffsetOfCodepoint(s, to_i);
     if (from_i < 0 or to_i < from_i or from == null or to == null)
         return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/append" });
-    try listOf(args[0]).appendSlice(rt.gc.infra, s[from.?..to.?]);
+    try appendCharged(rt, listOf(args[0]), s[from.?..to.?]);
     return args[0];
 }
 
@@ -107,12 +121,13 @@ fn toString(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return string_collection.alloc(rt, listOf(args[0]).items);
 }
 
-/// `(.length sb)` — byte length of the buffer.
+/// `(.length sb)` — the codepoint count, the unit every other index here and
+/// String's `.length` use (ADR-0014). JVM ref: java.lang.StringBuilder#length.
 fn length(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("length", args, 1, loc);
-    return Value.initInteger(@intCast(listOf(args[0]).items.len));
+    return Value.initInteger(@intCast(string_collection.codepointCount(listOf(args[0]).items)));
 }
 
 /// `(.isEmpty sb)` — whether the buffer has length zero (JVM 15+).
@@ -220,13 +235,52 @@ fn reverse(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return args[0];
 }
 
+/// `(.subSequence sb start end)` — the `[start, end)` codepoint slice as a
+/// String (the JVM's StringBuilder answers a String here too). Out of range,
+/// negative or inverted bounds raise, as clj's StringIndexOutOfBounds does.
+/// JVM ref: java.lang.StringBuilder#subSequence.
+fn subSequence(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("subSequence", args, 3, loc);
+    return codepointSlice(rt, args[0], args[1], args[2], "java.lang.StringBuilder/subSequence", loc);
+}
+
+/// `(.substring sb start)` / `(.substring sb start end)` — the codepoint slice
+/// from `start` (to the end, or to `end`) as a String.
+/// JVM ref: java.lang.StringBuilder#substring.
+fn substring(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len != 2 and args.len != 3)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = ".substring", .got = args.len, .min = 2, .max = 3 });
+    return codepointSlice(rt, args[0], args[1], if (args.len == 3) args[2] else null, "java.lang.StringBuilder/substring", loc);
+}
+
+/// The `[start, end)` codepoint slice of the buffer as a fresh String; a null
+/// `end_v` means the end of the buffer.
+fn codepointSlice(rt: *Runtime, recv: Value, start_v: Value, end_v: ?Value, fn_name: []const u8, loc: SourceLocation) anyerror!Value {
+    const bad = if (start_v.tag() != .integer) start_v else if (end_v != null and end_v.?.tag() != .integer) end_v.? else null;
+    if (bad) |b| return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = fn_name, .actual = @tagName(b.tag()) });
+    const s = listOf(recv).items;
+    const start_i = start_v.asInteger();
+    const end_i: i64 = if (end_v) |e| e.asInteger() else start_i;
+    const from = byteOffsetOfCodepoint(s, start_i);
+    const to = if (end_v != null) byteOffsetOfCodepoint(s, end_i) else s.len;
+    if (from == null or to == null or end_i < start_i)
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = fn_name });
+    return string_collection.alloc(rt, s[from.?..to.?]);
+}
+
 fn finaliseState(infra: std.mem.Allocator, state: *[host_instance.STATE_WORDS]u64) void {
-    const lp: *ByteList = @ptrFromInt(state[0]);
+    const lp: *ByteList = @ptrFromInt(@as(usize, @intCast(state[0])));
     lp.deinit(infra);
     infra.destroy(lp);
 }
 
-const MethodSpec = struct { name: []const u8, f: *const fn (*Runtime, *Env, []const Value, SourceLocation) anyerror!Value };
+const MethodSpec = struct {
+    name: []const u8,
+    proto: []const u8 = "",
+    f: *const fn (*Runtime, *Env, []const Value, SourceLocation) anyerror!Value,
+};
 
 const METHODS = [_]MethodSpec{
     .{ .name = "<init>", .f = &initSb },
@@ -239,6 +293,14 @@ const METHODS = [_]MethodSpec{
     .{ .name = "insert", .f = &insert },
     .{ .name = "setLength", .f = &setLength },
     .{ .name = "reverse", .f = &reverse },
+    .{ .name = "subSequence", .f = &subSequence },
+    .{ .name = "substring", .f = &substring },
+    // java.lang.CharSequence: the same members under the protocol the neutral
+    // seq / count / nth boundaries dispatch on (char_sequence.zig). A builder
+    // is NOT Seqable, Counted or Indexed, in clj as here.
+    .{ .name = "-cs-length", .proto = char_sequence.PROTOCOL, .f = &length },
+    .{ .name = "-char-at", .proto = char_sequence.PROTOCOL, .f = &charAt },
+    .{ .name = "-sub-sequence", .proto = char_sequence.PROTOCOL, .f = &subSequence },
 };
 
 fn initSbDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
@@ -248,7 +310,7 @@ fn initSbDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator)
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, METHODS.len);
     for (METHODS, 0..) |m, i| {
         entries[i] = .{
-            .protocol_name = "",
+            .protocol_name = m.proto,
             .method_name = try gpa.dupe(u8, m.name),
             .method_val = Value.initBuiltinFn(m.f),
         };
@@ -270,6 +332,8 @@ var descriptor: type_descriptor.TypeDescriptor = .{
     .field_layout = null,
     .protocol_impls = &.{},
     .method_table = &.{},
+    // (instance? CharSequence sb) reads this declaration, not the method table.
+    .host_supertypes = &.{"java.lang.CharSequence"},
     .parent = null,
     .meta = .nil_val,
 };

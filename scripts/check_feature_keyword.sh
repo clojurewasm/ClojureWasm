@@ -18,7 +18,7 @@
 # wrap helpers (e.g., runtime/collection/string.zig) are
 # legitimately reused across features.
 #
-# See .claude/rules/feature_name_consistency.md R1 for the contract.
+# See memory 20260909234605-3f9e2aa8 (feature_name_consistency) R1 for the contract.
 #
 # Modes:
 #   bash scripts/check_feature_keyword.sh           informational
@@ -168,8 +168,8 @@ while IFS='|' read -r fqn keyword slot path; do
     [ -z "$fqn" ] && continue
 
     # Keyword shape validation — must match the rule in
-    # .claude/rules/feature_name_consistency.md R1.
-    if ! printf '%s' "$keyword" | grep -qE '^[a-z][a-z0-9_]{2,30}$'; then
+    # memory 20260909234605-3f9e2aa8 (feature_name_consistency) R1.
+    if ! grep -qE '^[a-z][a-z0-9_]{2,30}$' <<<"$keyword"; then
         echo "$fqn: G3/ADR-0029 D4: invalid keyword '$keyword' (must match ^[a-z][a-z0-9_]{2,30}$)" >> "$violations_file"
         continue
     fi

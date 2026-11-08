@@ -15,6 +15,25 @@
 
 const std = @import("std");
 
+/// Read `fr` to EOF into a freshly-allocated slice the caller owns. The
+/// reader's reported size is a CAPACITY hint only, never a stop: procfs,
+/// sysfs and FIFOs stat as size 0 and still yield bytes, and the positional
+/// reader's size-aware fast path returns an empty read for them. The
+/// `*_simple` modes stop only on a real zero-byte read, and a reader that
+/// cannot seek (a pipe) falls back to streaming on its own.
+pub fn readToEnd(fr: *std.Io.File.Reader, allocator: std.mem.Allocator) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    if (fr.getSize()) |size| {
+        if (size > 0) try out.ensureTotalCapacityPrecise(allocator, @intCast(size));
+    } else |_| {
+        // No size to pre-allocate for (a pipe, a socket): grow as bytes arrive.
+    }
+    fr.mode = fr.mode.toSimple();
+    try fr.interface.appendRemaining(allocator, &out, .unlimited);
+    return out.toOwnedSlice(allocator);
+}
+
 /// Read the entire file at `path` into a freshly-allocated byte
 /// slice. Caller owns the returned slice and must free it via
 /// `allocator`.
@@ -23,7 +42,7 @@ pub fn readAll(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![]u8
     defer file.close(io);
     var read_buf: [4096]u8 = undefined;
     var file_reader = file.reader(io, &read_buf);
-    return try file_reader.interface.allocRemaining(allocator, .unlimited);
+    return readToEnd(&file_reader, allocator);
 }
 
 /// Write `content` to `path`, replacing any existing file.
@@ -189,6 +208,36 @@ fn expectJailOk(root: ?[]const u8, path: []const u8, want: []const u8) !void {
     const got = (try jailResolve(testing.allocator, root, path)) orelse return error.TestUnexpectedNull;
     defer testing.allocator.free(got);
     try testing.expectEqualStrings(want, got);
+}
+
+test "readToEnd treats the reported size as a hint, not a stop" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    const io = th.io();
+
+    const p = "/tmp/cljw_file_io_size0_hint";
+    defer std.Io.Dir.cwd().deleteFile(io, p) catch {};
+    try writeAll(io, p, "hello world");
+
+    const f = try std.Io.Dir.cwd().openFile(io, p, .{});
+    defer f.close(io);
+    var buf: [4096]u8 = undefined;
+    // A readable file that CLAIMS size 0 is the procfs shape without procfs,
+    // so this runs on every host.
+    var fr = std.Io.File.Reader.initSize(f, io, &buf, 0);
+    const got = try readToEnd(&fr, testing.allocator);
+    defer testing.allocator.free(got);
+    try testing.expectEqualStrings("hello world", got);
+}
+
+test "readAll reads a procfs file whose stat size is 0" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    const io = th.io();
+    const content = try readAll(io, testing.allocator, "/proc/self/stat");
+    defer testing.allocator.free(content);
+    try testing.expect(content.len > 0);
 }
 
 test "jailResolve: null root is a no-op (jail off) → returns null" {

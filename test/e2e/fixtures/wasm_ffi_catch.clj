@@ -25,6 +25,12 @@
 (println "bad-opts:"
   (try (wasm/load "docs/examples/wasm/add.wasm" {:fuel "x"}) "NOT-CAUGHT"
     (catch Throwable _ "CAUGHT")))
+(println "wasi-load-split:"
+  (try (wasm/load "docs/examples/wasm/add.wasm" {:wasi {}}) "NOT-CAUGHT"
+    (catch IllegalArgumentException _ "CAUGHT")))
+(println "wasi-load-nil-split:"
+  (try (wasm/load "docs/examples/wasm/add.wasm" {:wasi nil}) "NOT-CAUGHT"
+    (catch IllegalArgumentException _ "CAUGHT")))
 (println "bad-path:"
   (try (wasm/load 42) "NOT-CAUGHT"
     (catch ClassCastException _ "CAUGHT")))

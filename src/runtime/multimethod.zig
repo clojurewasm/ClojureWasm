@@ -41,6 +41,28 @@ const dispatch_mod = @import("dispatch.zig");
 const td_mod = @import("type_descriptor.zig");
 const class_name_mod = @import("class_name.zig");
 const vector_mod = @import("collection/vector.zig");
+const sub_vector_mod = @import("collection/sub_vector.zig");
+
+/// Count of a vector-like dispatch value (`.vector` or `.sub_vector`).
+fn vmCount(v: Value) u32 {
+    return switch (v.tag()) {
+        .sub_vector => sub_vector_mod.count(v),
+        else => vector_mod.count(v),
+    };
+}
+
+/// `nth` into a vector-like dispatch value.
+fn vmNth(v: Value, i: u32) Value {
+    return switch (v.tag()) {
+        .sub_vector => sub_vector_mod.nth(v, i),
+        else => vector_mod.nth(v, i),
+    };
+}
+
+/// A `.vector` or `.sub_vector` — both are element-wise-dispatchable vectors.
+fn isVecLike(t: Value.Tag) bool {
+    return t == .vector or t == .sub_vector;
+}
 const gc_heap_mod = @import("gc/gc_heap.zig");
 const mark_sweep = @import("gc/mark_sweep.zig");
 const tag_ops = @import("gc/tag_ops.zig");
@@ -131,13 +153,11 @@ pub fn isPreferred(prefer_table: Value, x: Value, y: Value) !bool {
     return try set_mod.contains(preferred_over, y);
 }
 
-/// cw v1 `isa?` check: equality + hierarchy ancestors-map lookup +
-/// TypeDescriptor parent walk. Mirrors `clojure.core/isa?` steps
-/// 1 + 3. Step 2 (`Class.isAssignableFrom`) and step 4 (`supers`
-/// walk) have no JVM-direct equivalent in cw v1 per ADR-0007
-/// Option β + `.claude/rules/no_jvm_specific_assumption.md` — the
-/// `typeDescriptorIsa` walk is the cw-side replacement (DIVERGENCE
-/// from JVM class hierarchy).
+/// cw v1 `isa?` check for multimethod dispatch, mirroring `clojure.core/isa?`:
+/// equality, element-wise vectors, the class-vs-class step through the shared
+/// `class_name.classIsaOf` (clj's `Class.isAssignableFrom` step, the same
+/// function the `isa?` primitive calls), then the `derive` hierarchy's
+/// ancestors map.
 ///
 /// `hierarchy_ancestors` is the `:ancestors` sub-map of a
 /// hierarchy struct: `{child #{ancestor1 ancestor2 ...}, ...}`.
@@ -152,71 +172,39 @@ pub fn isaCheck(hierarchy_ancestors: Value, child: Value, parent: Value) !bool {
     // is what `(defmethod g [::a ::b] …)` / `[Number Number]` dispatch needs.
     // Terminal: equal-length vectors yield the element-wise verdict, mismatched
     // lengths are not `isa?` (clj parity). A non-vector pair falls through.
-    if (child.tag() == .vector and parent.tag() == .vector) {
-        const n = vector_mod.count(child);
-        if (n != vector_mod.count(parent)) return false;
+    if (isVecLike(child.tag()) and isVecLike(parent.tag())) {
+        const n = vmCount(child);
+        if (n != vmCount(parent)) return false;
         var i: u32 = 0;
         while (i < n) : (i += 1) {
-            if (!(try isaCheck(hierarchy_ancestors, vector_mod.nth(child, i), vector_mod.nth(parent, i)))) return false;
+            if (!(try isaCheck(hierarchy_ancestors, vmNth(child, i), vmNth(parent, i)))) return false;
         }
         return true;
     }
 
     // D-464: a class VALUE child isa? a class VALUE parent via the class hierarchy
     // (Long isa? Number, vector-class isa? Sequential), through the SAME shared
-    // `class_name.classIsa` the `isa?` primitive uses. Only short-circuits on a
-    // true match; a class can ALSO sit in an ad-hoc `derive` hierarchy, so a
+    // `class_name.classIsaOf` the `isa?` primitive uses, so a method keyed by a
+    // user class catches only that class, never a same-named redefinition
+    // vintage or another namespace's namesake (ADR-0201). Only short-circuits on
+    // a true match; a class can ALSO sit in an ad-hoc `derive` hierarchy, so a
     // non-match falls through to the ancestors lookup below.
     if (child.tag() == .type_descriptor and parent.tag() == .type_descriptor) {
-        const child_fqcn = td_mod.asTypeDescriptorRef(child).fqcn orelse "";
-        const parent_fqcn = td_mod.asTypeDescriptorRef(parent).fqcn orelse "";
-        if (class_name_mod.classIsa(child_fqcn, parent_fqcn)) return true;
+        const child_td = td_mod.asTypeDescriptorRef(child);
+        const parent_td = td_mod.asTypeDescriptorRef(parent);
+        if (class_name_mod.classIsaOf(child_td, parent_td)) return true;
     }
 
-    // Row 7.5 cycle 6 — D-082 discharge: typed_instance + reified_instance
-    // children walk their descriptor chain. JVM `clojure.core/isa?` step 2
-    // (`Class.isAssignableFrom`) + step 4 (`supers` walk) map onto:
-    //   - `descriptor.fqcn` ≡ JVM Class.name
-    //   - `descriptor.protocol_impls` ≡ JVM implementedInterfaces walk
-    //   - `descriptor.parent` ≡ JVM superclass chain
-    // Parent symbol/keyword name is matched against each. Triggered only
-    // when child is a TypedInstance / ReifiedInstance and parent is
-    // a Named (symbol or keyword) — the JVM analogue's input shape.
-    if ((child.tag() == .typed_instance or child.tag() == .reified_instance) and
-        (parent.tag() == .symbol or parent.tag() == .keyword))
-    {
-        const parent_name: []const u8 = if (parent.tag() == .symbol)
-            symbol.asSymbol(parent).name
-        else
-            keyword.asKeyword(parent).name;
-        const child_desc: *const td_mod.TypeDescriptor = if (child.tag() == .typed_instance)
-            child.decodePtr(*const td_mod.TypedInstance).descriptor
-        else
-            child.decodePtr(*const td_mod.ReifiedInstance).descriptor;
-        if (typeDescriptorIsa(child_desc, parent_name)) return true;
-    }
-
+    // An INSTANCE child (a `(defmulti m identity)` dispatch value) is related
+    // to a symbol or keyword parent only through the `derive` hierarchy below,
+    // never by its class's simple name or a protocol its type declares:
+    // clj's isa? has no such step, and `(isa? (->R 1) 'R)` is false here too
+    // (ADR-0201).
     if (hierarchy_ancestors.tag() == .nil) return false;
 
     const child_ancestors = try map_mod.get(hierarchy_ancestors, child);
     if (child_ancestors.tag() != .hash_set) return false;
     return try set_mod.contains(child_ancestors, parent);
-}
-
-/// Walk a descriptor's `fqcn` + `protocol_impls` + `parent` chain
-/// looking for a match against `parent_name`. Row 7.5 cycle 6 D-082
-/// discharge — replaces JVM `Class.isAssignableFrom` + `supers` walk
-/// per `.claude/rules/no_jvm_specific_assumption.md` (cw-side
-/// equivalent of class hierarchy via TypeDescriptor).
-fn typeDescriptorIsa(td: *const td_mod.TypeDescriptor, parent_name: []const u8) bool {
-    if (td.fqcn) |fqcn| {
-        if (std.mem.eql(u8, fqcn, parent_name)) return true;
-    }
-    for (td.protocol_impls) |impl| {
-        if (std.mem.eql(u8, impl, parent_name)) return true;
-    }
-    if (td.parent) |p| return typeDescriptorIsa(p, parent_name);
-    return false;
 }
 
 /// Dereference an IRef-shape hierarchy reference to its held map.
@@ -287,32 +275,40 @@ pub fn getMethod(
     // Cycle 2-3 hierarchy resolution: collect isa? candidates;
     // if ≥ 2 use `dominates` (prefer-method ∪ isa?) to pick the
     // best; if no dominator survives the walk → raise ambiguity.
-    var best_key: ?Value = null;
-    var best_method: ?Value = null;
-    var ambiguous = false;
-    if (mf.method_table.tag() == .array_map) {
-        const am = mf.method_table.decodePtr(*const map_mod.ArrayMap);
-        var i: u32 = 0;
-        while (i < am.count) : (i += 1) {
-            const key = am.entries[2 * i];
-            if (@intFromEnum(key) == @intFromEnum(dispatch_val)) continue;
-            if (!(try isaCheck(ancestors, dispatch_val, key))) continue;
+    // Iterate via the generic `forEachEntry` so a method_table that has
+    // promoted past the ArrayMap ceiling (9+ defmethods) is walked too —
+    // the old array_map-only decode silently skipped the whole isa? walk
+    // past that boundary, so hierarchy dispatch vanished at the 9th method
+    // while exact-match kept working (Discussion #12 bug class).
+    const IsaWalk = struct {
+        prefer_table: Value,
+        ancestors: Value,
+        dispatch_val: Value,
+        best_key: ?Value = null,
+        best_method: ?Value = null,
+        ambiguous: bool = false,
+        fn visit(c: *@This(), key: Value, method: Value) anyerror!void {
+            if (@intFromEnum(key) == @intFromEnum(c.dispatch_val)) return;
+            if (!(try isaCheck(c.ancestors, c.dispatch_val, key))) return;
 
-            if (best_key) |bk| {
-                if (try dominates(mf.prefer_table, ancestors, key, bk)) {
-                    best_key = key;
-                    best_method = am.entries[2 * i + 1];
-                    ambiguous = false;
-                } else if (!(try dominates(mf.prefer_table, ancestors, bk, key))) {
-                    ambiguous = true;
+            if (c.best_key) |bk| {
+                if (try dominates(c.prefer_table, c.ancestors, key, bk)) {
+                    c.best_key = key;
+                    c.best_method = method;
+                    c.ambiguous = false;
+                } else if (!(try dominates(c.prefer_table, c.ancestors, bk, key))) {
+                    c.ambiguous = true;
                 }
             } else {
-                best_key = key;
-                best_method = am.entries[2 * i + 1];
+                c.best_key = key;
+                c.best_method = method;
             }
         }
-    }
-    if (ambiguous) {
+    };
+    var walk: IsaWalk = .{ .prefer_table = mf.prefer_table, .ancestors = ancestors, .dispatch_val = dispatch_val };
+    try map_mod.forEachEntry(mf.method_table, &walk, IsaWalk.visit);
+    const best_method = walk.best_method;
+    if (walk.ambiguous) {
         const name_sym = symbol.asSymbol(mf.name);
         return error_catalog.raise(.multimethod_ambiguous_dispatch, loc, .{
             .name = name_sym.name,
@@ -515,74 +511,31 @@ test "isaCheck: nil hierarchy falls back to equality only" {
     try testing.expect(!(try isaCheck(Value.nil_val, a, b)));
 }
 
-test "isaCheck: typed_instance child matches descriptor.fqcn against Symbol parent (D-082)" {
+test "isaCheck: an instance child is not isa? a Named parent spelled like its class (ADR-0201)" {
     var fix: TestFixture = undefined;
     fix.init(testing.allocator);
     defer fix.deinit();
 
-    // Synthetic descriptor with fqcn "Foo".
+    // clj's isa? relates an INSTANCE only by equality (derive rejects one as a
+    // child), so neither its class's simple name nor a protocol its type
+    // declares makes `(defmulti m identity)` catch it under that name.
+    const impls = [_][]const u8{"Drawable"};
     const td = try testing.allocator.create(td_mod.TypeDescriptor);
     defer testing.allocator.destroy(td);
     td.* = .{
         .fqcn = "Foo",
         .kind = .defrecord,
         .field_layout = null,
-        .protocol_impls = &.{},
-        .method_table = &.{},
-        .parent = null,
-        .meta = Value.nil_val,
-    };
-    const inst_val = try td_mod.allocInstance(&fix.rt, td, &.{});
-    const foo_sym = try symbol.intern(&fix.rt, null, "Foo");
-    const bar_sym = try symbol.intern(&fix.rt, null, "Bar");
-    try testing.expect(try isaCheck(Value.nil_val, inst_val, foo_sym));
-    try testing.expect(!(try isaCheck(Value.nil_val, inst_val, bar_sym)));
-}
-
-test "isaCheck: typed_instance child walks protocol_impls list (D-082)" {
-    var fix: TestFixture = undefined;
-    fix.init(testing.allocator);
-    defer fix.deinit();
-
-    const impls = [_][]const u8{ "Drawable", "Serializable" };
-    const td = try testing.allocator.create(td_mod.TypeDescriptor);
-    defer testing.allocator.destroy(td);
-    td.* = .{
-        .fqcn = "Shape",
-        .kind = .defrecord,
-        .field_layout = null,
         .protocol_impls = &impls,
         .method_table = &.{},
         .parent = null,
         .meta = Value.nil_val,
     };
     const inst_val = try td_mod.allocInstance(&fix.rt, td, &.{});
-    const drawable_sym = try symbol.intern(&fix.rt, null, "Drawable");
-    const unknown_sym = try symbol.intern(&fix.rt, null, "Unknown");
-    try testing.expect(try isaCheck(Value.nil_val, inst_val, drawable_sym));
-    try testing.expect(!(try isaCheck(Value.nil_val, inst_val, unknown_sym)));
-}
-
-test "isaCheck: reified_instance child walks descriptor like typed_instance (D-082)" {
-    var fix: TestFixture = undefined;
-    fix.init(testing.allocator);
-    defer fix.deinit();
-
-    const impls = [_][]const u8{"IProto"};
-    const td = try testing.allocator.create(td_mod.TypeDescriptor);
-    defer testing.allocator.destroy(td);
-    td.* = .{
-        .fqcn = null,
-        .kind = .reify_anon,
-        .field_layout = null,
-        .protocol_impls = &impls,
-        .method_table = &.{},
-        .parent = null,
-        .meta = Value.nil_val,
-    };
-    const inst_val = try td_mod.allocReifiedInstance(&fix.rt, td);
-    const iproto_sym = try symbol.intern(&fix.rt, null, "IProto");
-    try testing.expect(try isaCheck(Value.nil_val, inst_val, iproto_sym));
+    try testing.expect(!(try isaCheck(Value.nil_val, inst_val, try symbol.intern(&fix.rt, null, "Foo"))));
+    try testing.expect(!(try isaCheck(Value.nil_val, inst_val, try keyword.intern(&fix.rt, null, "Foo"))));
+    try testing.expect(!(try isaCheck(Value.nil_val, inst_val, try symbol.intern(&fix.rt, null, "Drawable"))));
+    try testing.expect(try isaCheck(Value.nil_val, inst_val, inst_val));
 }
 
 test "getMethod: hierarchy walk returns ancestor's method on isa? match" {

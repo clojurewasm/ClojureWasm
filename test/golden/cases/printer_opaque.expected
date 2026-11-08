@@ -1,0 +1,9 @@
+--- exit ---
+0
+--- stdout ---
+Long Double String Keyword Symbol nil
+PersistentVector PersistentList PersistentArrayMap PersistentHashSet LongRange LazySeq
+Pattern Atom Var Fn
+true
+"aaa" ("1" "22" "333")
+--- stderr ---

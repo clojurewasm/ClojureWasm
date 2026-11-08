@@ -25,7 +25,21 @@
       (clojure.string/replace "_EQ_" "=")
       (clojure.string/replace "_PLUS_" "+")
       (clojure.string/replace "_SLASH_" "/")
+      (clojure.string/replace "$" "/")
       (clojure.string/replace "_" "-")))
+
+;; `stack-element-str` renders one cljw stack frame map {:ns :fn :file :line}
+;; as `<ns>/<fn> (<file>:<line>)`. clj takes a JVM StackTraceElement and yields
+;; `class.method (file:line)` for a Java frame or a demunged `ns/fn` for a
+;; Clojure frame; cljw has no StackTraceElement and only Clojure frames
+;; (ADR-0059 / ADR-0120), so it takes the cljw-native frame map and produces
+;; exactly clj's Clojure-frame form. Same render string as
+;; clojure.stacktrace/print-trace-element (both fixed by ADR-0140).
+(defn stack-element-str
+  "Returns a string representation of one cljw stack frame map
+  {:ns :fn :file :line}, as `<ns>/<fn> (<file>:<line>)`."
+  [{:keys [ns fn file line]}]
+  (str (when ns (str ns "/")) fn " (" (or file "") ":" line ")"))
 
 (defn dir-fn
   "Returns a sorted seq of symbols naming public vars in

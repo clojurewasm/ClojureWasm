@@ -28,3 +28,9 @@
 ;;=> "a and b"
 (format "%c" \A)
 ;;=> "A"
+(format "%C" \a)
+;;=> "A"
+(format "%c" nil)
+;;=> "null"
+(format "%C" nil)
+;;=> "NULL"

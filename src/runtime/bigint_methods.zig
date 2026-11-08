@@ -22,8 +22,8 @@ const Runtime = @import("runtime.zig").Runtime;
 const Env = @import("env.zig").Env;
 const SourceLocation = @import("error/info.zig").SourceLocation;
 const error_catalog = @import("error/catalog.zig");
-const type_descriptor = @import("type_descriptor.zig");
 const big_int = @import("numeric/big_int.zig");
+const number_methods = @import("number_methods.zig");
 const Managed = std.math.big.int.Managed;
 
 fn requireBigInt(v: Value, name: []const u8, loc: SourceLocation) !void {
@@ -301,10 +301,7 @@ fn divideFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 }
 
 pub fn installNativeMethods(rt: *Runtime) !void {
-    const td = try rt.nativeDescriptor(.big_int);
-    if (td.method_table.len != 0) return; // idempotent re-run
-    const gpa = rt.gc.infra;
-    const specs = .{
+    const own = .{
         .{ "abs", &absFn },
         .{ "negate", &negateFn },
         .{ "toBigInteger", &toBigIntegerFn },
@@ -321,13 +318,7 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "multiply", &multiplyFn },
         .{ "divide", &divideFn },
     };
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
-    inline for (specs, 0..) |spec, i| {
-        entries[i] = .{
-            .protocol_name = "",
-            .method_name = try gpa.dupe(u8, spec[0]),
-            .method_val = Value.initBuiltinFn(spec[1]),
-        };
-    }
-    td.method_table = entries;
+    // The java.lang.Number surface (the xxxValue narrowings, compareTo,
+    // equals, hashCode) is shared with Long / Double / Ratio (number_methods.zig).
+    try number_methods.installSpecs(rt, try rt.nativeDescriptor(.big_int), own ++ number_methods.specs);
 }

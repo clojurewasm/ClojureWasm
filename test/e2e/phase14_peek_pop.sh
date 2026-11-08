@@ -15,6 +15,10 @@ assert_eq 'peek_lempty' "$("$BIN" -e '(peek (list))')"      'nil'
 assert_eq 'pop_vec'    "$("$BIN" -e '(pop [1 2 3])')"       '[1 2]'
 assert_eq 'pop_vone'   "$("$BIN" -e '(pop [9])')"           '[]'
 assert_eq 'pop_list'   "$("$BIN" -e '(pop (list 1 2 3))')"  '(2 3)'
+# PersistentList.conj must preserve the stack-capable list class. Public
+# `(cons x non-nil)` is a distinct clojure.lang.Cons and is not a stack.
+assert_eq 'peek_conj_list' "$("$BIN" -e '(peek (conj (list) :a))')" ':a'
+assert_eq 'conj_list_identity' "$("$BIN" -e '(list? (conj (list) :a))')" 'true'
 out="$("$BIN" -e '(pop [])' 2>&1 || true)"
 [[ "$out" == *"Can't pop empty"* ]] || fail "pop_empty: got '$out'"
 echo "PASS pop_empty -> throws"
@@ -29,4 +33,4 @@ for x in '(peek "abc")' '(peek (map inc [1 2]))' '(peek (range 3))' '(pop "abc")
 done
 echo 'PASS nonstack_peek_pop -> throws (string/lazy/range)'
 
-echo "OK — phase14_peek_pop smoke (11 cases) green"
+echo "OK — phase14_peek_pop smoke (13 cases) green"

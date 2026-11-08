@@ -14,15 +14,17 @@
 //! cljw is JVM-less and single-process: there is no second `clojure.main` to
 //! exec into, so the combined launcher + main grammar runs in this one process
 //! (the cw v0 shape). The run is synthesized into a Clojure source string and
-//! handed to `runner.runSource` with `print_results=false` — `clojure.main`
-//! never prints a `-main` / `:exec-fn` result (only `-e` prints, handled by the
-//! standalone-`-e` branch). This module fixes three earlier gaps: args reach
-//! `-main`; append semantics; EDN value coercion.
+//! handed to the selected source runner. Normal mode uses `runner.runSource`
+//! with `print_results=false`; `--compare` uses `runner.runSourceCompare`.
+//! `clojure.main` never prints a `-main` / `:exec-fn` result (only `-e` prints,
+//! handled by the standalone-`-e` branch). This module fixes three earlier
+//! gaps: args reach `-main`; append semantics; EDN value coercion.
 
 const std = @import("std");
 const parse = @import("parse.zig");
 const runner = @import("../runner.zig");
 const form_mod = @import("../../eval/form.zig");
+const file_io = @import("../../runtime/file_io.zig");
 
 pub const Mode = enum { main, exec };
 
@@ -42,14 +44,15 @@ pub fn run(
     alias_names: []const []const u8,
     run_args: []const []const u8,
     load_paths: []const []const u8,
+    compare_mode: bool,
     /// Deploy-mode FS jail root (`CLJW_FS_ROOT`), threaded to every `runSource`
     /// so a `-M`/`-X` deploy run is confined too — never silently bypassed
     /// (ADR-0123 / SE-6/7). null = unconfined.
     fs_jail_root: ?[]const u8,
 ) !void {
     switch (mode) {
-        .main => try runMain(io, gpa, arena, stdout, stderr, cfg, alias_names, run_args, load_paths, fs_jail_root),
-        .exec => try runExec(io, gpa, arena, stdout, stderr, cfg, alias_names, run_args, load_paths, fs_jail_root),
+        .main => try runMain(io, gpa, arena, stdout, stderr, cfg, alias_names, run_args, load_paths, compare_mode, fs_jail_root),
+        .exec => try runExec(io, gpa, arena, stdout, stderr, cfg, alias_names, run_args, load_paths, compare_mode, fs_jail_root),
     }
 }
 
@@ -65,6 +68,7 @@ fn runMain(
     alias_names: []const []const u8,
     run_args: []const []const u8,
     load_paths: []const []const u8,
+    compare_mode: bool,
     fs_jail_root: ?[]const u8,
 ) !void {
     // Effective opts = alias :main-opts (last selected alias wins) ++ user args.
@@ -89,7 +93,7 @@ fn runMain(
         }
         const ns = eff[1];
         const src = try synthMainNs(arena, ns, eff[2..]);
-        try runner.runSource(io, gpa, arena, stdout, stderr, src, "<-M>", load_paths, false, fs_jail_root);
+        try runResolvedSource(io, gpa, arena, stdout, stderr, src, "<-M>", load_paths, false, compare_mode, fs_jail_root);
     } else if (std.mem.eql(u8, head, "-e") or std.mem.eql(u8, head, "--eval")) {
         if (eff.len < 2) {
             try stderr.writeAll("-e requires an expression argument\n");
@@ -97,7 +101,7 @@ fn runMain(
             std.process.exit(1);
         }
         // Standalone -e: print non-nil results, matching `cljw -e`.
-        try runner.runSource(io, gpa, arena, stdout, stderr, eff[1], "<-e>", load_paths, true, fs_jail_root);
+        try runResolvedSource(io, gpa, arena, stdout, stderr, eff[1], "<-e>", load_paths, true, compare_mode, fs_jail_root);
     } else if (std.mem.eql(u8, head, "-h") or std.mem.eql(u8, head, "--help") or std.mem.eql(u8, head, "-?")) {
         try stdout.writeAll(
             \\Usage under -M: cljw -M[:aliases] <main-opt> [args]
@@ -123,12 +127,12 @@ fn runMain(
         defer file.close(io);
         var file_buf: [4096]u8 = undefined;
         var file_reader = file.reader(io, &file_buf);
-        const file_src = try file_reader.interface.allocRemaining(arena, .unlimited);
+        const file_src = try file_io.readToEnd(&file_reader, arena);
         var aw: std.Io.Writer.Allocating = .init(arena);
         try writeClArgsSetter(&aw.writer, eff[1..]);
         try aw.writer.writeByte('\n');
         try aw.writer.writeAll(file_src);
-        try runner.runSource(io, gpa, arena, stdout, stderr, try aw.toOwnedSlice(), head, load_paths, false, fs_jail_root);
+        try runResolvedSource(io, gpa, arena, stdout, stderr, try aw.toOwnedSlice(), head, load_paths, false, compare_mode, fs_jail_root);
     }
 }
 
@@ -171,6 +175,7 @@ fn runExec(
     alias_names: []const []const u8,
     run_args: []const []const u8,
     load_paths: []const []const u8,
+    compare_mode: bool,
     fs_jail_root: ?[]const u8,
 ) !void {
     // A leading non-`:` token overrides the alias's :exec-fn; the rest are
@@ -193,7 +198,27 @@ fn runExec(
     }
 
     const src = try synthExec(arena, fn_sym, lastAliasExecArgs(cfg, alias_names), run_args[kv_start..], run_args);
-    try runner.runSource(io, gpa, arena, stdout, stderr, src, "<-X>", load_paths, false, fs_jail_root);
+    try runResolvedSource(io, gpa, arena, stdout, stderr, src, "<-X>", load_paths, false, compare_mode, fs_jail_root);
+}
+
+fn runResolvedSource(
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+    source: []const u8,
+    source_label: []const u8,
+    load_paths: []const []const u8,
+    print_results: bool,
+    compare_mode: bool,
+    fs_jail_root: ?[]const u8,
+) !void {
+    if (compare_mode) {
+        try runner.runSourceCompare(io, gpa, arena, stdout, stderr, source, source_label, load_paths, fs_jail_root);
+    } else {
+        try runner.runSource(io, gpa, arena, stdout, stderr, source, source_label, load_paths, print_results, fs_jail_root);
+    }
 }
 
 /// `(let [f (requiring-resolve 'ns/fn)] (if f (f (merge ALIAS_ARGS {CLI})) (throw …)))`.
@@ -275,7 +300,7 @@ fn findAlias(cfg: parse.DepsConfig, name: []const u8) ?parse.Alias {
 /// `-main` / script / exec-fn that reads `*command-line-args*` sees the trailing
 /// args (D-310). It sets the var ROOT rather than `binding`: cljw evals
 /// form-by-form, so a `binding` could not span a multi-form script.
-fn writeClArgsSetter(w: *std.Io.Writer, args: []const []const u8) !void {
+pub fn writeClArgsSetter(w: *std.Io.Writer, args: []const []const u8) !void {
     try w.writeAll("(clojure.core/alter-var-root (var clojure.core/*command-line-args*) (clojure.core/constantly ");
     if (args.len == 0) {
         try w.writeAll("nil");

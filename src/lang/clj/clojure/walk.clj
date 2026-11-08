@@ -100,13 +100,8 @@
   (fn* [form] (postwalk (fn* [x] (println x) x) form)))
 
 ;; macroexpand-all: recursively macroexpand all forms in `form`.
-;; JVM impl: (prewalk (fn [x] (if (seq? x) (macroexpand x) x)) form).
-;; cw v1 ships a transient `throw`-stub here per provisional_marker.md
-;; row 2 (explicit user-visible error rather than silent semantic
-;; drop). The real impl lands once `macroexpand` itself is callable at
-;; runtime; the stub raise is the cleanest available shape until then.
+;; Same shape as the JVM's clojure.walk — a prewalk that macroexpands
+;; every seq it visits. Like the JVM's, it is NOT quote-aware: it walks
+;; into quoted forms, so (macroexpand-all ''(-> a b)) is (quote (b a)).
 (def macroexpand-all
-  (fn* [form]
-    (throw (ex-info "macroexpand-all is not yet supported in ClojureWasm"
-                    {:form form
-                     :reason :phase-7-macro-completion-pending}))))
+  (fn* [form] (prewalk (fn* [x] (if (seq? x) (macroexpand x) x)) form)))

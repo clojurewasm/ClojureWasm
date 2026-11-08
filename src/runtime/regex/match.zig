@@ -30,36 +30,87 @@
 const std = @import("std");
 const compile = @import("compile.zig");
 
-/// Maximum capture-group slot count (start + end for each group).
-/// Caps at 8 groups (16 inline slots); JVM Clojure supports more.
-/// A heap-allocated slot array for wider patterns is not built —
-/// patterns beyond 8 groups exceed the inline cap.
-pub const MAX_SLOTS_INLINE: usize = 16;
+/// Capture-slot count a program's threads carry: a start + end slot per group,
+/// indexed `2g` / `2g+1` (group 0's pair is unused — the whole match is
+/// `MatchResult.start/end`). Sized per program, so a pattern with no groups
+/// carries no slots and one with many groups is not capped by an inline array
+/// (the bound is `compile.MAX_CAPTURE_GROUPS`, enforced at parse time).
+pub fn slotCount(program: *const compile.Program) usize {
+    if (program.capture_count == 0) return 0;
+    return (@as(usize, program.capture_count) + 1) * 2;
+}
 
-/// Capture-slot snapshot carried by each thread. -1 means
-/// "unset". On match, the slot array is the user-visible result
-/// of `re-groups`. `save` records each slot boundary as threads
-/// advance (see `addThread`).
+/// Capture slots of a match. -1 means "unset" (the group did not
+/// participate). `slots` is owned by the `MatchResult` (see `deinit`).
 pub const Captures = struct {
-    slots: [MAX_SLOTS_INLINE]i32 = [_]i32{-1} ** MAX_SLOTS_INLINE,
-    used: usize = 0,
+    slots: []i32 = &.{},
 };
 
-/// One live Pike VM thread: the PC plus the capture-slot snapshot it carries
-/// (Pike submatch — the first thread to reach a `.match`, in priority order,
-/// owns the leftmost-greedy captures). `-1` slots are unset.
+/// One live Pike VM thread. Its capture-slot snapshot lives in the owning
+/// `ThreadList`'s slab at the thread's index (Pike submatch — the first thread
+/// to reach a `.match`, in priority order, owns the leftmost-greedy captures).
 pub const Thread = struct {
     pc: u32,
-    caps: [MAX_SLOTS_INLINE]i32 = [_]i32{-1} ** MAX_SLOTS_INLINE,
 };
 
-/// Match result returned by `find` / `match`. `null` slot ends
-/// mean "no match" (analogous to JVM Pattern.find returning
-/// false).
+/// Match result returned by `find` / `match`. `null` (no result) means "no
+/// match" (analogous to JVM Pattern.find returning false). The capture slots
+/// are allocated with the allocator passed to the matcher entry point; release
+/// them with `deinit` (a no-op for a pattern without groups).
 pub const MatchResult = struct {
     start: u32,
     end: u32,
-    captures: Captures,
+    captures: Captures = .{},
+
+    pub fn deinit(self: MatchResult, alloc: std.mem.Allocator) void {
+        if (self.captures.slots.len > 0) alloc.free(self.captures.slots);
+    }
+
+    /// Byte span of capture group `g` (`g >= 1`), or null when the group
+    /// did not participate or `g` is out of range.
+    pub fn group(self: MatchResult, g: usize) ?struct { start: u32, end: u32 } {
+        if (g == 0 or 2 * g + 1 >= self.captures.slots.len) return null;
+        const s = self.captures.slots[2 * g];
+        const e = self.captures.slots[2 * g + 1];
+        if (s < 0 or e < 0) return null;
+        return .{ .start = @intCast(s), .end = @intCast(e) };
+    }
+};
+
+/// The working state of one VM run: the two thread lists, a seed-capture
+/// scratch row, and the best match's capture row. Allocated once per scan and
+/// reused across every start position (D-386 / O-024).
+const Vm = struct {
+    current: ThreadList,
+    next: ThreadList,
+    /// Seed captures (all -1) threaded through `addThread`'s save/restore.
+    scratch: []i32,
+    /// Capture row of the best `.match` thread seen so far.
+    best: []i32,
+
+    fn init(alloc: std.mem.Allocator, n_insts: usize, nslots: usize) MatchError!Vm {
+        var current = try ThreadList.init(alloc, n_insts, nslots);
+        errdefer current.deinit(alloc);
+        var next = try ThreadList.init(alloc, n_insts, nslots);
+        errdefer next.deinit(alloc);
+        const scratch = try alloc.alloc(i32, nslots);
+        errdefer alloc.free(scratch);
+        const best = try alloc.alloc(i32, nslots);
+        return .{ .current = current, .next = next, .scratch = scratch, .best = best };
+    }
+
+    fn deinit(self: *Vm, alloc: std.mem.Allocator) void {
+        self.current.deinit(alloc);
+        self.next.deinit(alloc);
+        alloc.free(self.scratch);
+        alloc.free(self.best);
+    }
+
+    /// Package the best match as an owned `MatchResult`.
+    fn result(self: *Vm, alloc: std.mem.Allocator, start: u32, end: u32) MatchError!MatchResult {
+        if (self.best.len == 0) return .{ .start = start, .end = end };
+        return .{ .start = start, .end = end, .captures = .{ .slots = try alloc.dupe(i32, self.best) } };
+    }
 };
 
 pub const MatchError = error{} || std.mem.Allocator.Error;
@@ -84,21 +135,18 @@ pub fn findFrom(
     input: []const u8,
     start: u32,
 ) MatchError!?MatchResult {
-    // PERF: D-386 (O-024) allocate the two ThreadLists ONCE for the whole scan;
-    // tryMatchAt clears + reuses them per position (was: alloc+free per position).
-    var current = try ThreadList.init(alloc, program.insts.len);
-    defer current.deinit(alloc);
-    var next = try ThreadList.init(alloc, program.insts.len);
-    defer next.deinit(alloc);
-    return scanFrom(&current, &next, alloc, program, input, start);
+    // PERF: D-386 (O-024) allocate the VM state ONCE for the whole scan;
+    // tryMatchAt clears + reuses it per position (was: alloc+free per position).
+    var vm = try Vm.init(alloc, program.insts.len, slotCount(program));
+    defer vm.deinit(alloc);
+    return scanFrom(&vm, alloc, program, input, start);
 }
 
-/// Leftmost match at or after `start`, using caller-owned ThreadLists. Extracted
-/// from `findFrom` so `findAll` can reuse ONE list pair across every match in a
-/// scan (tryMatchAt clears them per position, so reuse across scans is safe).
+/// Leftmost match at or after `start`, using caller-owned VM state. Extracted
+/// from `findFrom` so `findAll` can reuse ONE VM across every match in a
+/// scan (tryMatchAt clears it per position, so reuse across scans is safe).
 fn scanFrom(
-    current: *ThreadList,
-    next: *ThreadList,
+    vm: *Vm,
     alloc: std.mem.Allocator,
     program: *const compile.Program,
     input: []const u8,
@@ -118,30 +166,54 @@ fn scanFrom(
             while (pos < input.len and !lead.contains(input[pos])) pos += 1;
             if (pos >= input.len) return null;
         }
-        if (try tryMatchAt(current, next, alloc, program, input, pos)) |result| return result;
+        if (try tryMatchAt(vm, alloc, program, input, pos)) |end| return try vm.result(alloc, pos, end);
         pos += 1;
     }
     return null;
 }
 
+/// A reusable leftmost-match scanner: ONE VM state for a whole multi-match
+/// walk (`split`), where `findFrom` would allocate and free the thread lists
+/// on every call. Same results as `findFrom(alloc, program, input, start)`.
+/// [refs: O-072]
+pub const Scanner = struct {
+    vm: Vm,
+    program: *const compile.Program,
+
+    pub fn init(alloc: std.mem.Allocator, program: *const compile.Program) MatchError!Scanner {
+        return .{ .vm = try Vm.init(alloc, program.insts.len, slotCount(program)), .program = program };
+    }
+
+    pub fn deinit(self: *Scanner, alloc: std.mem.Allocator) void {
+        self.vm.deinit(alloc);
+    }
+
+    pub fn findFrom(self: *Scanner, alloc: std.mem.Allocator, input: []const u8, start: u32) MatchError!?MatchResult {
+        return scanFrom(&self.vm, alloc, self.program, input, start);
+    }
+};
+
 /// Append every non-overlapping match (scanning from offset 0) to `out`, reusing
 /// ONE ThreadList pair across the whole scan — the one-pass backing for `re-seq`
 /// (O-035, ADR-0147 Stage 1b). A zero-width match advances the scan by 1 so the
 /// loop terminates (clj `re-seq` parity: `(re-seq #"a*" "aaa")` → `("aaa" "")`).
+/// Each appended result owns its capture slots: release them with
+/// `MatchResult.deinit` (see `deinitAll`).
 pub fn findAll(
     alloc: std.mem.Allocator,
     program: *const compile.Program,
     input: []const u8,
     out: *std.ArrayList(MatchResult),
 ) MatchError!void {
-    var current = try ThreadList.init(alloc, program.insts.len);
-    defer current.deinit(alloc);
-    var next = try ThreadList.init(alloc, program.insts.len);
-    defer next.deinit(alloc);
+    var vm = try Vm.init(alloc, program.insts.len, slotCount(program));
+    defer vm.deinit(alloc);
     var pos: u32 = 0;
     while (pos <= input.len) {
-        const m = (try scanFrom(&current, &next, alloc, program, input, pos)) orelse break;
-        try out.append(alloc, m);
+        const m = (try scanFrom(&vm, alloc, program, input, pos)) orelse break;
+        out.append(alloc, m) catch |e| {
+            m.deinit(alloc);
+            return e;
+        };
         pos = if (m.end == m.start) m.end + 1 else m.end;
     }
 }
@@ -160,38 +232,40 @@ pub fn matchFull(
     program: *const compile.Program,
     input: []const u8,
 ) MatchError!?MatchResult {
-    var current = try ThreadList.init(alloc, program.insts.len);
-    defer current.deinit(alloc);
-    var next = try ThreadList.init(alloc, program.insts.len);
-    defer next.deinit(alloc);
+    var vm = try Vm.init(alloc, program.insts.len, slotCount(program));
+    defer vm.deinit(alloc);
+    const current = &vm.current;
+    const next = &vm.next;
     current.clear();
     next.clear();
-    const empty: [MAX_SLOTS_INLINE]i32 = [_]i32{-1} ** MAX_SLOTS_INLINE;
-    try addThread(&current, alloc, program, 0, 0, input, empty);
+    @memset(vm.scratch, -1);
+    try addThread(current, alloc, program, 0, 0, input, vm.scratch);
 
     var pos: u32 = 0;
     while (true) {
         if (pos == input.len) {
             // Full match = the highest-priority `.match` thread at end-of-input.
-            for (current.threads.items) |t| {
+            for (current.threads.items, 0..) |t, i| {
                 if (program.insts[t.pc] == .match) {
-                    return .{ .start = 0, .end = pos, .captures = .{ .slots = t.caps, .used = @as(usize, program.capture_count) * 2 } };
+                    @memcpy(vm.best, current.capsOf(i));
+                    return try vm.result(alloc, 0, pos);
                 }
             }
             return null;
         }
         const c = input[pos];
         const next_pos = pos + 1;
-        for (current.threads.items) |t| {
+        for (current.threads.items, 0..) |t, i| {
+            const caps = current.capsOf(i);
             switch (program.insts[t.pc]) {
-                .char => |cc| if (c == cc) try addThread(&next, alloc, program, t.pc + 1, next_pos, input, t.caps),
-                .class => |cls| if (cls.contains(c)) try addThread(&next, alloc, program, t.pc + 1, next_pos, input, t.caps),
-                .range => |r| if (c >= r.lo and c <= r.hi) try addThread(&next, alloc, program, t.pc + 1, next_pos, input, t.caps),
+                .char => |cc| if (c == cc) try addThread(next, alloc, program, t.pc + 1, next_pos, input, caps),
+                .class => |cls| if (cls.contains(c)) try addThread(next, alloc, program, t.pc + 1, next_pos, input, caps),
+                .range => |r| if (c >= r.lo and c <= r.hi) try addThread(next, alloc, program, t.pc + 1, next_pos, input, caps),
                 else => {}, // `.match` at pos<len is NOT a full match — drop it (no cut, so a still-consuming thread survives); epsilons pre-expanded.
             }
         }
         if (next.threads.items.len == 0) return null;
-        std.mem.swap(ThreadList, &current, &next);
+        std.mem.swap(ThreadList, current, next);
         next.clear();
         pos = next_pos;
     }
@@ -208,19 +282,22 @@ pub fn matchAnchored(
     input: []const u8,
     start: u32,
 ) MatchError!?MatchResult {
-    var current = try ThreadList.init(alloc, program.insts.len);
-    defer current.deinit(alloc);
-    var next = try ThreadList.init(alloc, program.insts.len);
-    defer next.deinit(alloc);
-    return tryMatchAt(&current, &next, alloc, program, input, start);
+    var vm = try Vm.init(alloc, program.insts.len, slotCount(program));
+    defer vm.deinit(alloc);
+    const end = (try tryMatchAt(&vm, alloc, program, input, start)) orelse return null;
+    return try vm.result(alloc, start, end);
 }
 
 /// Per-step thread list — set of PCs the VM is about to step
 /// from. The `seen` stamps prevent re-processing the same PC
 /// within a single input position (key Pike-VM invariant that
-/// bounds runtime at O(n·m)).
+/// bounds runtime at O(n·m)). Thread `i`'s capture row is
+/// `caps[i*nslots ..][0..nslots]`: one contiguous slab sized by the
+/// program's group count, so the slot count is not a compile-time cap.
 const ThreadList = struct {
     threads: std.ArrayList(Thread) = .empty,
+    caps: std.ArrayList(i32) = .empty,
+    nslots: usize,
     // PERF: generation-stamped `seen` (O-034). `clear` bumps `gen` instead of
     // `@memset`-ing the whole array per input position — `findFrom` clears both
     // lists at every position, so the naive memset was O(positions × insts). A
@@ -228,20 +305,34 @@ const ThreadList = struct {
     seen: []u32,
     gen: u32,
 
-    fn init(alloc: std.mem.Allocator, n_insts: usize) MatchError!ThreadList {
+    fn init(alloc: std.mem.Allocator, n_insts: usize, nslots: usize) MatchError!ThreadList {
         const seen = try alloc.alloc(u32, n_insts);
         @memset(seen, 0);
         // gen starts at 1 so the 0-fill never matches a freshly-cleared list.
-        return .{ .seen = seen, .gen = 1 };
+        return .{ .nslots = nslots, .seen = seen, .gen = 1 };
     }
 
     fn deinit(self: *ThreadList, alloc: std.mem.Allocator) void {
         self.threads.deinit(alloc);
+        self.caps.deinit(alloc);
         alloc.free(self.seen);
+    }
+
+    /// Append a consuming thread at `pc` carrying a COPY of `caps`.
+    fn append(self: *ThreadList, alloc: std.mem.Allocator, pc: u32, caps: []const i32) MatchError!void {
+        std.debug.assert(caps.len == self.nslots);
+        try self.threads.append(alloc, .{ .pc = pc });
+        try self.caps.appendSlice(alloc, caps);
+    }
+
+    /// Thread `i`'s capture row.
+    fn capsOf(self: *ThreadList, i: usize) []i32 {
+        return self.caps.items[i * self.nslots ..][0..self.nslots];
     }
 
     fn clear(self: *ThreadList) void {
         self.threads.clearRetainingCapacity();
+        self.caps.clearRetainingCapacity();
         // O(1) clear via generation bump. On wrap, re-zero the stamps so a
         // stale max-gen entry cannot false-positive against the new gen.
         if (self.gen == std.math.maxInt(u32)) {
@@ -266,7 +357,9 @@ const ThreadList = struct {
 /// the current `pos` against `input` (line_start at pos 0,
 /// line_end at input.len, \b on word/non-word transition);
 /// failed anchors silently drop the thread. `save` records the
-/// capture-slot boundary at the current position.
+/// capture-slot boundary at the current position. `caps` is a mutable
+/// scratch row: a `save` writes its slot, recurses, then RESTORES it, so
+/// sibling threads keep the pre-save captures without a per-save copy.
 fn addThread(
     list: *ThreadList,
     alloc: std.mem.Allocator,
@@ -274,7 +367,7 @@ fn addThread(
     pc: u32,
     pos: u32,
     input: []const u8,
-    caps: [MAX_SLOTS_INLINE]i32,
+    caps: []i32,
 ) MatchError!void {
     if (list.markSeen(pc)) return;
     switch (program.insts[pc]) {
@@ -284,12 +377,16 @@ fn addThread(
             try addThread(list, alloc, program, s.b, pos, input, caps);
         },
         .save => |slot| {
-            // Record the capture-slot boundary at the current position, then
-            // continue with the updated snapshot (a copy — sibling threads keep
-            // the pre-save caps).
-            var c2 = caps;
-            if (slot < MAX_SLOTS_INLINE) c2[slot] = @intCast(pos);
-            try addThread(list, alloc, program, pc + 1, pos, input, c2);
+            // Record the capture-slot boundary at the current position for the
+            // continuation, then restore it for the sibling threads.
+            if (slot < caps.len) {
+                const old = caps[slot];
+                caps[slot] = @intCast(pos);
+                defer caps[slot] = old;
+                try addThread(list, alloc, program, pc + 1, pos, input, caps);
+            } else {
+                try addThread(list, alloc, program, pc + 1, pos, input, caps);
+            }
         },
         .anchor => |a| {
             if (anchorMatches(a, pos, input)) {
@@ -305,22 +402,13 @@ fn addThread(
             // only when the sub fails, so there is nothing to capture).
             const sub_prog = compile.Program{ .insts = lk.sub, .capture_count = 0, .flags = program.flags };
             // Lookahead runs a SEPARATE sub-program (different inst count) — it
-            // needs its own ThreadLists (cannot reuse the outer scan's); rare
-            // path (only lookahead patterns), so the per-eval alloc is fine.
-            var sub_current = try ThreadList.init(alloc, sub_prog.insts.len);
-            defer sub_current.deinit(alloc);
-            var sub_next = try ThreadList.init(alloc, sub_prog.insts.len);
-            defer sub_next.deinit(alloc);
-            const m = try tryMatchAt(&sub_current, &sub_next, alloc, &sub_prog, input, pos);
-            if ((m != null) != lk.negate) {
-                var next_caps = caps;
-                if (m) |res| if (!lk.negate) {
-                    for (res.captures.slots, 0..) |sv, i| {
-                        if (sv != -1) next_caps[i] = sv;
-                    }
-                };
-                try addThread(list, alloc, program, pc + 1, pos, input, next_caps);
-            }
+            // needs its own VM (cannot reuse the outer scan's); rare path (only
+            // lookahead patterns), so the per-eval alloc is fine. The sub-VM
+            // carries the parent's slot width: group indices are global.
+            var sub = try Vm.init(alloc, sub_prog.insts.len, caps.len);
+            defer sub.deinit(alloc);
+            const m = try tryMatchAt(&sub, alloc, &sub_prog, input, pos);
+            try continueAfterLook(list, alloc, program, pc, pos, input, caps, m != null, lk.negate, sub.best);
         },
         .look_behind => |lb| {
             // Zero-width backward assertion: does the sub match ENDING exactly
@@ -330,32 +418,47 @@ fn addThread(
             // (real-world lookbehinds are short, so the nearest j wins fast);
             // any j gives the same boolean, so order is correctness-neutral.
             const sub_prog = compile.Program{ .insts = lb.sub, .capture_count = 0, .flags = program.flags };
-            var sub_current = try ThreadList.init(alloc, sub_prog.insts.len);
-            defer sub_current.deinit(alloc);
-            var sub_next = try ThreadList.init(alloc, sub_prog.insts.len);
-            defer sub_next.deinit(alloc);
-            var found: ?MatchResult = null;
+            var sub = try Vm.init(alloc, sub_prog.insts.len, caps.len);
+            defer sub.deinit(alloc);
+            var found = false;
             var j: u32 = pos;
             while (true) {
-                if (try tryMatchAt(&sub_current, &sub_next, alloc, &sub_prog, input[0..pos], j)) |m| {
-                    found = m;
+                if ((try tryMatchAt(&sub, alloc, &sub_prog, input[0..pos], j)) != null) {
+                    found = true;
                     break;
                 }
                 if (j == 0) break;
                 j -= 1;
             }
-            if ((found != null) != lb.negate) {
-                var next_caps = caps;
-                if (found) |res| if (!lb.negate) {
-                    for (res.captures.slots, 0..) |sv, i| {
-                        if (sv != -1) next_caps[i] = sv;
-                    }
-                };
-                try addThread(list, alloc, program, pc + 1, pos, input, next_caps);
-            }
+            try continueAfterLook(list, alloc, program, pc, pos, input, caps, found, lb.negate, sub.best);
         },
-        else => try list.threads.append(alloc, .{ .pc = pc, .caps = caps }),
+        else => try list.append(alloc, pc, caps),
     }
+}
+
+/// Shared tail of the lookaround arms: continue past the assertion when it
+/// holds, merging a positive sub-match's participating slots into a copy of
+/// `caps` (a negative assertion exports nothing).
+fn continueAfterLook(
+    list: *ThreadList,
+    alloc: std.mem.Allocator,
+    program: *const compile.Program,
+    pc: u32,
+    pos: u32,
+    input: []const u8,
+    caps: []i32,
+    matched: bool,
+    negate: bool,
+    sub_caps: []const i32,
+) MatchError!void {
+    if (matched == negate) return;
+    if (!matched or caps.len == 0) return addThread(list, alloc, program, pc + 1, pos, input, caps);
+    const next_caps = try alloc.dupe(i32, caps);
+    defer alloc.free(next_caps);
+    for (sub_caps, 0..) |sv, i| {
+        if (sv != -1) next_caps[i] = sv;
+    }
+    try addThread(list, alloc, program, pc + 1, pos, input, next_caps);
 }
 
 fn anchorMatches(a: compile.Anchor, pos: u32, input: []const u8) bool {
@@ -363,6 +466,13 @@ fn anchorMatches(a: compile.Anchor, pos: u32, input: []const u8) bool {
         // Default `^`/`$` bind to the whole-input boundary.
         .line_start => pos == 0,
         .line_end => pos == input.len,
+        .input_start => pos == 0,
+        .input_end => pos == input.len,
+        // `\Z`: input end, or just before a FINAL terminator (`\n`, `\r`,
+        // `\r\n`) — Java parity.
+        .input_end_final => pos == input.len or
+            (pos + 1 == input.len and (input[pos] == '\n' or input[pos] == '\r')) or
+            (pos + 2 == input.len and input[pos] == '\r' and input[pos + 1] == '\n'),
         // `(?m)` MULTILINE: `^` matches at input start or right after a line
         // terminator; `$` at input end or right before one. A line terminator is
         // `\n`, a lone `\r`, or the `\r\n` pair — the position *between* `\r` and
@@ -396,14 +506,17 @@ fn isWordByte(b: u8) bool {
 /// `java.util.regex` priority semantics — an earlier alternative wins over a
 /// longer later one, e.g. `a|ab` on "ab" → "a"), or null if no thread reaches
 /// `.match` from `start`.
+/// Returns the match END (the span starts at `start`); the winning thread's
+/// captures are left in `vm.best`.
 fn tryMatchAt(
-    current: *ThreadList,
-    next: *ThreadList,
+    vm: *Vm,
     alloc: std.mem.Allocator,
     program: *const compile.Program,
     input: []const u8,
     start: u32,
-) MatchError!?MatchResult {
+) MatchError!?u32 {
+    const current = &vm.current;
+    const next = &vm.next;
     // PERF: D-386 (O-024) `current`/`next` are caller-owned + reused across every
     // position in `findFrom` (a single `clear` = a memset of `seen` + retained
     // ArrayList capacity), instead of an alloc+free of two ThreadLists per
@@ -411,10 +524,10 @@ fn tryMatchAt(
     current.clear();
     next.clear();
 
-    var best: ?MatchResult = null;
+    var best: ?u32 = null;
     var pos: u32 = start;
-    const empty: [MAX_SLOTS_INLINE]i32 = [_]i32{-1} ** MAX_SLOTS_INLINE;
-    try addThread(current, alloc, program, 0, pos, input, empty);
+    @memset(vm.scratch, -1);
+    try addThread(current, alloc, program, 0, pos, input, vm.scratch);
 
     // Leftmost-FIRST (Java/`java.util.regex` semantics, NOT POSIX leftmost-longest):
     // step threads in PRIORITY order and CUT — at the first `.match` thread, record it
@@ -428,20 +541,22 @@ fn tryMatchAt(
     while (current.threads.items.len > 0) {
         const c: ?u8 = if (pos < input.len) input[pos] else null;
         const next_pos = pos + 1;
-        for (current.threads.items) |t| {
+        for (current.threads.items, 0..) |t, i| {
+            const caps = current.capsOf(i);
             switch (program.insts[t.pc]) {
                 .match => {
-                    best = .{ .start = start, .end = pos, .captures = .{ .slots = t.caps, .used = @as(usize, program.capture_count) * 2 } };
+                    best = pos;
+                    @memcpy(vm.best, caps);
                     break; // cut every lower-priority thread
                 },
                 .char => |cc| if (c) |ch| {
-                    if (ch == cc) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps);
+                    if (ch == cc) try addThread(next, alloc, program, t.pc + 1, next_pos, input, caps);
                 },
                 .class => |cls| if (c) |ch| {
-                    if (cls.contains(ch)) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps);
+                    if (cls.contains(ch)) try addThread(next, alloc, program, t.pc + 1, next_pos, input, caps);
                 },
                 .range => |r| if (c) |ch| {
-                    if (ch >= r.lo and ch <= r.hi) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps);
+                    if (ch >= r.lo and ch <= r.hi) try addThread(next, alloc, program, t.pc + 1, next_pos, input, caps);
                 },
                 else => {}, // epsilon ops are pre-expanded by addThread
             }
@@ -512,6 +627,7 @@ test "dot matches any single character" {
 // so group 1 = [3,3] = "" — NOT the last non-empty [0,3] = "aaa". `(a+)* / (a)*`
 // (non-nullable inner) already capture the last non-empty run, unchanged.
 fn group1(r: MatchResult) struct { s: i32, e: i32 } {
+    defer r.deinit(testing.allocator);
     return .{ .s = r.captures.slots[2], .e = r.captures.slots[3] };
 }
 
@@ -795,6 +911,7 @@ test "leftmost-first: prefix-alt that fails overall falls through to longer alt"
     var prog = try compile.compile(testing.allocator, "(foo|foobar)baz", .{});
     defer prog.deinit(testing.allocator);
     const r = (try find(testing.allocator, &prog, "foobarbaz")).?;
+    defer r.deinit(testing.allocator);
     try testing.expectEqualStrings("foobarbaz", "foobarbaz"[r.start..r.end]);
 }
 

@@ -448,6 +448,7 @@ fn expectDfaMatchesPike(pat: []const u8, input: []const u8) !void {
     var start: u32 = 0;
     while (start <= input.len) : (start += 1) {
         const pike = try match.matchAnchored(testing.allocator, &prog, input, start);
+        defer if (pike) |m| m.deinit(testing.allocator);
         const pike_end: ?u32 = if (pike) |m| m.end else null;
         const dfa_end = try dfa.matchEndAnchored(input, start);
         try testing.expectEqual(pike_end, dfa_end);
@@ -511,6 +512,7 @@ fn expectDfaFindMatchesPike(pat: []const u8, input: []const u8) !void {
     defer dfa.deinit();
 
     const pike = try match.find(testing.allocator, &prog, input);
+    defer if (pike) |m| m.deinit(testing.allocator);
     const span = try dfa.find(input, 0);
     if (pike) |m| {
         try testing.expect(span != null);

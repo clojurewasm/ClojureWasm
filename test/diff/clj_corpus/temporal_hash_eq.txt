@@ -1,0 +1,126 @@
+(let [a (java.util.Date. 5) b (java.util.Date. 5)] [(= a b) (= (hash a) (hash b)) (count (hash-set a b)) (get {a :v} b)])
+;;=> [true true 1 :v]
+(let [a (java.time.Instant/ofEpochSecond 5) b (java.time.Instant/ofEpochSecond 5)] [(= a b) (= (hash a) (hash b)) (count (hash-set a b)) (get {a :v} b)])
+;;=> [true true 1 :v]
+(let [a (java.time.Duration/ofSeconds 5) b (java.time.Duration/ofSeconds 5)] [(= a b) (= (hash a) (hash b)) (count (hash-set a b)) (get {a :v} b)])
+;;=> [true true 1 :v]
+(let [a (java.time.LocalDate/of 2020 3 1) b (java.time.LocalDate/of 2020 3 1)] [(= a b) (= (hash a) (hash b)) (count (hash-set a b)) (get {a :v} b)])
+;;=> [true true 1 :v]
+(let [a (java.time.LocalDateTime/of 2020 3 1 10 0) b (java.time.LocalDateTime/of 2020 3 1 10 0)] [(= a b) (= (hash a) (hash b)) (count (hash-set a b)) (get {a :v} b)])
+;;=> [true true 1 :v]
+(let [a (java.time.LocalTime/of 10 0) b (java.time.LocalTime/of 10 0)] [(= a b) (= (hash a) (hash b)) (count (hash-set a b)) (get {a :v} b)])
+;;=> [true true 1 :v]
+(mapv hash [(java.util.Date. 5) (java.time.Instant/ofEpochSecond 5) (java.time.Duration/ofSeconds 5) (java.time.LocalDate/of 2020 3 1) (java.time.LocalDateTime/of 2020 3 1 10 0) (java.time.LocalTime/of 10 0)])
+;;=> [5 5 5 4137153 -418824068 -415866691]
+(mapv hash [(java.util.Date. -1) (java.time.Instant/ofEpochSecond -5 7) (java.time.Duration/ofSeconds -5 7) (java.time.LocalDate/of 1969 12 31) (java.time.LocalDateTime/of 1960 1 1 23 59 59 999) (java.time.LocalTime/of 23 59 59 999999999)])
+;;=> [0 361 361 4033311 1435055922 -1857113749]
+(count (distinct [(java.time.LocalDate/of 2020 3 1) (java.time.LocalDate/of 2020 3 1) (java.time.LocalDate/of 2020 3 2)]))
+;;=> 2
+(vals (frequencies [(java.util.Date. 5) (java.util.Date. 5) (java.util.Date. 5)]))
+;;=> (3)
+(count (group-by identity [(java.time.Instant/ofEpochSecond 5) (java.time.Instant/ofEpochSecond 5)]))
+;;=> 1
+(count (set [(java.time.Duration/ofSeconds 5) (java.time.Duration/ofMillis 5000)]))
+;;=> 1
+(count (into #{} [(java.time.LocalTime/of 10 0) (java.time.LocalTime/of 10 0) (java.time.LocalTime/of 10 1)]))
+;;=> 2
+(get (zipmap [(java.time.LocalDateTime/of 2020 3 1 10 0)] [:v]) (java.time.LocalDateTime/of 2020 3 1 10 0))
+;;=> :v
+(= (java.util.Date. 5) (java.util.Date. 6))
+;;=> false
+(count (hash-set #inst "2020-03-01T00:00:00.000-00:00" #inst "2020-03-01T00:00:00.000-00:00"))
+;;=> 1
+(mapv hash [(java.time.LocalDate/of -5000 2 28) (java.time.LocalDate/of 999999999 12 31) (java.time.LocalDate/of -999999999 1 1) (java.time.LocalDate/ofEpochDay 0)])
+;;=> [10234012 -304794849 -304793535 4034625]
+(mapv hash [(java.time.Duration/ofMillis -1500) (java.time.Duration/ofNanos -1) (java.time.Instant/ofEpochMilli -1500) (java.util.Date. 99999999999999)])
+;;=> [-269803775 -539607603 -269803775 276456716]
+(mapv hash [(java.time.LocalDateTime/of -3 5 17 1 2 3 4) (java.time.Instant/parse "2020-03-01T10:00:00.123456789Z")])
+;;=> [-736641993 -710581553]
+(do (require 'clojure.instant) (hash (clojure.instant/read-instant-timestamp "2020-03-01T00:00:00.123456789Z")))
+;;=> -1822131957
+(do (require 'clojure.instant) (count (hash-set (clojure.instant/read-instant-timestamp "2020-03-01T00:00:00.123456789Z") (clojure.instant/read-instant-timestamp "2020-03-01T00:00:00.123456789Z"))))
+;;=> 1
+(do (require 'clojure.instant) (let [t (clojure.instant/read-instant-timestamp "1970-01-01T00:00:00.005Z")] [(= t (java.util.Date. 5)) (= (hash t) (hash (java.util.Date. 5)))]))
+;;=> [false true]
+(= (java.time.Instant/ofEpochSecond 5) (java.time.Duration/ofSeconds 5))
+;;=> false
+(count (hash-set (java.time.Instant/ofEpochSecond 5) (java.time.Duration/ofSeconds 5)))
+;;=> 2
+(count (distinct [(java.time.LocalDateTime/of 2020 3 1 10 0) (java.time.LocalDateTime/of 2020 3 1 10 0 0 1)]))
+;;=> 2
+(get {(java.time.Duration/ofMinutes 1) :m} (java.time.Duration/ofSeconds 60))
+;;=> :m
+(let [a (java.util.Date. 5) b (java.util.Date. 5)] [(= a b) (hash a) (count (hash-set a b)) (get {a :v} b) (count (distinct [a b])) (vals (frequencies [a b])) (count (group-by identity [a b]))])
+;;=> [true 5 1 :v 1 (2) 1]
+(let [a (java.time.Instant/ofEpochSecond 5) b (java.time.Instant/ofEpochSecond 5)] [(= a b) (hash a) (count (hash-set a b)) (get {a :v} b) (count (distinct [a b])) (vals (frequencies [a b])) (count (group-by identity [a b]))])
+;;=> [true 5 1 :v 1 (2) 1]
+(let [a (java.time.Duration/ofSeconds 5) b (java.time.Duration/ofSeconds 5)] [(= a b) (hash a) (count (hash-set a b)) (get {a :v} b) (count (distinct [a b])) (vals (frequencies [a b])) (count (group-by identity [a b]))])
+;;=> [true 5 1 :v 1 (2) 1]
+(let [a (java.time.LocalDate/of 2020 3 1) b (java.time.LocalDate/of 2020 3 1)] [(= a b) (hash a) (count (hash-set a b)) (get {a :v} b) (count (distinct [a b])) (vals (frequencies [a b])) (count (group-by identity [a b]))])
+;;=> [true 4137153 1 :v 1 (2) 1]
+(let [a (java.time.LocalDateTime/of 2020 3 1 10 0) b (java.time.LocalDateTime/of 2020 3 1 10 0)] [(= a b) (hash a) (count (hash-set a b)) (get {a :v} b) (count (distinct [a b])) (vals (frequencies [a b])) (count (group-by identity [a b]))])
+;;=> [true -418824068 1 :v 1 (2) 1]
+(let [a (java.time.LocalTime/of 10 0) b (java.time.LocalTime/of 10 0)] [(= a b) (hash a) (count (hash-set a b)) (get {a :v} b) (count (distinct [a b])) (vals (frequencies [a b])) (count (group-by identity [a b]))])
+;;=> [true -415866691 1 :v 1 (2) 1]
+(do (require 'clojure.instant) (let [t (clojure.instant/read-instant-timestamp "1970-01-01T00:00:00.005Z") u (clojure.instant/read-instant-timestamp "1970-01-01T00:00:00.005Z")] [(= t u) (hash t) (count (hash-set t u)) (get {t :v} u) (count (distinct [t u])) (vals (frequencies [t u])) (count (group-by identity [t u]))]))
+;;=> [true 5 1 :v 1 (2) 1]
+(count {(java.util.Date. 5) :d (java.time.Instant/ofEpochSecond 5) :i (java.time.Duration/ofSeconds 5) :u})
+;;=> 3
+(count (into #{} (repeatedly 100 #(java.time.LocalDate/of 2020 3 1))))
+;;=> 1
+(count (set (map #(java.util.Date. (mod % 3)) (range 100))))
+;;=> 3
+(get (zipmap (map #(java.time.LocalDate/ofEpochDay %) (range 20)) (range 20)) (java.time.LocalDate/ofEpochDay 13))
+;;=> 13
+(get (into {} (map (fn [i] [(java.time.Duration/ofSeconds i) i]) (range 40))) (java.time.Duration/ofMillis 17000))
+;;=> 17
+(contains? #{(java.time.Instant/ofEpochSecond 5)} (java.time.Instant/ofEpochSecond 5))
+;;=> true
+(disj #{(java.time.LocalTime/of 10 0)} (java.time.LocalTime/of 10 0))
+;;=> #{}
+(dissoc {(java.time.LocalDateTime/of 2020 3 1 10 0) 1} (java.time.LocalDateTime/of 2020 3 1 10 0))
+;;=> {}
+(get {[(java.time.LocalDate/of 2020 3 1)] :v} [(java.time.LocalDate/of 2020 3 1)])
+;;=> :v
+(get {#{(java.util.Date. 5)} :v} #{(java.util.Date. 5)})
+;;=> :v
+(hash [(java.util.Date. 5)])
+;;=> 528065744
+(hash {(java.time.Duration/ofSeconds 5) 1})
+;;=> -1706640615
+(hash #{(java.time.LocalTime/of 10 0)})
+;;=> -1554734285
+(let [f (memoize (fn [d] (gensym)))] (= (f (java.util.Date. 5)) (f (java.util.Date. 5))))
+;;=> true
+(= #inst "2020-03-01T00:00:00.000-00:00" (java.util.Date. 1583020800000))
+;;=> true
+(= (hash #inst "2020-03-01T00:00:00.000-00:00") (hash (java.util.Date. 1583020800000)))
+;;=> true
+(hash (java.time.Instant/ofEpochSecond 5 123456789))
+;;=> 2001328948
+(hash (java.time.Duration/ofMillis 1500))
+;;=> -269803775
+(mapv hash [(java.time.LocalTime/of 0 0) (java.time.LocalDate/of 0 1 1) (java.time.LocalDate/of -1 12 31) (java.time.LocalDateTime/of 0 1 1 0 0)])
+;;=> [0 65 799 65]
+(= (java.time.LocalDate/of 2020 3 1) (java.time.LocalDateTime/of 2020 3 1 0 0))
+;;=> false
+(count (hash-set (java.time.LocalDate/of 2020 3 1) (java.time.LocalDateTime/of 2020 3 1 0 0)))
+;;=> 2
+(frequencies (map #(.getDayOfMonth %) (distinct (repeatedly 10 #(java.time.LocalDate/of 2020 3 1)))))
+;;=> {1 1}
+(map str (keys (frequencies [(java.time.Duration/ofSeconds 5) (java.time.Duration/ofMillis 5000)])))
+;;=> ("PT5S")
+(vals (frequencies [(java.time.Duration/ofSeconds 5) (java.time.Duration/ofMillis 5000)]))
+;;=> (2)
+(= (java.time.Duration/ofSeconds 5) (java.time.Duration/ofMillis 5000))
+;;=> true
+(= (java.time.Instant/ofEpochMilli 5000) (java.time.Instant/ofEpochSecond 5))
+;;=> true
+(hash (java.time.Instant/ofEpochMilli 5001))
+;;=> 51000005
+(mapv #(.hashCode %) [(java.util.Date. 5) (java.time.LocalDate/of 2020 3 1) (java.time.LocalTime/of 10 0) (java.time.Duration/ofSeconds 5) (java.time.Instant/ofEpochSecond 5)])
+;;=> [5 4137153 -415866691 5 5]
+(let [d (java.time.LocalDate/of 2020 3 1)] (= (hash d) (.hashCode d)))
+;;=> true
+(count (distinct (map #(java.time.LocalDateTime/of 2020 3 1 10 (mod % 4)) (range 50))))
+;;=> 4

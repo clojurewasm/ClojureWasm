@@ -1,0 +1,10 @@
+--- exit ---
+0
+--- stdout ---
+11 "héllo" "cba"
+(\é \世) (233 19990)
+"STRASSE" "Ábc"
+1 "a\n\t"
+"tab\there" "nl\nhere" "quote\"here" "backslash\\here"
+"\"tab\\there\"" "tab\there"
+--- stderr ---

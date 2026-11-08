@@ -7,9 +7,9 @@
 ;;   terms of this license. You must not remove this notice, or any other, from
 ;;   this software.
 ;;
-;;   clojure.spec.gen.alpha — by Rich Hickey. Reproduced in ClojureWasm with one
-;;   no-JVM adaptation (the `bytes?` gen-builtin dropped — Java arrays are
-;;   type-erased, AD-019); redistributed under EPL-2.0 per EPL-1.0 §7.
+;;   clojure.spec.gen.alpha — by Rich Hickey. Reproduced in ClojureWasm (the
+;;   `bytes?` gen-builtin, once dropped for type-erased arrays, is back since
+;;   ADR-0204); redistributed under EPL-2.0 per EPL-1.0 §7.
 ;;   ClojureWasm changes (c) the ClojureWasm authors.
 (ns clojure.spec.gen.alpha
     (:refer-clojure :exclude [boolean bytes cat hash-map list map not-empty set vector
@@ -159,6 +159,7 @@ gens, each of which should generate something sequential."
       simple-symbol? (symbol)
       qualified-symbol? (such-that qualified? (symbol-ns))
       uuid? (uuid)
+      bytes? (bytes)
       uri? (fmap #(java.net.URI/create (str "http://" % ".com")) (uuid))
       decimal? (fmap #(BigDecimal/valueOf %)
                     (double* {:infinite? false :NaN? false}))

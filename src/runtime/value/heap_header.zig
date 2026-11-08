@@ -19,7 +19,8 @@ const HeapTag = heap_tag.HeapTag;
 /// for mark/sweep and by the runtime for fine-grained type dispatch.
 pub const HeapHeader = extern struct {
     /// HeapTag discriminant (0–63 per ADR-0027 §2 + F-004 g2 layout).
-    tag: u8,
+    /// align(8): every heap object is 8-aligned (NaN-box invariant).
+    tag: u8 align(8),
     /// Per-object GC and lifecycle flags.
     flags: Flags,
     /// Padding so `gc_and_lock` lands on its natural 4-byte boundary.

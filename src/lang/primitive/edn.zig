@@ -34,11 +34,15 @@ const string_collection = @import("../../runtime/collection/string.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
 const keyword = @import("../../runtime/keyword.zig");
 const Var = env_mod.Var;
+const text_io = @import("../../runtime/io/text_io.zig");
+const host_stream = @import("../../runtime/io/host_stream.zig");
 
 /// Implements clojure.edn/read-string.
 /// Spec: `(read-string s)` reads one EDN form from `s` and returns it as
-///   a Value; empty / whitespace-only / comment-only input THROWS EOF (clj
-///   parity, D-269) unless an `:eof` opt supplies a sentinel. `(read-string opts s)`
+///   a Value. Empty / whitespace-only / comment-only input: `clojure.edn`
+///   returns nil, `clojure.core` THROWS EOF — measured, they differ (D-581).
+///   The two-argument overload WITHOUT `:eof` throws on empty input;
+///   an explicit `:eof` opt supplies a sentinel. `(read-string opts s)`
 ///   honours an opts map: `:readers` (a `{tag-symbol reader-fn}` map bound
 ///   to `*data-readers*` for the read), `:default` (a `(fn [tag value])`
 ///   bound to `*default-data-reader-fn*`), `:eof` (value returned on empty
@@ -46,9 +50,41 @@ const Var = env_mod.Var;
 ///   `BindingFrame` (ADR-0073) so the `formToValue` `.tagged` arm sees them.
 /// JVM reference: clojure.edn/read-string (note: opts is the FIRST arg)
 /// cw v1 tier: A (Phase 9 row 9.2 + Phase 14 D-200 cycle 2)
+/// `clojure.core/read-string` — EOF on empty input is an ERROR (clj:
+/// `RuntimeException: EOF while reading`).
 pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    return readStringImpl(rt, env, args, loc, .raise, .clojure);
+}
+
+/// `clojure.edn/read-string` — EOF on empty input is nil, NOT an error.
+/// Measured against clj: `(edn/read-string "")` => nil while
+/// `(core/read-string "")` throws. The two readers differ on exactly this
+/// input, which is why they cannot share one entry point (D-581; D-269 was
+/// discharged against the core behaviour and made edn throw too).
+/// It reads clj's EdnReader dialect (ADR-0200 Layer B), so `` ` `` `~` `@`
+/// `#'` `#(` `#"` `#=` `#?` `#!` `::kw` `#::{}` are errors, `'a` is a
+/// symbol, and `#ns.Rec{}` resolves only through `:readers` / `:default`.
+/// A nil source reads as nil (clj: `(when s ...)`).
+/// JVM reference: clojure.edn/read-string in clojure/edn.clj, over
+/// clojure.lang.EdnReader.
+pub fn readStringEdnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    if (args.len >= 1 and args.len <= 2 and args[args.len - 1].tag() == .nil) return Value.nil_val;
+    return readStringImpl(rt, env, args, loc, .nil_on_eof, .edn);
+}
+
+/// What an empty / whitespace-only / comment-only source means to the caller.
+const EofPolicy = enum { raise, nil_on_eof };
+
+fn readStringImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation, eof_policy: EofPolicy, dialect: reader_mod.Dialect) anyerror!Value {
     try error_catalog.checkArityRange("read-string", args, 1, 2, loc);
     const opts: ?Value = if (args.len == 2) args[0] else null;
+    // clojure.edn/read-string's single-argument overload uses a nil EOF
+    // sentinel. Its two-argument overload delegates directly to the reader:
+    // with no :eof key even {} throws at EOF (including comments/discards).
+    if (opts) |o| switch (o.tag()) {
+        .array_map, .hash_map => {},
+        else => return error_catalog.raise(.edn_string_invalid, loc, .{ .reason = if (o.tag() == .nil) "nil options" else "options must be a map" }),
+    };
     const str_arg = args[args.len - 1];
     if (str_arg.tag() != .string) {
         return error_catalog.raise(.type_arg_not_string, loc, .{
@@ -57,7 +93,32 @@ pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
         });
     }
     const source = string_collection.asString(str_arg);
+    return readSource(rt, env, opts, source, loc, eof_policy, null, dialect);
+}
 
+/// Read one form and advance the reader by exactly the consumed bytes.
+/// Zero arity uses the dynamically bound *in*; explicit reader arities use
+/// the same option binding and strict EDN value conversion as read-string.
+pub fn readEdnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArityRange("read", args, 0, 2, loc);
+    const opts: ?Value = if (args.len == 2) args[0] else null;
+    const input = if (args.len == 0) blk: {
+        const core_ns = env.findNs("clojure.core") orelse return error_catalog.raise(.edn_string_invalid, loc, .{ .reason = "missing *in*" });
+        const in_var = core_ns.resolve("*in*") orelse return error_catalog.raise(.edn_string_invalid, loc, .{ .reason = "missing *in*" });
+        break :blk in_var.deref();
+    } else args[args.len - 1];
+    if (opts) |o| switch (o.tag()) {
+        .array_map, .hash_map => {},
+        else => return error_catalog.raise(.edn_string_invalid, loc, .{ .reason = "options must be a map" }),
+    };
+    if (try text_io.remainingReader(rt, input)) |source|
+        return readSource(rt, env, opts, source, loc, .raise, input, .edn);
+    if (try host_stream.remainingReader(rt, input)) |source|
+        return readSource(rt, env, opts, source, loc, .raise, input, .edn);
+    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "read", .expected = "a PushbackReader", .actual = @tagName(input.tag()) });
+}
+
+fn readSource(rt: *Runtime, env: *Env, opts: ?Value, source: []const u8, loc: SourceLocation, eof_policy: EofPolicy, stream: ?Value, dialect: reader_mod.Dialect) anyerror!Value {
     // EOF (no form in `source`): clj THROWS `RuntimeException: EOF while
     // reading` UNLESS an `:eof` opt is supplied, in which case that value is
     // returned (D-269 — was a silent nil-default that masked "nothing to read").
@@ -106,23 +167,72 @@ pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
             if (rc == try keyword.intern(rt, null, "allow")) allow_cond = true;
         }
     }
-    var reader = reader_mod.Reader.init(arena.allocator(), source);
+    var reader = reader_mod.Reader.initDialect(arena.allocator(), source, dialect);
     reader.allow_reader_cond = allow_cond;
+    // ADR-0200: every form is lifted with formToValueStrict below, which
+    // checks duplicate keys by value and in source order, so the reader's
+    // Form-level approximation stays off.
+    reader.form_checks = false;
+    // ADR-0200 A4: a `#_` target is lifted (its tag readers run, its
+    // duplicates raise) the moment it is read, inside this binding frame,
+    // so the source-order error is the one raised, then dropped.
+    var discard: DiscardLift = .{ .rt = rt, .env = env, .dialect = dialect };
+    reader.discard_hook = .{ .ctx = &discard, .f = DiscardLift.hook };
     const form_opt = reader.read() catch |e| {
-        // A specific reader diagnostic (e.g. reader_cond_not_allowed) carries its
-        // own catalog Info; re-raise it so the message survives rather than being
-        // flattened to the generic EDN-reader-error wrapper.
-        if (e == error.SyntaxError) return e;
-        return error_catalog.raise(.feature_not_supported, loc, .{
-            .name = "EDN reader error in clojure.edn/read-string",
-        });
+        if (discard.err) |de| return de;
+        // A specific reader diagnostic (e.g. reader_cond_not_allowed, or an
+        // IllegalArgumentException such as a duplicate key) carries its own
+        // catalog Info; re-raise it so the message and kind survive rather
+        // than being flattened to the generic EDN-reader-error wrapper. A bad
+        // number token (`12x`) is NumberError: clj NumberFormatException
+        // "Invalid number: 12x" from read-string and edn/read-string alike.
+        if (e == error.SyntaxError or e == error.ValueError or e == error.NumberError) return e;
+        // Malformed EDN is bad DATA — clj throws a catchable RuntimeException,
+        // and parsing untrusted EDN is exactly when the caller needs the catch.
+        return error_catalog.raise(.edn_string_invalid, loc, .{ .reason = @errorName(e) });
     };
+    // Tokenizer may have looked ahead at a delimiter; for a complete form
+    // its cursor is precisely the boundary before the next form. Consume
+    // whitespace on EOF as well so repeated reads remain at EOF.
+    if (stream) |s| {
+        const consumed: usize = if (reader.peeked) |tok| tok.start else reader.tokenizer.pos;
+        if (text_io.isTextReader(s)) text_io.advanceReader(s, consumed) else host_stream.advanceReader(s, consumed);
+    }
     const form = form_opt orelse {
         if (eof_provided) return eof_val;
+        // An explicit `:eof` wins for both readers; absent it, the policy decides.
+        if (eof_policy == .nil_on_eof and opts == null) return Value.nil_val;
         return error_catalog.raise(.eof_unexpected, loc, .{});
     };
-    return try analyzer_mod.formToValue(rt, env, form);
+    return try liftData(rt, env, form, dialect);
 }
+
+/// The data lift for `dialect`: EDN never reads `#ns.Rec{}` as a record.
+fn liftData(rt: *Runtime, env: *Env, form: reader_mod.ReadForm, dialect: reader_mod.Dialect) anyerror!Value {
+    return switch (dialect) {
+        .clojure => analyzer_mod.formToValueStrict(rt, env, form),
+        .edn => analyzer_mod.formToValueEdn(rt, env, form),
+    };
+}
+
+/// Reader discard hook state. The lift can fail with errors outside the
+/// reader's error set (a user reader fn's thrown value), so the hook parks
+/// the real error here and aborts the read with a placeholder that
+/// `readSource` swaps back.
+const DiscardLift = struct {
+    rt: *Runtime,
+    env: *Env,
+    dialect: reader_mod.Dialect,
+    err: ?anyerror = null,
+
+    fn hook(ctx: *anyopaque, form: reader_mod.ReadForm) reader_mod.ReadError!void {
+        const self: *DiscardLift = @ptrCast(@alignCast(ctx));
+        _ = liftData(self.rt, self.env, form, self.dialect) catch |e| {
+            self.err = e;
+            return error.SyntaxError;
+        };
+    }
+};
 
 /// Look up `:key` in an opts map, returning the bound value or null when
 /// absent / nil. Returns null (no error) if `opts` is not a map, so a
@@ -143,7 +253,8 @@ const Entry = struct {
 };
 
 const ENTRIES = [_]Entry{
-    .{ .name = "read-string", .f = &readStringFn },
+    .{ .name = "read", .f = &readEdnFn },
+    .{ .name = "read-string", .f = &readStringEdnFn },
 };
 
 /// Register `clojure.edn` primitives into the dedicated namespace.

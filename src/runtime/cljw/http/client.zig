@@ -25,6 +25,7 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const string_mod = @import("../../collection/string.zig");
 const map_mod = @import("../../collection/map.zig");
 const keyword_mod = @import("../../keyword.zig");
+const safepoint = @import("../../concurrency/safepoint.zig");
 
 /// Shared request path for every method. `args[0]` is the URL string; `args[1]`
 /// (optional) is an opts map (`:headers`, `:body`).
@@ -58,18 +59,24 @@ fn doRequest(rt: *Runtime, method: std.http.Method, args: []const Value, loc: So
 
         const hdr_v = map_mod.get(m, try keyword_mod.intern(rt, null, "headers")) catch Value.nil_val;
         if (!hdr_v.isNil()) {
-            if (hdr_v.tag() != .array_map)
+            if (hdr_v.tag() != .array_map and hdr_v.tag() != .hash_map)
                 return error_catalog.raise(.http_opts_invalid, loc, .{ .detail = "the :headers option must be a map of string→string" });
-            const am = hdr_v.decodePtr(*const map_mod.ArrayMap);
+            // Iterate via the generic `forEachEntry`: a 9+-entry :headers map
+            // promotes to hash_map and the old array_map-only decode rejected
+            // it as "not a map" (Discussion #12 bug class).
             var list: std.ArrayList(std.http.Header) = .empty;
-            var i: u32 = 0;
-            while (i < am.count) : (i += 1) {
-                const k = am.entries[2 * i];
-                const v = am.entries[2 * i + 1];
-                if (!k.isString() or !v.isString())
-                    return error_catalog.raise(.http_opts_invalid, loc, .{ .detail = "each :headers entry must be string→string" });
-                try list.append(scratch, .{ .name = string_mod.asString(k), .value = string_mod.asString(v) });
-            }
+            const HdrCollect = struct {
+                scratch: std.mem.Allocator,
+                list: *std.ArrayList(std.http.Header),
+                loc: SourceLocation,
+                fn put(c: *@This(), k: Value, v: Value) anyerror!void {
+                    if (!k.isString() or !v.isString())
+                        return error_catalog.raise(.http_opts_invalid, c.loc, .{ .detail = "each :headers entry must be string→string" });
+                    try c.list.append(c.scratch, .{ .name = string_mod.asString(k), .value = string_mod.asString(v) });
+                }
+            };
+            var hctx: HdrCollect = .{ .scratch = scratch, .list = &list, .loc = loc };
+            try map_mod.forEachEntry(hdr_v, &hctx, HdrCollect.put);
             extra_headers = list.items;
         }
     }
@@ -80,15 +87,21 @@ fn doRequest(rt: *Runtime, method: std.http.Method, args: []const Value, loc: So
     var body_buf: std.Io.Writer.Allocating = .init(rt.gpa);
     defer body_buf.deinit();
 
-    const res = client.fetch(.{
+    // The fetch blocks on the network and touches only gpa memory, so a
+    // registered worker waiting on a slow peer does not stall a collection.
+    const res = safepoint.blocking(std.http.Client.fetch, .{ &client, std.http.Client.FetchOptions{
         .location = .{ .url = url },
         .method = method,
         .payload = payload,
         .response_writer = &body_buf.writer,
         .extra_headers = extra_headers,
-    }) catch return error_catalog.raise(.http_request_failed, loc, .{ .url = url });
+    } }) catch return error_catalog.raise(.http_request_failed, loc, .{ .url = url });
 
-    // {:status <int> :body "<captured body>"}
+    // {:status <int> :body "<captured body>"}. Built in a fabrication region:
+    // `result` is an unrooted local, and a collection between the two assocs
+    // (the body alloc can trigger one) would sweep the half-built map.
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     var result = map_mod.empty();
     result = try map_mod.assoc(rt, result, try keyword_mod.intern(rt, null, "status"), Value.initInteger(@intFromEnum(res.status)));
     result = try map_mod.assoc(rt, result, try keyword_mod.intern(rt, null, "body"), try string_mod.alloc(rt, body_buf.writer.buffered()));

@@ -43,3 +43,25 @@ assert_eq 'native_interface_dispatch' \
 assert_eq 'ipv_reaches_map_entry' \
   "$(run '(do (defprotocol P (m [x])) (extend-protocol P clojure.lang.IPersistentVector (m [x] (str "V" (count x)))) [(m [1 2]) (m (first {:a 1}))])')" \
   '["V2" "V2"]'
+
+# ADR-0187: a PROTOCOL as the extend target means "every type satisfying it".
+# `defprotocol Q` in ns `pt` is named by its generated interface name `pt.Q`.
+assert_eq 'protocol_target_dispatch' \
+  "$(run '(do (ns pt) (defprotocol Q (qm [x])) (defprotocol P (m [x])) (defrecord R [v] Q (qm [_] :q)) (extend-protocol P pt.Q (m [x] (str "viaQ" (qm x)))) (m (->R 1)))')" \
+  '"viaQ:q"'
+
+# ...and it OUTRANKS the Object default, as an interface impl does on the JVM.
+assert_eq 'protocol_target_beats_object' \
+  "$(run '(do (ns pt2) (defprotocol Q (qm [x])) (defprotocol P (m [x])) (defrecord R [v] Q (qm [_] :q)) (extend-protocol P Object (m [x] :obj) pt2.Q (m [x] :viaQ)) [(m (->R 1)) (m 5)])')" \
+  '[:viaQ :obj]'
+
+# A type that does NOT satisfy the target protocol still falls to Object.
+assert_eq 'protocol_target_non_satisfier_falls_through' \
+  "$(run '(do (ns pt3) (defprotocol Q (qm [x])) (defprotocol P (m [x])) (extend-protocol P Object (m [x] :obj) pt3.Q (m [x] :viaQ)) (m "s"))')" \
+  ':obj'
+
+# ORDER-INDEPENDENT: the type is extended to Q AFTER P was extended to Q, so a
+# registration-time copy would miss it. Membership is answered at dispatch.
+assert_eq 'protocol_target_extend_after' \
+  "$(run '(do (ns pt4) (defprotocol Q (qm [x])) (defprotocol P (m [x])) (extend-protocol P pt4.Q (m [x] :viaQ)) (defrecord Late [v] Q (qm [_] :q)) (m (->Late 1)))')" \
+  ':viaQ'

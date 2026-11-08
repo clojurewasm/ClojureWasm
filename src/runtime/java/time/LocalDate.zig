@@ -10,8 +10,10 @@
 //! `.typed_instance` LocalDate VALUE (`runtime/time/local_date_value.zig`)
 //! whose per-Runtime descriptor carries the instance methods (getYear /
 //! getMonthValue / getDayOfMonth / plusDays). The civil↔epoch-day conversions
-//! + the date parser are reused from the sibling `runtime/time/instant.zig`
-//! (F-009 neutral home).
+//! are reused from the sibling `runtime/time/instant.zig` (F-009 neutral
+//! home); `parse` / `from` / `.format` go through the java.time.format engine
+//! (`runtime/time/date_time_formatter_value.zig`), so a bad string is the
+//! JVM DateTimeParseException.
 //!
 //! method_table is populated in `initLocalDate` (runtime) rather than at
 //! module scope because `Value.initBuiltinFn(&fn)` calls `@intFromPtr(&fn)`
@@ -27,7 +29,7 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const instant = @import("../../time/instant.zig");
 const ld_value = @import("../../time/local_date_value.zig");
-const string_collection = @import("../../collection/string.zig");
+const dtf_value = @import("../../time/date_time_formatter_value.zig");
 
 const MS_PER_DAY: i64 = 86_400_000;
 
@@ -52,18 +54,30 @@ fn now(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerr
     return ld_value.make(rt, @divFloor(ms, MS_PER_DAY));
 }
 
-/// `(java.time.LocalDate/parse s)` — parse an ISO local date `yyyy-MM-dd`. JVM
-/// throws `DateTimeParseException`; cljw raises the same `inst_string_invalid`
-/// the `#inst` reader uses.
+/// `(java.time.LocalDate/parse s)` = `parse(s, DateTimeFormatter/ISO_LOCAL_DATE)`, and
+/// `(java.time.LocalDate/parse s formatter)` (JVM `LocalDate.parse`). A failure is
+/// the JVM DateTimeParseException.
 fn parse(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    try error_catalog.checkArity("java.time.LocalDate/parse", args, 1, loc);
-    if (args[0].tag() != .string)
-        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "java.time.LocalDate/parse", .actual = @tagName(args[0].tag()) });
-    const s = string_collection.asString(args[0]);
-    const epoch_day = instant.parseLocalDate(s) catch
-        return error_catalog.raise(.inst_string_invalid, loc, .{ .s = s });
-    return ld_value.make(rt, epoch_day);
+    try error_catalog.checkArityRange("java.time.LocalDate/parse", args, 1, 2, loc);
+    if (args.len == 2) return dtf_value.parseTo(rt, .local_date, args[0], args[1], "java.time.LocalDate/parse", loc);
+    return dtf_value.parseIso(rt, .local_date, args[0], "ISO_LOCAL_DATE", "java.time.LocalDate/parse", loc);
+}
+
+/// `(LocalDate/from temporal)` — JVM `LocalDate.from(TemporalAccessor)`.
+fn from(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.time.LocalDate/from", args, 1, loc);
+    return dtf_value.convert(rt, .local_date, args[0], loc);
+}
+
+/// `(.format x formatter)` — JVM `LocalDate.format(DateTimeFormatter)`.
+fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("format", args, 2, loc);
+    if (!dtf_value.isFormatter(args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".format", .expected = "a DateTimeFormatter", .actual = dtf_value.classNameOf(args[1]) });
+    return dtf_value.formatValue(rt, args[1], args[0], loc);
 }
 
 /// `(java.time.LocalDate/ofEpochDay n)` — the date `n` days after 1970-01-01
@@ -87,6 +101,8 @@ fn initLocalDate(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) an
             .{ "now", &now },
             .{ "parse", &parse },
             .{ "ofEpochDay", &ofEpochDay },
+            .{ "from", &from },
+            .{ "format", &formatFn },
         });
     }
     td.temporal_print = .iso_local_date;

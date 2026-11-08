@@ -50,6 +50,10 @@
 ;;=> 3
 (float (bigint 100))
 ;;=> 100.0
+(try (double \A) :no-error (catch Throwable _ :error))
+;;=> :error
+(try (float \A) :no-error (catch Throwable _ :error))
+;;=> :error
 (int \A)
 ;;=> 65
 ; (bigint <float>) routes through (.toBigInteger (bigdec d)) — the shortest

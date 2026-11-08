@@ -1,0 +1,56 @@
+(fn? (eval (fn [x] x)))
+;;=> true
+(fn? (eval +))
+;;=> true
+((eval (fn [x] (* 2 x))) 21)
+;;=> 42
+(eval 5)
+;;=> 5
+(eval "s")
+;;=> "s"
+(eval :k)
+;;=> :k
+(eval \a)
+;;=> \a
+(eval nil)
+;;=> nil
+(eval true)
+;;=> true
+(eval 5N)
+;;=> 5N
+(eval 1/2)
+;;=> 1/2
+(eval #"a+")
+;;=> #"a+"
+(eval '(+ 1 2))
+;;=> 3
+(eval (list '+ 1 2))
+;;=> 3
+(eval [1 2 3])
+;;=> [1 2 3]
+(eval {:a 1})
+;;=> {:a 1}
+(eval #{1})
+;;=> #{1}
+(eval '())
+;;=> ()
+(eval (quote (quote x)))
+;;=> x
+(eval ''x)
+;;=> x
+(fn? (eval (eval ''+)))
+;;=> true
+(let [a (atom 1)] (= a (eval a)))
+;;=> true
+(try (eval (seq [1 2])) (catch Exception e :threw))
+;;=> :threw
+(try (eval (seq "ab")) (catch Exception e :threw))
+;;=> :threw
+(try (eval (seq [:a])) (catch Exception e :threw))
+;;=> :threw
+(try (eval (symbol "no-such-var-xyz")) (catch Exception e :threw))
+;;=> :threw
+(eval (vec (range 3)))
+;;=> [0 1 2]
+(map (fn [f] (f 2)) [(eval (fn [x] (+ x 1)))])
+;;=> (3)

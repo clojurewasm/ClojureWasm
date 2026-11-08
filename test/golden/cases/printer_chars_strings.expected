@@ -1,0 +1,10 @@
+--- exit ---
+0
+--- stdout ---
+\a \A \0 \space \newline \tab \return \backspace \formfeed
+(\a \newline \b \tab \c)
+"tab\there" "nl\nhere" "quote\"here" "back\\slash"
+"ünïcødé" "日本語"
+"a\nb"
+"a\n" \A \λ 65
+--- stderr ---

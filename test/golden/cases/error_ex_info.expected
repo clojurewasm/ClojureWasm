@@ -1,0 +1,7 @@
+--- exit ---
+1
+--- stdout ---
+before
+--- stderr ---
+Exception
+  boom

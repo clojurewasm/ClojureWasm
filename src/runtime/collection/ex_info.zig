@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Heap-backed `ex-info` Value.
 //!
 //! Mirrors Clojure's `clojure.lang.ExceptionInfo`: a structured error
@@ -247,7 +248,18 @@ pub fn traceGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
 
 /// Register ExInfo's finaliser + trace into tag_ops tables.
 /// Idempotent at the same fn pointers; called from `Runtime.init`.
+/// D-573: message + origin-file copy + the trace array. The per-frame
+/// strings inside the trace are owned too but not walked here — the array
+/// itself dominates and an approximation is all the trigger needs.
+fn ownedBytes(header: *HeapHeader) usize {
+    const ex: *ExInfo = @ptrCast(@alignCast(header));
+    var n: usize = ex.message().len + ex.origin_file_len;
+    if (ex.trace_ptr) |p| n += ex.trace_len * @sizeOf(@TypeOf(p[0]));
+    return n;
+}
+
 pub fn registerGcHooks() void {
+    tag_ops.registerOwnedBytes(.ex_info, &ownedBytes);
     tag_ops.registerFinaliser(.ex_info, &finaliseGc);
     tag_ops.registerTrace(.ex_info, &traceGc);
 }

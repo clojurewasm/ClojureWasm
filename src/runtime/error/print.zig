@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Source-context error rendering.
 //!
 //! Given an `error.Info` payload + the original source text, render a

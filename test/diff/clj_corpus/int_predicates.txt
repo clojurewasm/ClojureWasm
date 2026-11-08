@@ -1,0 +1,61 @@
+;; int? / pos-int? / neg-int? / nat-int? vs clj (D-165 origin flag).
+;; cljw stores a Long that overflowed its i48 inline range as a `.big_int`
+;; with origin `.long`; a genuine `(bigint …)` is origin `.bigint`. clj's
+;; `int?` is FIXED-PRECISION (Long yes, BigInt no); `integer?` is either.
+;; The three sign predicates are `(and (int? x) <sign>)`.
+
+;; heap-boxed Long (origin .long) — a Long in clj, so int?/sign predicates fire
+(int? (bit-shift-left 1 60))
+;;=> true
+(pos-int? (bit-shift-left 1 60))
+;;=> true
+(neg-int? (- (bit-shift-left 1 60)))
+;;=> true
+(nat-int? (bit-shift-left 1 60))
+;;=> true
+
+;; inline Long
+(int? 5)
+;;=> true
+(pos-int? 5)
+;;=> true
+(neg-int? -5)
+;;=> true
+(nat-int? 0)
+;;=> true
+(pos-int? 0)
+;;=> false
+(pos-int? -5)
+;;=> false
+(neg-int? 5)
+;;=> false
+(nat-int? -1)
+;;=> false
+
+;; genuine BigInt (origin .bigint) — NOT fixed-precision: int? false, integer? true
+(int? (bigint 5))
+;;=> false
+(integer? (bigint 5))
+;;=> true
+(pos-int? (bigint 5))
+;;=> false
+(neg-int? (bigint -5))
+;;=> false
+(nat-int? (bigint 0))
+;;=> false
+
+;; non-integers
+(int? 5.0)
+;;=> false
+(int? 3/2)
+;;=> false
+(pos-int? 5.0)
+;;=> false
+(nat-int? 3/2)
+;;=> false
+(pos-int? "x")
+;;=> false
+(pos-int? nil)
+;;=> false
+(neg-int? nil)
+;;=> false

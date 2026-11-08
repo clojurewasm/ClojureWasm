@@ -1,0 +1,4 @@
+name: "Prime Trial Division"
+category: numeric
+expected_output: "7919"
+description: "1000th prime by trial division — nested loop/recur, fixnum (* d d) / rem / inc, fn call per candidate"

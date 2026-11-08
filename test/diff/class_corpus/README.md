@@ -24,7 +24,7 @@ a worse trap than an absent one").
    `~/Documents/OSS/clojure-corpus` 228-repo scan).
 2. Write one value-expr per method (with realistic args + a few edge cases) to
    a scratch file.
-3. `bash scripts/clj_diff_sweep.sh <file> --class-corpus <Class>` — runs every
+3. `bb scripts/clj_diff_sweep.clj <file> --class-corpus <Class>` — runs every
    expr through both cljw and clj, and appends only the **matching** pairs here.
    Any DIFF is a completeness gap: fix cljw (the common case) or, if the method
    is an intentional divergence, record an `AD-NNN` and leave it OUT of the
@@ -32,7 +32,7 @@ a worse trap than an absent one").
 
 ## How it is gated
 
-`scripts/check_corpus_regression.sh` scans both `clj_corpus/` (general
+`scripts/corpus_regression.clj` scans both `clj_corpus/` (general
 behaviour) and `class_corpus/` (this), re-running each `expr` through cljw only
 and failing on any drift. It is part of the per-commit **smoke** gate
 (`corpus_regression` step in `test/run_all.sh`), so a regression or a newly

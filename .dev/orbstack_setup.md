@@ -5,7 +5,7 @@
 > The cross-arch verification host is the `ubuntunote` SSH box
 > (native x86_64 hardware); see
 > [`.dev/ubuntunote_setup.md`](ubuntunote_setup.md) and
-> [`.dev/decisions/0049_orbstack_linux_gate_retired.md`](decisions/0049_orbstack_linux_gate_retired.md).
+> ADR-0049.
 >
 > This file is retained because OrbStack remains a useful
 > dev-convenience host for interactive scratch (REPL probes,

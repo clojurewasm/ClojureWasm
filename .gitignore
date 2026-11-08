@@ -34,6 +34,8 @@ private/
 .dev/.gate_cadence
 .dev/.gate_ledger
 .dev/.perf_campaign_active
+# stdout/stderr of the warm dev nREPL (scripts/dev_repl.clj start)
+.dev/.dev_repl.log
 
 # clojure-lsp / clj-kondo caches + deps.edn classpath cache (appear when the LSP
 # or a lib check analyses test/conformance/verified_projects/**/*.clj)
@@ -41,3 +43,25 @@ private/
 .lsp/
 test/conformance/verified_projects/*/.cpcache/
 __pycache__/
+
+# Layer 8 (ADR-0186) mutation sweep working output: candidate lists, per-mutant
+# build logs, the JSONL verdict log. A sweep REPORT worth keeping is committed
+# deliberately (git add -f .dev/mutation/report-*.md), never by accident.
+.dev/mutation/
+
+# Throwaway detached worktrees for scratch work (git worktree add --detach .dev/wt-<purpose>)
+.dev/wt-*/
+
+# nREPL writes the live port here at `cljw nrepl` startup — machine-local.
+.nrepl-port
+
+# The Go guest of the polyglot demo carries the Go runtime (~4.5 MB); it is
+# built on demand from jsonsum.go (docs/examples/polyglot/README.md), never
+# committed. The C, Zig and Rust guests are a few hundred bytes and are.
+docs/examples/polyglot/go/jsonsum.wasm
+
+# Per-worktree ling scratch and resume notes (never committed)
+.scratch/
+
+# Generated fractal demo frame
+docs/examples/fractal/out.ppm

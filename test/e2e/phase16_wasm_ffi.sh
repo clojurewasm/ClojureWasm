@@ -36,13 +36,13 @@ out="$("$BIN" "$FIX" 2>&1)" || fail "cljw exited non-zero running $FIX:
 $out"
 
 # (1) Functional: the Zig->Wasm add export returns 42.
-echo "$out" | grep -q "add(2,40) = 42" || fail "wasm add export: expected 'add(2,40) = 42', got:
+grep -q "add(2,40) = 42" <<<"$out" || fail "wasm add export: expected 'add(2,40) = 42', got:
 $out"
 echo "PASS wasm-ffi-add -> 42"
 
 # (2) Leak guard (D-259 (b)): no DebugAllocator leak on exit — the .wasm_module
 # finaliser freed the *Loaded box + tore down the zwasm triple.
-leaks="$(echo "$out" | grep -c "leaked" || true)"
+leaks="$(grep -c "leaked" <<<"$out" || true)"
 [ "$leaks" -eq 0 ] || fail "wasm handle leaked ($leaks leak line(s)) — .wasm_module finaliser not freeing:
 $out"
 echo "PASS wasm-ffi-no-leak -> 0 leaks"
@@ -53,9 +53,13 @@ echo "PASS wasm-ffi-no-leak -> 0 leaks"
 # 70 here (non-zero), and a mismatched Kind would print NOT-CAUGHT.
 catch_out="$("$BIN" test/e2e/fixtures/wasm_ffi_catch.clj 2>&1)" || fail "catchability fixture exited non-zero (an error escaped (catch …) → exit 70):
 $catch_out"
-echo "$catch_out" | grep -q "NOT-CAUGHT" && fail "a wasm error was not caught (or matched the wrong host class):
+grep -q "NOT-CAUGHT" <<<"$catch_out" && fail "a wasm error was not caught (or matched the wrong host class):
 $catch_out"
-echo "$catch_out" | grep -q "^DONE$" || fail "catchability fixture did not run to completion:
+grep -q "^wasi-load-split: CAUGHT$" <<<"$catch_out" || fail "wasm/load accepted or misclassified :wasi instead of enforcing the command/handle split:
+$catch_out"
+grep -q "^wasi-load-nil-split: CAUGHT$" <<<"$catch_out" || fail "wasm/load treated a present nil :wasi as absent:
+$catch_out"
+grep -q "^DONE$" <<<"$catch_out" || fail "catchability fixture did not run to completion:
 $catch_out"
 echo "PASS wasm-ffi-catchable -> all errors caught, exit 0"
 

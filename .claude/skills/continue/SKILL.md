@@ -1,6 +1,6 @@
 ---
 name: continue
-description: Resume fully autonomous work on the `main` branch and drive the per-task TDD loop. Trigger when the user says 続けて, "resume", "pick up where we left off", "/continue", "次", "go", or starts a fresh session expecting prior context. `/continue` may also be re-invoked automatically (cron / wake hook); treat every invocation as the same go signal. The full step-by-step loop spec (Step 0 → 7) lives in CLAUDE.md § Autonomous Workflow + § The only stop (single condition: user explicit stop) and is loaded into every turn's system prompt; this skill is the invocation trigger and carries the resume procedure, the Phase-boundary review chain, the subagent delegation cheatsheet, and the model-selection guidance.
+description: Resume fully autonomous work on the `staging` branch and drive the per-task TDD loop. Trigger when the user says 続けて, "resume", "pick up where we left off", "/continue", "次", "go", or starts a fresh session expecting prior context. `/continue` may also be re-invoked automatically (cron / wake hook); treat every invocation as the same go signal. The full step-by-step loop spec (Step 0 → 7) lives in CLAUDE.md § Autonomous Workflow + § The only stop (single condition: user explicit stop) and is loaded into every turn's system prompt; this skill is the invocation trigger and carries the resume procedure, the Phase-boundary review chain, the subagent delegation cheatsheet, and the model-selection guidance.
 ---
 
 # continue
@@ -27,14 +27,17 @@ spec is not duplicated here — CLAUDE.md is the single source.
 
 ## Resume procedure (on every session pickup)
 
-1. Read `.dev/handover.md` (SessionStart hook already prints it;
-   re-read). Pay attention to any "Guardrail refresh" section —
-   it points at recent principle.md / CLAUDE.md spirit edits the
-   loop must honour.
-2. Read `CLAUDE.md` § Project spirit (top section, governs all
-   other rules) and `.dev/principle.md` (Bad Smell catalogue +
-   Structural imagination phase). These two are the meta layer
-   the per-task loop is checked against.
+1. Run `project workflow catchup`. It drains the axioms and the
+   live kanban cards. There is no handover file: `.dev/handover.md`
+   was retired on 2026-09-11 (memory `20260910235746-74389f7f`), so
+   any older text that points at it, or at its "First task on
+   resume", is stale.
+2. Read `CLAUDE.md` § Project spirit (governs all other rules) and
+   the smell sensors it indexes in hive memory (the `bad-smell`
+   tag, the premises `20260911004145-29ffd52a`, structural
+   imagination `20260911004146-720ff81e`). `.dev/principle.md` no
+   longer exists. These are the meta layer the per-task loop is
+   checked against.
 2a. Read `.dev/project_facts.md` (user-declared invariants —
    F-001 … F-007 at 2026-05-24) and `.dev/structure_plan.md`
    (anticipated directory tree Phase 5-20). When a task touches
@@ -43,16 +46,15 @@ spec is not duplicated here — CLAUDE.md is the single source.
 3. Read `.dev/ROADMAP.md` **§9.0** (the gap-area model — the
    phase-queue/§9.<N>-placeholder model is RETIRED per ADR-0142):
    the three gap areas' BUILT status + named gaps + draining
-   `D-NNN` rows. Next-unit selection is `handover.md`'s "First
-   task on resume" if concrete, else the `.dev/debt.yaml`
-   `active:` list EASIEST-FIRST (CLAUDE.md § When the active
-   work unit completes).
+   `D-NNN` rows. Next-unit selection is a concrete live kanban
+   card if catchup surfaced one, else the `.dev/debt.yaml`
+   `active:` list EASIEST-FIRST (memory `20260910001609-5b3ea4d7`).
 4. (Dormant cadence per ADR-0025: skip the
    `docs/ja/learn_clojurewasm/` chapter check. `private/notes/`
-   per-task notes continue.)
+   per-task notes continue; they are gitignored and local-only.)
 5. `git log --oneline -10` — read the recent commit chain so
-   the next task starts with the as-pushed reality, not the
-   handover's narration of it.
+   the next task starts with the as-pushed reality, not a
+   narration of it.
 6. Confirm HEAD is green **without re-running the full gate** — the
    pushed HEAD was already gated when it landed. Check the
    `.dev/.gate_pass` / `.dev/.smoke_pass` fingerprint (or run a quick
@@ -92,15 +94,15 @@ self-selected unit without asking**:
    - **Subagent B**: built-in `security-review` on unpushed
      commits.
    - **Subagent C**: write any outstanding chapter(s) for the
-     closed phase, pulling from `private/notes/` task-notes.
+     closed phase, pulling from `private/notes/` task-notes (local-only; a fresh clone has none).
 3. Synthesise in main: 1 line per check + severity counts.
    No "shall I proceed?" question — proceed.
 4. (Bench sweep retired 2026-06-11 — the `bench/quick.sh` /
    `bench/quick_baseline.txt` auto-baseline was removed from the gate,
    so no dangling samples accumulate. Perf is measured on demand via
    `bench/compare_langs.sh` / `bench/run_bench.sh`.)
-5. Update `handover.md` to point at the next self-selected unit
-   (debt.yaml easiest-first).
+5. Record the next self-selected unit (debt.yaml easiest-first) on
+   the kanban board; there is no handover file to update.
 6. Proceed to that unit's Step 0. Auto-compaction handles context
    size transparently — no agent action needed.
 
@@ -127,15 +129,20 @@ importance**.
 - `audit_scaffolding` per task — runs at Phase boundary only (or
   every ~10 chapters).
 
-## Model selection (dual-model)
+## Model selection
 
-- **Per-task TDD loop (Step 0 → 7)**: current session's model —
-  Opus 4.7 is fine.
-- **Phase boundary chain (multi-agent fan-out)**: prefer **Opus 4.6**
-  for the long-context audit / simplify / chapter-write subagents —
-  Opus 4.7's MRCR v2 retrieval is known to degrade above ~100k
-  tokens versus 4.6. Sonnet 4.6 is a viable cost-efficient
-  alternative.
+Default: **a subagent inherits the parent model**, and the parent is
+whatever `.claude/settings.json` pins. Do not override per task.
 
-When unsure, default to subagent inheriting the parent model; flip
-to Opus 4.6 only if a long-context task underperforms.
+This section used to name specific models (4.6 for long-context
+fan-out, 4.7 for the loop) on the strength of a retrieval-degradation
+comparison between two releases. Both had been superseded by the
+pinned model before anyone noticed, so the advice was steering
+subagents toward models older than the one running the loop — and
+nothing here could have caught that, because a model name in prose is
+not checked against anything.
+
+A model-specific claim belongs where it can be re-measured, not in the
+resume procedure. If a long-context subagent underperforms, measure it
+on the models available at that moment and record the finding in
+a hive memory entry with its date; do not encode a model name here.

@@ -107,7 +107,7 @@ fn isNativeTransient(tag: Value.Tag) bool {
 /// still raises the caller's `<.member>` error, not a spurious core-fn coercion.
 fn isNativeCollection(tag: Value.Tag) bool {
     return switch (tag) {
-        .list, .vector, .array_map, .hash_map, .hash_set, .sorted_map, .sorted_set, .persistent_queue, .range, .map_entry, .cons, .lazy_seq => true,
+        .list, .vector, .sub_vector, .array_map, .hash_map, .hash_set, .sorted_map, .sorted_set, .persistent_queue, .range, .array_seq, .string_seq, .map_entry, .cons, .lazy_seq => true,
         else => false,
     };
 }
@@ -118,7 +118,7 @@ fn isNativeCollection(tag: Value.Tag) bool {
 /// caller's `<.member>` error here.
 fn isSequentialCollection(tag: Value.Tag) bool {
     return switch (tag) {
-        .list, .vector, .persistent_queue, .range, .map_entry, .cons, .lazy_seq => true,
+        .list, .vector, .sub_vector, .persistent_queue, .range, .array_seq, .string_seq, .map_entry, .cons, .lazy_seq => true,
         else => false,
     };
 }
@@ -215,8 +215,8 @@ pub fn tryClojureLangMethod(
     // `(comparator [_] (.comparator backing-sorted-map))` chains through here.
     if (std.mem.eql(u8, name, "comparator") and args.len == 0) {
         const comp = switch (receiver.tag()) {
-            .sorted_map => receiver.decodePtr(*const sorted.SortedMap).comparator,
-            .sorted_set => receiver.decodePtr(*const sorted.SortedSet).map.decodePtr(*const sorted.SortedMap).comparator,
+            .sorted_map => receiver.decodePtr(*const sorted.SortedMap).comparator, // repr-decode-ok: comparator field read; sorted_map has a single backing
+            .sorted_set => receiver.decodePtr(*const sorted.SortedSet).map.decodePtr(*const sorted.SortedMap).comparator, // repr-decode-ok: comparator field read; sorted_set has a single backing
             else => return null,
         };
         if (!comp.isNil()) return comp;

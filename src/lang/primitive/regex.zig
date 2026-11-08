@@ -33,6 +33,7 @@ const root_set = @import("../../runtime/gc/root_set.zig");
 const regex_value = @import("../../runtime/regex/value.zig");
 const regex_match = @import("../../runtime/regex/match.zig");
 const compile_mod = @import("../../runtime/regex/compile.zig");
+const char_sequence = @import("../../runtime/char_sequence.zig");
 
 // Pulls runtime/regex/{compile,match}.zig into the compile + test
 // graph. value.zig is referenced directly via regex_value above;
@@ -56,15 +57,8 @@ pub fn rePattern(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
         });
     }
     const src = string_collection.asString(args[0]);
-    return regex_value.alloc(rt, src, .{}) catch |err| switch (err) {
-        error.OutOfMemory => err,
-        // INV-1: a nested-counted-repetition compile-bomb is a catchable error,
-        // not an OOM / process kill.
-        error.PatternTooLarge => error_catalog.raise(.regex_pattern_too_large, loc, .{}),
-        else => error_catalog.raise(.feature_not_supported, loc, .{
-            .name = "re-pattern (unsupported syntax in cycle 1)",
-        }),
-    };
+    return regex_value.alloc(rt, src, .{}) catch |err|
+        regex_value.raiseCompileError(err, loc);
 }
 
 /// `(re-find re s)` — search for the first match of `re` anywhere
@@ -72,17 +66,14 @@ pub fn rePattern(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
 /// capture vector when the pattern has groups) on success, `nil`
 /// on no match.
 pub fn reFind(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("__re-find", args, 2, loc);
+    // The text first: see reFindAll.
+    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+    defer aw.deinit();
+    const input = try char_sequence.textArg(rt, env, args[1], "__re-find", loc, &aw);
     const r = try coerceRegex(rt, args[0], loc, "__re-find");
-    if (args[1].tag() != .string) {
-        return error_catalog.raise(.type_arg_not_string, loc, .{
-            .fn_name = "__re-find",
-            .actual = @tagName(args[1].tag()),
-        });
-    }
-    const input = string_collection.asString(args[1]);
     const result = (try regex_match.find(rt.gpa, r.program, input)) orelse return .nil_val;
+    defer result.deinit(rt.gpa);
     return try buildMatchResult(rt, r.program, input, result);
 }
 
@@ -96,12 +87,10 @@ pub fn buildMatchResult(rt: *Runtime, program: *const compile_mod.Program, input
     }
     var vec = vector_collection.empty();
     vec = try vector_collection.conj(rt, vec, try string_collection.alloc(rt, input[result.start..result.end]));
-    var g: u16 = 1;
+    var g: usize = 1;
     while (g <= program.capture_count) : (g += 1) {
-        const s = result.captures.slots[@as(usize, 2) * g];
-        const e = result.captures.slots[@as(usize, 2) * g + 1];
-        const gv = if (s >= 0 and e >= 0)
-            try string_collection.alloc(rt, input[@intCast(s)..@intCast(e)])
+        const gv = if (result.group(g)) |span|
+            try string_collection.alloc(rt, input[span.start..span.end])
         else
             Value.nil_val;
         vec = try vector_collection.conj(rt, vec, gv);
@@ -114,17 +103,14 @@ pub fn buildMatchResult(rt: *Runtime, program: *const compile_mod.Program, input
 /// capture vector when the pattern has groups) on full-match,
 /// `nil` otherwise.
 pub fn reMatches(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("re-matches", args, 2, loc);
+    // The text first: see reFindAll.
+    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+    defer aw.deinit();
+    const input = try char_sequence.textArg(rt, env, args[1], "re-matches", loc, &aw);
     const r = try coerceRegex(rt, args[0], loc, "re-matches");
-    if (args[1].tag() != .string) {
-        return error_catalog.raise(.type_arg_not_string, loc, .{
-            .fn_name = "re-matches",
-            .actual = @tagName(args[1].tag()),
-        });
-    }
-    const input = string_collection.asString(args[1]);
     const result = (try regex_match.matchFull(rt.gpa, r.program, input)) orelse return .nil_val;
+    defer result.deinit(rt.gpa);
     return try buildMatchResult(rt, r.program, input, result);
 }
 
@@ -133,19 +119,18 @@ pub fn reMatches(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
 /// byte span) or nil. Internal helper for `clojure.core/re-seq` (which
 /// loops, advancing past each match's end).
 pub fn reFindFrom(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("re-find-from", args, 3, loc);
-    const r = try coerceRegex(rt, args[0], loc, "re-find-from");
-    if (args[1].tag() != .string) {
-        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "re-find-from", .actual = @tagName(args[1].tag()) });
-    }
+    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+    defer aw.deinit();
+    const input = try char_sequence.textArg(rt, env, args[1], "re-find-from", loc, &aw);
     if (args[2].tag() != .integer) {
         return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = "re-find-from", .actual = @tagName(args[2].tag()) });
     }
-    const input = string_collection.asString(args[1]);
+    const r = try coerceRegex(rt, args[0], loc, "re-find-from");
     const start_i = args[2].asInteger();
     if (start_i < 0 or start_i > input.len) return .nil_val;
     const result = (try regex_match.findFrom(rt.gpa, r.program, input, @intCast(start_i))) orelse return .nil_val;
+    defer result.deinit(rt.gpa);
     // PERF: D-386 (O-024) build `[match start end]` in ONE `fromSlice` alloc, not
     // three persistent-vector `conj` copies (re-seq calls this per match ×10000;
     // the 3-conj churn dominated regex_count's malloc profile). The match element
@@ -168,18 +153,21 @@ pub fn reFindFrom(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 /// pair across all matches) instead of N `re-find-from` calls each round-
 /// tripping a `[match start end]` vector through the interpreter. [O-035]
 pub fn reFindAll(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("re-find-all", args, 2, loc);
+    // The text first: rendering a non-string CharSequence can allocate, and
+    // nothing roots a regex coerceRegex compiles from a string pattern.
+    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+    defer aw.deinit();
+    const input = try char_sequence.textArg(rt, env, args[1], "re-find-all", loc, &aw);
     const r = try coerceRegex(rt, args[0], loc, "re-find-all");
-    if (args[1].tag() != .string) {
-        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "re-find-all", .actual = @tagName(args[1].tag()) });
-    }
-    const input = string_collection.asString(args[1]);
 
     // Phase 1: collect match bounds (plain structs, no GC Values) — reuses ONE
     // ThreadList pair across the whole scan (vs re-find-from's per-call pair).
     var bounds: std.ArrayList(regex_match.MatchResult) = .empty;
-    defer bounds.deinit(rt.gpa);
+    defer {
+        for (bounds.items) |m| m.deinit(rt.gpa);
+        bounds.deinit(rt.gpa);
+    }
     try regex_match.findAll(rt.gpa, r.program, input, &bounds);
     if (bounds.items.len == 0) return .nil_val; // (seq []) → nil
 
@@ -214,14 +202,8 @@ fn coerceRegex(rt: *Runtime, v: Value, loc: SourceLocation, fn_name: []const u8)
     if (v.tag() == .regex) return regex_value.asRegex(v);
     if (v.tag() == .string) {
         const src = string_collection.asString(v);
-        const compiled = regex_value.alloc(rt, src, .{}) catch |err| switch (err) {
-            error.OutOfMemory => return err,
-            // INV-1: compile-bomb pattern is a catchable error, not an OOM.
-            error.PatternTooLarge => return error_catalog.raise(.regex_pattern_too_large, loc, .{}),
-            else => return error_catalog.raise(.feature_not_supported, loc, .{
-                .name = "re-find / re-matches with invalid pattern (cycle 1)",
-            }),
-        };
+        const compiled = regex_value.alloc(rt, src, .{}) catch |err|
+            return regex_value.raiseCompileError(err, loc);
         return regex_value.asRegex(compiled);
     }
     return error_catalog.raise(.type_arg_not_string, loc, .{

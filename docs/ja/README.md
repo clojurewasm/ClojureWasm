@@ -41,6 +41,6 @@ Phase 5 entry は既に通過しました — プロジェクトはその後 Pha
 ## 関連
 
 - ADR-0025 — Big-bang chapter regeneration boundary at Phase-4
-  critical-path close (`.dev/decisions/0025_chapter_archive_boundary.md`)
+  critical-path close (ADR-0025)
 - code_learning_doc skill (`.claude/skills/code_learning_doc/SKILL.md`) —
   cadence 規定 (現在は dormancy)

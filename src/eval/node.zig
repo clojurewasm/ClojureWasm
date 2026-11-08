@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Node — the analyser's typed AST.
 //!
 //! `Form` (`form.zig`) is the literal surface representation a Reader
@@ -145,10 +146,11 @@ pub const SetFieldNode = struct {
     loc: SourceLocation = .{},
 };
 
-/// `(def name value)` (and `^:dynamic` / `^:macro` / `^:private`
-/// variants once metadata reading lands).
+/// `(def name value)`. The analyzer captures the declared Var, just as it
+/// resolves reads and set!. Calling a function must not retarget its defs
+/// to the caller's current namespace.
 pub const DefNode = struct {
-    name: []const u8,
+    var_ptr: *Var,
     value_expr: *const Node,
     /// Mirrors `env.zig`'s VarFlags — duplicated because the Node
     /// tree must not import the analyser's parsing context. The two
@@ -423,6 +425,12 @@ pub const InteropCallNode = struct {
     /// `.constructor`: type name string for eval-time `resolveJavaSurface`
     /// lookup. Other kinds: empty string.
     type_name: []const u8 = "",
+    /// `.constructor` with a dot-free `type_name`: the namespace the form was
+    /// ANALYZED in. A user type is keyed `<ns>.<Name>` (ADR-0198) and clj
+    /// binds a class name lexically, so the eval-time lookup tries
+    /// `<definer_ns>.<type_name>` before anything the caller's namespace
+    /// could answer. Empty when there is none.
+    definer_ns: []const u8 = "",
     /// `.static_method` / `.instance_member`: method or field name.
     /// `.constructor`: ignored.
     name: []const u8 = "",
@@ -624,7 +632,9 @@ test "LetNode binding carries name / index / value_expr" {
 
 test "DefNode flag defaults are all false" {
     const v = Node{ .constant = .{ .value = .nil_val } };
-    const d = DefNode{ .name = "x", .value_expr = &v };
+    var ns: @import("../runtime/env.zig").Namespace = undefined;
+    var target: Var = .{ .ns = &ns, .name = "x" };
+    const d = DefNode{ .var_ptr = &target, .value_expr = &v };
     try testing.expect(!d.is_dynamic);
     try testing.expect(!d.is_macro);
     try testing.expect(!d.is_private);

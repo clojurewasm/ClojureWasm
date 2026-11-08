@@ -51,14 +51,19 @@ fn setMap(recv: Value, m: Value) void {
 var hm_descriptor: ?*const type_descriptor.TypeDescriptor = null;
 
 /// `(java.util.HashMap.)` — empty. `(HashMap. n)` int initial-capacity hint
-/// (ignored → empty). `(HashMap. m)` seeds from a cljw map (persistent, so the
-/// shared Value is safe — `.put` rebinds a new map, never mutating the source).
+/// (ignored → empty). `(HashMap. n load-factor)` both sizing hints (ignored →
+/// empty; the backing store is a cljw map, which has neither). `(HashMap. m)`
+/// seeds from a cljw map (persistent, so the shared Value is safe — `.put`
+/// rebinds a new map, never mutating the source).
 fn initHashMap(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    if (args.len > 1)
-        return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = "java.util.HashMap.", .expected = 1 });
+    if (args.len > 2)
+        return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = "java.util.HashMap.", .expected = 2 });
     var initial = map.empty();
-    if (args.len == 1) {
+    if (args.len == 2) {
+        if (args[0].tag() != .integer or (args[1].tag() != .float and args[1].tag() != .integer))
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.util.HashMap.", .expected = "int capacity and float load factor", .actual = @tagName(args[1].tag()) });
+    } else if (args.len == 1) {
         switch (args[0].tag()) {
             .integer => {}, // capacity hint → empty
             // Seed from a cljw unsorted map (the `{…}` forms `.put`'s assoc
@@ -160,6 +165,20 @@ fn putIfAbsent(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return Value.nil_val;
 }
 
+/// `(.putAll hm m)` — copy every entry of `m` into `hm`, overwriting on key
+/// collision; returns nil. `m` is a cljw map or another java.util.HashMap.
+fn putAll(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity(".putAll", args, 2, loc);
+    const src = switch (args[1].tag()) {
+        .array_map, .hash_map => args[1],
+        .host_instance => if (host_instance.asHostInstance(args[1]).descriptor == hm_descriptor) mapOf(args[1]) else return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".putAll", .expected = "a map", .actual = @tagName(args[1].tag()) }),
+        else => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".putAll", .expected = "a map", .actual = @tagName(args[1].tag()) }),
+    };
+    setMap(args[0], try map.mergeInto(rt, mapOf(args[0]), src));
+    return Value.nil_val;
+}
+
 const ContainsValueCtx = struct { rt: *Runtime, env: *Env, target: Value, found: *bool };
 fn checkValue(ctx: ContainsValueCtx, k: Value, v: Value) anyerror!void {
     _ = k;
@@ -246,6 +265,7 @@ const METHODS = [_]MethodSpec{
     .{ .name = "remove", .proto = "", .f = &remove },
     .{ .name = "getOrDefault", .proto = "", .f = &getOrDefault },
     .{ .name = "putIfAbsent", .proto = "", .f = &putIfAbsent },
+    .{ .name = "putAll", .proto = "", .f = &putAll },
     .{ .name = "containsValue", .proto = "", .f = &containsValue },
     .{ .name = "clear", .proto = "", .f = &clear },
     .{ .name = "keySet", .proto = "", .f = &keySet },

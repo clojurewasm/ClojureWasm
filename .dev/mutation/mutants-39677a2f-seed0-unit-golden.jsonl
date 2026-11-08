@@ -1,0 +1,1 @@
+{"id": "d317ae6644b1", "file": "src/runtime/print.zig", "line": 1480, "col": 42, "op": "branch_force_true", "before": "if (!first.*) try w.writeAll(if (kv) \", \" else \" \");", "after": "if (!first.*) try w.writeAll(if (true) \", \" else \" \");", "verdict": "killed"}

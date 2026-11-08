@@ -1,0 +1,4 @@
+name: "Seq Dot Product 100k"
+category: numeric
+expected_output: "333328333350000"
+description: "(reduce + (map * xs xs)) over a 100000-double vector x10 — the 1k cell at a heap 100x larger (GC working set)"

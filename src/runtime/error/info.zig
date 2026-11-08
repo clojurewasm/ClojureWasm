@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: EPL-2.0
 //! Error infrastructure for ClojureWasm runtime.
 //!
 //! Provides:
@@ -58,6 +59,19 @@ pub const Kind = enum {
     /// RuntimeException via IllegalStateException), distinct from the worker's
     /// uncatchable cancel-abort signal and the stale `future_thunk_failed` trap.
     cancellation_error,
+    /// A saturated or shut-down executor rejected a submission.  Catchable as
+    /// java.util.concurrent.RejectedExecutionException.
+    rejected_execution_error,
+    /// A java.time value or computation is invalid: `java.time.DateTimeException`
+    /// (an out-of-range offset, a TemporalAccessor that cannot become the asked
+    /// type, a resolve conflict). Catchable, a RuntimeException.
+    date_time_error,
+    /// Text a DateTimeFormatter could not parse:
+    /// `java.time.format.DateTimeParseException` (⊂ DateTimeException).
+    date_time_parse_error,
+    /// A temporal value asked for a field it does not carry (a LocalTime's year):
+    /// `java.time.temporal.UnsupportedTemporalTypeException` (⊂ DateTimeException).
+    unsupported_temporal_error,
     /// An operation called in the wrong STATE — clj's `IllegalStateException`
     /// (e.g. `(re-groups m)`/`(.group m)` before a match → "No match found"; a
     /// transaction op outside `dosync`). Distinct from `value_error`
@@ -216,6 +230,8 @@ fn kindToError(kind: Kind) ClojureWasmError {
         .arithmetic_error => ClojureWasmError.ArithmeticError,
         .index_error => ClojureWasmError.IndexError,
         .cancellation_error => ClojureWasmError.CancellationError,
+        .rejected_execution_error => ClojureWasmError.ValueError,
+        .date_time_error, .date_time_parse_error, .unsupported_temporal_error => ClojureWasmError.ValueError,
         .state_error => ClojureWasmError.StateError,
         .io_error => ClojureWasmError.IoError,
         .file_not_found => ClojureWasmError.FileNotFound,
@@ -297,7 +313,10 @@ pub fn argLoc(i: usize, fallback: SourceLocation) SourceLocation {
 
 /// Set the threadlocal error payload and return the matching Zig error.
 /// On message overflow the buffer is truncated with a trailing "...".
-pub fn setErrorFmt(
+/// `noinline`: every instance is an error path, and an inlined one puts its
+/// formatter temporaries in the caller's frame. In `vm.eval` and
+/// `treeWalkCall` that frame is paid per native eval re-entry (ADR-0195).
+pub noinline fn setErrorFmt(
     phase: Phase,
     kind: Kind,
     location: SourceLocation,

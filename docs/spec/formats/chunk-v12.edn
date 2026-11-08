@@ -1,0 +1,27 @@
+;; Add-only bytecode archive amendment, 2026-09-27 (ADR-0034 D11, D-346).
+;; Earlier records remain unchanged. v11 and v12 keep the v7 chunk-body
+;; framing recorded in 1.4.0.edn; each changes what the constants and the
+;; opcodes mean, so a decoder of an older version must reject the chunk.
+{:chunk-format
+ {:version 12
+  :magic "CLJW"
+  :base-layout "1.4.0.edn :chunk-format and :chunk-body (v7)"
+  :semantic-history
+  [{:version 11
+    :change "A type_descriptor constant names the rt.types key, <defining-ns>.<Name> for a user type (ADR-0198)."}
+   {:version 12
+    :change "An all-constant collection literal is one constant, so a map or set constant may be past the array-map threshold; the op_*_extend opcodes build a larger evaluated literal in steps (D-346)."}]
+  :value-tags-added
+  [{:tag 18
+    :name :hash_map
+    :body "u32 entry count, then count x (key constant, value constant), in the map's walk order"
+    :decode "Assoc fold from the empty map, the construction a literal build uses; the order carries no meaning."}]
+  :collection-constants
+  {:hash_set "Its count and elements in walk order, as before; a set past the array-map threshold is now representable."
+   :decode-guard "A count larger than the bytes left in the chunk is BytecodeTruncated, never an allocation."}
+  :opcodes-added
+  [{:byte 87 :name :op_vector_extend}
+   {:byte 88 :name :op_map_extend}
+   {:byte 89 :name :op_set_extend}]
+  :extend-operand "The element count of one build step, at most 512 and even for a map. Pops that many elements and conjoins (assocs) them in order onto the collection below them, which stays in its stack slot."
+  :compatibility "The runtime rejects a chunk version unequal to 12; rebuild older payloads."}}

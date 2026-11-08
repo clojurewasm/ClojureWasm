@@ -1,0 +1,11 @@
+{:paths ["."]
+ :deps {metosin/malli
+        {:git/url "https://github.com/metosin/malli.git"
+         :git/sha "a74e3b45efa30b3bcdb2e997f337c71614eba3c5"}
+        ;; malli.sci's only dependency — a dynamic-resolution shim malli.core
+        ;; requires transitively, so the coord has to be here for malli.core
+        ;; to load at all.
+        borkdude/dynaload
+        {:git/url "https://github.com/borkdude/dynaload.git"
+         :git/sha "3c1242125307b983db0f6abb289d52a684a7f710"}}
+ :aliases {:verify {:main-opts ["-m" "verify"]}}}

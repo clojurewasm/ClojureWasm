@@ -61,7 +61,7 @@ esac
 case "$CMD" in
     *"sleep "*) FIRE=1 ;;
 esac
-printf '%s' "$CMD" | grep -qE '&[[:space:]]*$' && FIRE=1
+grep -qE '&[[:space:]]*$' <<<"$CMD" && FIRE=1
 
 [ "$FIRE" = 1 ] || exit 0
 

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: EPL-2.0
 //! General host-enum mechanism (ADR-0161, D-510) — ONE comptime registry + ONE
-//! flat cache for the four JVM host enums (`java.math.RoundingMode`,
-//! `java.time.temporal.ChronoUnit`, `java.time.DayOfWeek`, `java.time.Month`),
-//! folding the former one-off `rounding_mode.zig` / `chrono_unit.zig` /
+//! flat cache for the JVM host enums (`java.math.RoundingMode`,
+//! `java.time.temporal.ChronoUnit`, `java.time.DayOfWeek`, `java.time.Month`,
+//! `java.util.concurrent.TimeUnit`, `java.time.temporal.ChronoField`), folding the former one-off `rounding_mode.zig` / `chrono_unit.zig` /
 //! `time/day_of_week_value.zig` / `time/month_value.zig`.
 //!
 //! Neutral (keyword `host_enum`): the analyzer's static-field resolve + the
@@ -17,7 +17,7 @@
 //! `singleton` is the SOLE minting point, so `=` / `identical?` parity is
 //! structural — no getter can re-mint a fresh value (the bug the former
 //! getter-minted DayOfWeek/Month had). The cache size is the comptime sum of the
-//! registry counts (8+16+7+12 = 43), so a fifth host enum is a one-row edit with
+//! registry counts (8+16+7+12+7+30 = 80), so another host enum is a one-row edit with
 //! zero new `rt` fields.
 
 const Value = @import("value/value.zig").Value;
@@ -38,6 +38,8 @@ pub const Idx = enum(u8) {
     chrono_unit = 1,
     day_of_week = 2,
     month = 3,
+    time_unit = 4,
+    chrono_field = 5,
 };
 
 // Canonical per-enum tables. `to_strings` == `names` except ChronoUnit, whose
@@ -47,6 +49,11 @@ const CHRONO_NAMES = [_][]const u8{ "NANOS", "MICROS", "MILLIS", "SECONDS", "MIN
 const CHRONO_DISPLAY = [_][]const u8{ "Nanos", "Micros", "Millis", "Seconds", "Minutes", "Hours", "HalfDays", "Days", "Weeks", "Months", "Years", "Decades", "Centuries", "Millennia", "Eras", "Forever" };
 const DOW_NAMES = [_][]const u8{ "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY" };
 const MONTH_NAMES = [_][]const u8{ "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER" };
+// ChronoField: JVM declaration order (the ordinal); `toString` is the display
+// name. `time/date_time_format.zig::Field` mirrors this order (comptime-pinned).
+const CHRONO_FIELD_NAMES = [_][]const u8{ "NANO_OF_SECOND", "NANO_OF_DAY", "MICRO_OF_SECOND", "MICRO_OF_DAY", "MILLI_OF_SECOND", "MILLI_OF_DAY", "SECOND_OF_MINUTE", "SECOND_OF_DAY", "MINUTE_OF_HOUR", "MINUTE_OF_DAY", "HOUR_OF_AMPM", "CLOCK_HOUR_OF_AMPM", "HOUR_OF_DAY", "CLOCK_HOUR_OF_DAY", "AMPM_OF_DAY", "DAY_OF_WEEK", "ALIGNED_DAY_OF_WEEK_IN_MONTH", "ALIGNED_DAY_OF_WEEK_IN_YEAR", "DAY_OF_MONTH", "DAY_OF_YEAR", "EPOCH_DAY", "ALIGNED_WEEK_OF_MONTH", "ALIGNED_WEEK_OF_YEAR", "MONTH_OF_YEAR", "PROLEPTIC_MONTH", "YEAR_OF_ERA", "YEAR", "ERA", "INSTANT_SECONDS", "OFFSET_SECONDS" };
+const CHRONO_FIELD_DISPLAY = [_][]const u8{ "NanoOfSecond", "NanoOfDay", "MicroOfSecond", "MicroOfDay", "MilliOfSecond", "MilliOfDay", "SecondOfMinute", "SecondOfDay", "MinuteOfHour", "MinuteOfDay", "HourOfAmPm", "ClockHourOfAmPm", "HourOfDay", "ClockHourOfDay", "AmPmOfDay", "DayOfWeek", "AlignedDayOfWeekInMonth", "AlignedDayOfWeekInYear", "DayOfMonth", "DayOfYear", "EpochDay", "AlignedWeekOfMonth", "AlignedWeekOfYear", "MonthOfYear", "ProlepticMonth", "YearOfEra", "Year", "Era", "InstantSeconds", "OffsetSeconds" };
+const TIME_UNIT_NAMES = [_][]const u8{ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS" };
 
 pub const EnumDef = struct {
     /// FQCN — the `rt.types` key the singleton's descriptor is registered under.
@@ -69,6 +76,8 @@ pub const defs = build: {
         .{ .fqcn = "java.time.temporal.ChronoUnit", .names = &CHRONO_NAMES, .to_strings = &CHRONO_DISPLAY, .value_base = null, .cache_base = 0 },
         .{ .fqcn = "java.time.DayOfWeek", .names = &DOW_NAMES, .to_strings = &DOW_NAMES, .value_base = 1, .cache_base = 0 },
         .{ .fqcn = "java.time.Month", .names = &MONTH_NAMES, .to_strings = &MONTH_NAMES, .value_base = 1, .cache_base = 0 },
+        .{ .fqcn = "java.util.concurrent.TimeUnit", .names = &TIME_UNIT_NAMES, .to_strings = &TIME_UNIT_NAMES, .value_base = null, .cache_base = 0 },
+        .{ .fqcn = "java.time.temporal.ChronoField", .names = &CHRONO_FIELD_NAMES, .to_strings = &CHRONO_FIELD_DISPLAY, .value_base = null, .cache_base = 0 },
     };
     var base: u16 = 0;
     for (&d) |*e| {
@@ -78,7 +87,7 @@ pub const defs = build: {
     break :build d;
 };
 
-/// Flat-cache size = sum of all enum counts (8+16+7+12 = 43).
+/// Flat-cache size = sum of all enum counts (8+16+7+12+7+30 = 80).
 pub const TOTAL = blk: {
     var n: u16 = 0;
     for (defs) |e| n += @intCast(e.names.len);
@@ -200,16 +209,22 @@ const std = @import("std");
 const testing = std.testing;
 
 test "host_enum registry: cache_base accumulation + TOTAL + name/toString/value" {
-    // Counts: 8 + 16 + 7 + 12 = 43, non-overlapping flat-cache windows.
-    try testing.expectEqual(@as(u16, 43), TOTAL);
+    // Counts: 8 + 16 + 7 + 12 + 7 + 30 = 80, non-overlapping flat-cache windows.
+    try testing.expectEqual(@as(u16, 80), TOTAL);
+    try testing.expectEqual(@as(usize, 30), count(.chrono_field));
+    try testing.expectEqual(@as(u16, 50), defs[@intFromEnum(Idx.chrono_field)].cache_base);
+    try testing.expectEqualStrings("HOUR_OF_DAY", name(.chrono_field, 12));
+    try testing.expectEqualStrings("HourOfDay", toStringOf(.chrono_field, 12));
     try testing.expectEqual(@as(usize, 8), count(.rounding_mode));
     try testing.expectEqual(@as(usize, 16), count(.chrono_unit));
     try testing.expectEqual(@as(usize, 7), count(.day_of_week));
     try testing.expectEqual(@as(usize, 12), count(.month));
+    try testing.expectEqual(@as(usize, 7), count(.time_unit));
     try testing.expectEqual(@as(u16, 0), defs[@intFromEnum(Idx.rounding_mode)].cache_base);
     try testing.expectEqual(@as(u16, 8), defs[@intFromEnum(Idx.chrono_unit)].cache_base);
     try testing.expectEqual(@as(u16, 24), defs[@intFromEnum(Idx.day_of_week)].cache_base);
     try testing.expectEqual(@as(u16, 31), defs[@intFromEnum(Idx.month)].cache_base);
+    try testing.expectEqual(@as(u16, 43), defs[@intFromEnum(Idx.time_unit)].cache_base);
 
     // name vs toString: ChronoUnit toString is the display name; others equal.
     try testing.expectEqualStrings("HALF_UP", name(.rounding_mode, 4));
@@ -218,6 +233,8 @@ test "host_enum registry: cache_base accumulation + TOTAL + name/toString/value"
     try testing.expectEqualStrings("Days", toStringOf(.chrono_unit, 7));
     try testing.expectEqualStrings("MONDAY", name(.day_of_week, 0));
     try testing.expectEqualStrings("DECEMBER", name(.month, 11));
+    try testing.expectEqualStrings("MILLISECONDS", name(.time_unit, 2));
+    try testing.expectEqualStrings("MILLISECONDS", toStringOf(.time_unit, 2));
 
     // getValue: DayOfWeek/Month = ordinal+1 (ISO); RoundingMode/ChronoUnit = none.
     try testing.expectEqual(@as(?i64, null), value(.rounding_mode, 4));

@@ -3,6 +3,7 @@
 #
 # Convergence Campaign Stage 1.2 — deps.edn source resolution.
 # A `./deps.edn` in the working directory contributes its `:paths` and
+# Maven coordinates resolve Clojure source jars and compile/runtime POM deps.
 # `:local/root`/`:git/url` deps to the front of the require classpath.
 # `:mvn/version` is SKIPPED (source-only, ADR-0101 amendment): resolution
 # proceeds + a summary warning names the skipped coords, except
@@ -59,8 +60,11 @@ got="$(cd "$al" && "$BIN" -A:dev -e "(require 'devns.tool) (devns.tool/t)" 2>/de
 [[ "$(last_line "$got")" == '"dev-tool"' ]] || fail "alias: -A:dev got '$(last_line "$got")'"
 echo "PASS deps_alias_extra_paths -> dev-tool (off without -A)"
 
+# Case 4 below was written for the old skip-only resolver; this lane now
+# requires Maven coordinates to resolve (the hermetic fixture below tests it).
 # --- Case 4: :mvn/version is SKIPPED (source-only), resolution proceeds; a
 #     non-clojure mvn coord is summary-warned on stderr (ADR-0101 amendment) ---
+if false; then # superseded historical skip-only assertions
 mvn="$WORK/mvn"; mkdir -p "$mvn/src/mp"
 printf '{:paths ["src"] :deps {com.example/lib {:mvn/version "1.0"}}}\n' > "$mvn/deps.edn"
 printf '(ns mp.core)\n(defn ok [] :ok)\n' > "$mvn/src/mp/core.clj"
@@ -73,12 +77,15 @@ case "$warn" in
     *skipped*com.example/lib*) echo "PASS deps_mvn_skip -> resolves + warns" ;;
     *) fail "mvn-skip: expected skip warning naming com.example/lib, got: $warn" ;;
 esac
+fi
 
 # --- Case 4b: org.clojure/clojure :mvn is silently provided (cw itself, no
 #     warning); a dep deps.edn with no :paths defaults to src/ (medley shape) ---
 med="$WORK/med"; mkdir -p "$med/app/src/app" "$med/dep/src/deplib"
 printf '(ns deplib.core)\n(defn v [] "dep-src")\n' > "$med/dep/src/deplib/core.clj"
+# The fixture above supplies a local Maven repo instead of a remote service.
 printf '{:deps {org.clojure/clojure {:mvn/version "1.11.0"}}}\n' > "$med/dep/deps.edn"  # no :paths → src default
+# Keep the :clojure-provided test outside the legacy block.
 printf '{:paths ["src"] :deps {deplib/deplib {:local/root "../dep"}}}\n' > "$med/app/deps.edn"
 out="$(cd "$med/app" && "$BIN" -e "(require 'deplib.core) (deplib.core/v)" 2>&1)"
 [[ "$(last_line "$out")" == '"dep-src"' ]] || fail "medley-shape: no-:paths dep src default failed: '$(last_line "$out")'"
@@ -86,6 +93,78 @@ case "$out" in
     *org.clojure/clojure*) fail "medley-shape: org.clojure/clojure should be silently provided, not warned" ;;
     *) echo "PASS deps_mvn_clojure_provided -> src default + no clojure warning" ;;
 esac
+# --- Case 4c: local Maven jar sources and transitive runtime POM deps ---
+mvn="$WORK/mvn"; mkdir -p "$mvn/repo/com/example/lib/1.0" "$mvn/repo/com/example/child/1.0" "$mvn/jars/lib/mp" "$mvn/jars/child/dep"
+printf '(ns mp.core)\n(defn ok [] :ok)\n' > "$mvn/jars/lib/mp/core.clj"
+printf '(ns dep.core)\n(defn ok [] :transitive)\n' > "$mvn/jars/child/dep/core.clj"
+printf '(ns mp.core)\n(defn ok [] :cljw)\n' > "$mvn/jars/lib/mp/core.cljw"
+(cd "$mvn/jars/lib" && zip -q "$mvn/repo/com/example/lib/1.0/lib-1.0.jar" mp/core.clj)
+(cd "$mvn/jars/lib" && zip -q "$mvn/repo/com/example/lib/1.0/lib-1.0.jar" mp/core.cljw)
+(cd "$mvn/jars/child" && zip -q "$mvn/repo/com/example/child/1.0/child-1.0.jar" dep/core.clj)
+printf '<project><dependencies><dependency><groupId>com.example</groupId><artifactId>child</artifactId><version>1.0</version><scope>runtime</scope></dependency></dependencies></project>\n' > "$mvn/repo/com/example/lib/1.0/lib-1.0.pom"
+printf '<project/>\n' > "$mvn/repo/com/example/child/1.0/child-1.0.pom"
+printf '{:deps {com.example/lib {:mvn/version "1.0"}}}\n' > "$mvn/deps.edn"
+for run in 1 2; do
+    got="$(cd "$mvn" && M2_REPO="$mvn/repo" CLJW_HOME="$mvn/cache" "$BIN" -e "(require 'mp.core 'dep.core) [(mp.core/ok) (dep.core/ok)]")"
+    [[ "$(last_line "$got")" == '[:cljw :transitive]' ]] || fail "mvn: run $run got '$(last_line "$got")'"
+# The .cljw entry takes precedence over the .clj entry in the same jar.
+done
+[[ -f "$mvn/cache/mvn/com/example/lib/1.0/.complete" ]] || fail "mvn: extraction cache missing"
+echo "PASS deps_mvn_local_jar -> sources + transitive + cache hit"
+
+# --- Case 4c2: project version and nested POM properties resolve transitive versions ---
+prop="$WORK/properties"; mkdir -p "$prop/repo/com/example/parent/1.0" "$prop/repo/com/example/child/1.0" "$prop/repo/com/example/nested/2.0" "$prop/src/child" "$prop/src/nested" "$prop/app"
+printf '(ns child.core)\n(defn ok [] :project-version)\n' > "$prop/src/child/core.clj"
+printf '(ns nested.core)\n(defn ok [] :property-version)\n' > "$prop/src/nested/core.clj"
+(cd "$prop/src" && zip -q "$prop/repo/com/example/child/1.0/child-1.0.jar" child/core.clj && zip -q "$prop/repo/com/example/nested/2.0/nested-2.0.jar" nested/core.clj)
+(cd "$prop/src" && zip -q "$prop/repo/com/example/parent/1.0/parent-1.0.jar" child/core.clj)
+printf '<project><properties><nested.version>2.0</nested.version></properties><dependencies><dependency><groupId>com.example</groupId><artifactId>child</artifactId><version>${project.version}</version></dependency><dependency><groupId>com.example</groupId><artifactId>nested</artifactId><version>${nested.version}</version></dependency></dependencies></project>\n' > "$prop/repo/com/example/parent/1.0/parent-1.0.pom"
+printf '<project/>\n' > "$prop/repo/com/example/child/1.0/child-1.0.pom"
+printf '<project/>\n' > "$prop/repo/com/example/nested/2.0/nested-2.0.pom"
+printf '{:deps {com.example/parent {:mvn/version "1.0"}}}\n' > "$prop/app/deps.edn"
+got="$(cd "$prop/app" && M2_REPO="$prop/repo" CLJW_HOME="$prop/cache" "$BIN" -e "(require 'child.core 'nested.core) [(child.core/ok) (nested.core/ok)]" 2>&1)"
+[[ "$(last_line "$got")" == '[:project-version :property-version]' ]] || fail "mvn properties: $got"
+[[ -f "$prop/cache/mvn/com/example/child/1.0/.complete" && -f "$prop/cache/mvn/com/example/nested/2.0/.complete" ]] || fail "mvn properties: transitive artifacts not extracted"
+echo "PASS deps_mvn_pom_properties -> project.version and nested properties"
+
+# --- Case 4d: remote Maven artifacts require same-repository checksums ---
+remote="$WORK/remote"; mkdir -p "$remote/host/com/example/verified/1.0" "$remote/src/verified" "$remote/app"
+printf '(ns verified.core)\n(defn ok [] :verified)\n' > "$remote/src/verified/core.clj"
+(cd "$remote/src" && zip -q "$remote/host/com/example/verified/1.0/verified-1.0.jar" verified/core.clj)
+printf '<project/>\n' > "$remote/host/com/example/verified/1.0/verified-1.0.pom"
+for ext in jar pom; do
+    artifact="$remote/host/com/example/verified/1.0/verified-1.0.$ext"
+    sha1sum "$artifact" | cut -d' ' -f1 > "$artifact.sha1"
+done
+printf '{:deps {com.example/verified {:mvn/version "1.0"}}}\n' > "$remote/app/deps.edn"
+remote_url="file://$remote/host"
+got="$(cd "$remote/app" && M2_REPO="$remote/good-repo" CLJW_HOME="$remote/good-cache" CLJW_MVN_REPOS="$remote_url" "$BIN" -e "(require 'verified.core) (verified.core/ok)" 2>&1)"
+[[ "$(last_line "$got")" == ':verified' ]] || fail "mvn checksum: good artifact: $got"
+[[ -f "$remote/good-repo/com/example/verified/1.0/verified-1.0.jar" && -f "$remote/good-repo/com/example/verified/1.0/verified-1.0.pom" ]] || fail "mvn checksum: verified artifacts not installed"
+printf 'tampered' >> "$remote/host/com/example/verified/1.0/verified-1.0.jar"
+if got="$(cd "$remote/app" && M2_REPO="$remote/bad-repo" CLJW_HOME="$remote/bad-cache" CLJW_MVN_REPOS="$remote_url" "$BIN" -e "(require 'verified.core)" 2>&1)"; then
+    fail "mvn checksum: tampered jar unexpectedly loaded"
+fi
+[[ "$got" == *"SHA-1 checksum mismatch"* && "$got" == *"$remote_url/com/example/verified/1.0/verified-1.0.jar"* ]] || fail "mvn checksum: missing URL diagnosis: $got"
+[[ ! -f "$remote/bad-repo/com/example/verified/1.0/verified-1.0.jar" && ! -f "$remote/bad-repo/com/example/verified/1.0/verified-1.0.jar.tmp" ]] || fail "mvn checksum: bad jar installed or temp retained"
+# Missing sidecars fail closed, including when another repository is configured.
+mv "$remote/host/com/example/verified/1.0/verified-1.0.jar.sha1" "$remote/host/com/example/verified/1.0/verified-1.0.jar.sha1.hidden"
+if got="$(cd "$remote/app" && M2_REPO="$remote/missing-repo" CLJW_HOME="$remote/missing-cache" CLJW_MVN_REPOS="$remote_url" "$BIN" -e "(require 'verified.core)" 2>&1)"; then
+    fail "mvn checksum: missing sidecar unexpectedly loaded"
+fi
+[[ "$got" == *"missing SHA-1 checksum"* && "$got" == *"verified-1.0.jar"* ]] || fail "mvn checksum: missing sidecar diagnosis: $got"
+[[ ! -f "$remote/missing-repo/com/example/verified/1.0/verified-1.0.jar" ]] || fail "mvn checksum: unchecked jar installed"
+mv "$remote/host/com/example/verified/1.0/verified-1.0.jar.sha1.hidden" "$remote/host/com/example/verified/1.0/verified-1.0.jar.sha1"
+# Restore the jar, then tamper only with the POM.
+cp "$remote/good-repo/com/example/verified/1.0/verified-1.0.jar" "$remote/host/com/example/verified/1.0/verified-1.0.jar"
+printf '<bad/>\n' >> "$remote/host/com/example/verified/1.0/verified-1.0.pom"
+if got="$(cd "$remote/app" && M2_REPO="$remote/bad-pom-repo" CLJW_HOME="$remote/bad-pom-cache" CLJW_MVN_REPOS="$remote_url" "$BIN" -e "(require 'verified.core)" 2>&1)"; then
+    fail "mvn checksum: tampered POM unexpectedly loaded"
+fi
+[[ "$got" == *"SHA-1 checksum mismatch"* && "$got" == *"verified-1.0.pom"* ]] || fail "mvn checksum: bad POM diagnosis: $got"
+[[ ! -f "$remote/bad-pom-repo/com/example/verified/1.0/verified-1.0.pom" ]] || fail "mvn checksum: unchecked POM installed"
+echo "PASS deps_mvn_checksum -> verified jar and pom; tampered jar and POM rejected"
+
 
 # --- Case 6: :git/url resolves via a hermetic local bare repo (ADR-0101) ---
 if ! command -v git >/dev/null 2>&1; then

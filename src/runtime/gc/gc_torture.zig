@@ -55,6 +55,19 @@ var pending_alloc_period: u32 = 0;
 pub var alloc_period: u32 = 0;
 threadlocal var alloc_counter: u32 = 0;
 
+/// Teardown fault injection (ADR-0176 / D-548(a) red test):
+/// `CLJW_TORTURE_TEARDOWN_DELAY_MS=N` makes `Runtime.deinit` sleep N ms AFTER
+/// its live-worker guard and BEFORE freeing — so a guard regression turns the
+/// teardown-vs-worker race back into a (near-)deterministic glibc abort under
+/// a fire-and-forget allocating thunk. Inert (0) unless the env var is set;
+/// read once at CLI startup, no arming stage (it fires at most once, at exit).
+pub var teardown_delay_ns: u64 = 0;
+
+/// Record the requested teardown delay (`CLJW_TORTURE_TEARDOWN_DELAY_MS`).
+pub fn configureTeardownDelay(ms: u32) void {
+    teardown_delay_ns = @as(u64, ms) * 1_000_000;
+}
+
 /// Record the requested torture period from the parsed `CLJW_GC_TORTURE`
 /// value. Does NOT activate — `arm()` does, post-bootstrap. `n == 0` is a
 /// no-op (mode stays off).

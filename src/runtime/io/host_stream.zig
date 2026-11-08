@@ -29,6 +29,7 @@
 //! D-051 (packed byte-array deferred to Phase 16) is untouched.
 
 const std = @import("std");
+const stdin = @import("stdin.zig");
 const Runtime = @import("../runtime.zig").Runtime;
 const Env = @import("../env.zig").Env;
 const Value = @import("../value/value.zig").Value;
@@ -76,7 +77,7 @@ pub const StreamState = struct {
 };
 
 fn stateOf(recv: Value) *StreamState {
-    return @ptrFromInt(host_instance.asHostInstance(recv).state[0]);
+    return @ptrFromInt(@as(usize, @intCast(host_instance.asHostInstance(recv).state[0])));
 }
 
 /// Allocate a stream host_instance of `kind` over `data` (taken by value — the
@@ -114,8 +115,9 @@ fn readByte(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 /// stdin mode: append one blocking chunk from process stdin to `data`.
 /// A zero-byte read (or error) latches EOF. Mirrors text_io's `*in*` fill.
 fn stdinFill(rt: *Runtime, st: *StreamState) !void {
+    stdin.beforeFill(rt.gc.infra, &st.data, &st.pos, &rt.gc);
     var chunk: [4096]u8 = undefined;
-    const n = std.posix.read(std.Io.File.stdin().handle, &chunk) catch {
+    const n = stdin.readChunk(rt.io, &chunk) catch {
         st.stdin_eof = true;
         return;
     };
@@ -313,6 +315,14 @@ fn openOutputStreamFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     return openFileSink(rt, .output, string_mod.asString(args[0]), "output-stream", loc);
 }
 
+/// Construct a buffer-backed Reader from a StringReader constructor.
+pub fn mintReader(rt: *Runtime, bytes: []const u8) !Value {
+    var data: std.ArrayList(u8) = .empty;
+    errdefer data.deinit(rt.gc.infra);
+    try data.appendSlice(rt.gc.infra, bytes);
+    return allocStream(rt, .reader, data, null);
+}
+
 /// `(rt/__string-reader s)` — a reader over the bytes of String `s`.
 fn stringReaderFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
@@ -356,17 +366,34 @@ fn isStream(v: Value) bool {
     return isStreamFqcn(host_instance.asHostInstance(v).descriptor.fqcn);
 }
 
+/// Borrow the unread buffer for one EDN form without draining later forms.
+pub fn remainingReader(rt: *Runtime, v: Value) !?[]const u8 {
+    if (!isStream(v)) return null;
+    const st = stateOf(v);
+    if (st.kind != .reader) return null;
+    while (st.stdin and !st.stdin_eof) try stdinFill(rt, st);
+    return st.data.items[st.pos..];
+}
+
+pub fn advanceReader(v: Value, bytes: usize) void {
+    stateOf(v).pos += bytes;
+}
+
 /// D-471 IOFactory arms for `slurp`: when `v` is an open reader/input-stream
 /// host_stream, return the UNREAD remainder of its buffer and advance the
-/// cursor to the end (what draining the JVM Reader does). Null when `v` is
-/// not a readable stream — the caller falls through to its path handling.
-pub fn drainRemaining(v: Value) ?[]const u8 {
+/// cursor to the end (what draining the JVM Reader does). A `System/in`-backed
+/// stream blocks pulling process stdin to EOF first, so the remainder is the
+/// whole input rather than whatever a prior `.read` happened to buffer
+/// (symmetric with text_io's `*in*` drain). Null when `v` is not a readable
+/// stream — the caller falls through to its path handling.
+pub fn drainRemaining(rt: *Runtime, v: Value) !?[]const u8 {
     if (!isStream(v)) return null;
     const st = stateOf(v);
     switch (st.kind) {
         .reader, .input => {},
         else => return null,
     }
+    while (st.stdin and !st.stdin_eof) try stdinFill(rt, st);
     const rest_bytes = st.data.items[st.pos..];
     st.pos = st.data.items.len;
     return rest_bytes;
@@ -404,7 +431,7 @@ fn isStreamFqcn(fqcn: ?[]const u8) bool {
 /// happened in `.close`/`.flush`; an unflushed writer simply loses its buffer
 /// (matching "you must close to persist").
 fn finaliseState(infra: std.mem.Allocator, state: *[host_instance.STATE_WORDS]u64) void {
-    const st: *StreamState = @ptrFromInt(state[0]);
+    const st: *StreamState = @ptrFromInt(@as(usize, @intCast(state[0])));
     st.deinit(infra);
     infra.destroy(st);
 }

@@ -77,9 +77,46 @@ pub const ParseError = error{InvalidUuid};
 /// Returns `error.InvalidUuid` on length / hyphen-position / hex-
 /// digit failures. Accepts upper- or lower-case hex digits.
 pub fn parse(s: []const u8) ParseError!Bytes {
-    if (s.len != 36) return error.InvalidUuid;
-    if (s[8] != '-' or s[13] != '-' or s[18] != '-' or s[23] != '-')
-        return error.InvalidUuid;
+    // UUID.fromString also accepts legacy abbreviated hex groups (and a leading
+    // '+' in a group), zero-padding them and truncating overflow to field width.
+    // Its fast canonical path is kept below; the fallback shares the same bytes.
+    if (s.len != 36 or s[8] != '-' or s[13] != '-' or s[18] != '-' or s[23] != '-')
+        return parseLegacy(s);
+    const canonical = parseCanonical(s) catch return parseLegacy(s);
+    return canonical;
+}
+
+fn parseLegacy(s: []const u8) ParseError!Bytes {
+    if (s.len > 36) return error.InvalidUuid;
+    const widths = [_]usize{ 4, 2, 2, 2, 6 };
+    var parts: [5]u64 = undefined;
+    var start: usize = 0;
+    for (&parts, 0..) |*part, i| {
+        const end = if (i == 4) s.len else (std.mem.indexOfScalarPos(u8, s, start, '-') orelse return error.InvalidUuid);
+        var group = s[start..end];
+        if (group.len > 0 and group[0] == '+') group = group[1..];
+        if (group.len == 0 or group.len > 16) return error.InvalidUuid;
+        var num: u64 = 0;
+        for (group) |c| {
+            num = std.math.mul(u64, num, 16) catch return error.InvalidUuid;
+            num = std.math.add(u64, num, @as(u64, nibble(c) catch return error.InvalidUuid)) catch return error.InvalidUuid;
+        }
+        part.* = num;
+        start = end + 1;
+    }
+    var b: Bytes = undefined;
+    var at: usize = 0;
+    for (parts, widths) |part, width| {
+        for (0..width) |j| {
+            const shift: u6 = @intCast((width - j - 1) * 8);
+            b[at + j] = @truncate(part >> shift);
+        }
+        at += width;
+    }
+    return b;
+}
+
+fn parseCanonical(s: []const u8) ParseError!Bytes {
     var b: Bytes = undefined;
     var si: usize = 0;
     var bi: usize = 0;
@@ -172,6 +209,18 @@ test "parse round-trips a canonical UUID" {
     const s = format(b);
     const parsed = try parse(&s);
     try testing.expectEqualSlices(u8, &b, &parsed);
+}
+
+test "parse accepts UUID.fromString legacy short and overlong groups" {
+    const short = try parse("1-2-3-4-5");
+    const padded = format(short);
+    try testing.expectEqualStrings("00000001-0002-0003-0004-000000000005", &padded);
+    const long = try parse("123456789-1-1-1-123456789abcdef");
+    const truncated = format(long);
+    try testing.expectEqualStrings("23456789-0001-0001-0001-456789abcdef", &truncated);
+    const plus = format(try parse("+1-1-1-1-+1"));
+    try testing.expectEqualStrings("00000001-0001-0001-0001-000000000001", &plus);
+    try testing.expectError(error.InvalidUuid, parse("1--1-1-1-1"));
 }
 
 test "parse rejects wrong length" {

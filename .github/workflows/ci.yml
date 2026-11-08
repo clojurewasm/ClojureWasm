@@ -1,19 +1,25 @@
 # CI — the host-local gate on the supported OSes (macOS arm64 + Linux x86_64),
 # mirroring the local gate. Each matrix leg runs `scripts/ci_gate.sh`, so CI
 # verifies exactly what the maintainer runs per host (single source of truth).
+# ci_gate.sh reaches the suite only through `test/cljw-test`, the one entry
+# point: `--only fmt`, then `--only full`. What `full` runs is a row in
+# test/units.list, so the gate configuration is defined once, not once per
+# launcher.
 #
 # Triggers: pull_request (any target) + push to `main` + manual dispatch.
-# The gate has no external runtime dependency beyond Zig 0.16.0 and python3
-# (preinstalled on GitHub runners); `zig build -Dwasm` fetches the embedded
-# zwasm engine + the zlinter dev-dep from git over the network.
+# A push to `staging` runs nothing here on purpose: the staging→main PR is its
+# gate (see .github/CONTRIBUTING.md "When CI runs").
+# The gate provisions pinned Zig 0.16.0 and Babashka; python3 is preinstalled
+# on GitHub runners. `zig build -Dwasm` fetches the embedded zwasm engine +
+# the zlinter dev-dep from git over the network.
 #
-# Tiered (ADR-0107, revised 2026-07-21) so CI verifies exactly what the local
-# full gate does on every landed commit — the fast tier is PR-only:
-#   PR → fast CORE (units + F-012 diff oracle, no e2e shell suite) for iteration.
-#   push to main → FULL gate (+ every e2e step) == the local full gate, so an
-#     e2e regression from a shared-code change fails on the push, not a day later.
-#   nightly schedule / manual dispatch → FULL gate + the non-default-backend
-#     (tree_walk) sweep (an extra backstop that is not part of the local gate).
+# ONE configuration, everywhere (2026-08-12). PR, push, dispatch and the local
+# `scripts/run_gate.sh` all run the identical full gate, so "green" means the
+# same run wherever it was said. The tiers this used to have (PR → smoke,
+# nightly → full + a tree_walk sweep) were the drift they were meant to catch:
+# the last nightly failed on a wall-clock bound in a config nothing else ran,
+# which is a finding about the runner, not about cljw.
+# `scripts/check_gate_parity.sh` enforces the single configuration mechanically.
 # The Zig toolchain, the fetched deps (zwasm/zlinter), and the build cache are
 # all preserved across runs (actions/cache), so a warm run rebuilds only what
 # changed instead of three cold ReleaseSafe builds — the dominant cost.
@@ -31,10 +37,6 @@ on:
     branches: [main]
     paths-ignore: ['**/*.md', '.dev/**']
   workflow_dispatch:
-  schedule:
-    # Nightly full gate (03:17 UTC) — the batched Linux full-e2e coverage that
-    # ADR-0049 keeps off the per-commit path.
-    - cron: '17 3 * * *'
 
 permissions:
   contents: read
@@ -72,6 +74,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
+          # scripts/check_changelog_reachability.sh lists release tags with
+          # `git tag --merged HEAD`, which needs both the tags and the history
+          # that connects them to HEAD. A depth-1 clone (even with fetch-tags)
+          # reaches no tag, so the step would report "no release tag" and pass.
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Cache Zig 0.16.0
         id: cache-zig
@@ -88,6 +96,11 @@ jobs:
           source .github/versions.lock
           mkdir -p ~/.local
           curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/${{ matrix.zig-dir }}.tar.xz" -o /tmp/zig.tar.xz
+          # Clear both paths first so a re-run is idempotent: tar refuses to
+          # overwrite existing entries ("Cannot open: File exists"), and `mv` into
+          # an EXISTING directory nests instead of replacing, which would put the
+          # toolchain at zig-0.16.0/<zig-dir>/ and leave `zig` off PATH.
+          rm -rf "$HOME/.local/${{ matrix.zig-dir }}" "$HOME/.local/zig-0.16.0"
           tar -xJf /tmp/zig.tar.xz -C ~/.local
           mv "$HOME/.local/${{ matrix.zig-dir }}" "$HOME/.local/zig-0.16.0"
 
@@ -100,22 +113,41 @@ jobs:
         run: echo "ZIG_GLOBAL_CACHE_DIR=$HOME/.cache/zig" >> "$GITHUB_ENV"
 
       # Cache the fetched deps (zwasm git dep + zlinter, under the global cache's
-      # p/) AND the build artifacts (global cache + the repo-local .zig-cache),
-      # keyed on the manifests. A same-manifest run restores everything; a
-      # manifest change falls back via restore-keys to the newest prior cache and
-      # rebuilds incrementally (Zig's cache is content-addressed, so a stale
-      # restore is safe — it only ever causes a rebuild, never a wrong build).
-      - name: Cache Zig deps + build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # p/) AND the build artifacts (global cache + the repo-local .zig-cache).
+      # Zig's cache is content-addressed, so a stale restore is always SAFE — it
+      # can only cause a rebuild, never a wrong build. That makes "restore the
+      # newest thing available, always save what this run produced" the correct
+      # policy, and it is why the key carries the run id.
+      #
+      # It did not used to. The key was `hashFiles('build.zig.zon','build.zig')`
+      # — files that change a few times a year — so it HIT on essentially every
+      # run, and `actions/cache` only WRITES a cache when its key MISSES. The
+      # restored `.zig-cache` was therefore frozen at whatever the first run
+      # with that build.zig produced, and every run since rebuilt everything
+      # that had changed after that snapshot and then threw the result away.
+      # Measured 2026-08-19: `zig_build_test_vm` 375 s + `zig_build_test_tree_walk`
+      # 371 s on the Linux leg, against ~1 s warm locally (D-487) — i.e. cold
+      # builds, every run, while the step reported a cache hit every time.
+      # A cache that reports a hit and saves nothing is worse than no cache:
+      # it makes the waste invisible.
+      #
+      # restore/save are split so a FAILED run still saves its build products.
+      # A red gate is exactly when the next run is a fix for it, seconds later,
+      # against nearly the same tree — the moment the cache is worth the most.
+      - name: Restore Zig deps + build
+        id: zigcache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cache/zig
             .zig-cache
-          key: ${{ matrix.name }}-zigbuild-${{ hashFiles('build.zig.zon', 'build.zig') }}
+          key: ${{ matrix.name }}-zigbuild-${{ hashFiles('build.zig.zon', 'build.zig') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ matrix.name }}-zigbuild-${{ hashFiles('build.zig.zon', 'build.zig') }}-
             ${{ matrix.name }}-zigbuild-
 
-      # Gate deps not universally preinstalled: ripgrep (check_debt_id_refs.sh)
+      # Gate deps not universally preinstalled: ripgrep (check_debt_id_refs.sh),
+      # Babashka (native Clojure harness supervision),
       # and, on macOS, bash >= 4 — the macos-15 runner resolves `bash` to the
       # system 3.2, which cannot parse the e2e harness idioms (heredoc inside
       # `$()`, `case` inside `$()`, `declare -A`); 43 gate scripts fail under it
@@ -123,13 +155,45 @@ jobs:
       # hosted mac runner). Every script is invoked as `bash foo.sh` or via
       # `#!/usr/bin/env bash`, so a brew bash 5 on PATH fixes all of them.
       # Install only what is absent (fast no-op when the image ships it).
-      - name: Install gate deps if missing (ripgrep; bash>=4 on macOS)
+      # yq is listed even though both hosted images ship it: `check_compat_members`
+      # exits 1 without it, so relying on the image means the gate is green here
+      # for a reason nobody wrote down and red on a developer machine.
+      - name: Install gate deps if missing (bb, ripgrep, yq; bash>=4 on macOS)
         shell: bash
         run: |
+          if ! command -v bb >/dev/null 2>&1; then
+            source .github/versions.lock
+            case "$RUNNER_OS:$RUNNER_ARCH" in
+              Linux:X64)
+                bb_platform=linux-amd64
+                bb_sha="$BABASHKA_LINUX_AMD64_SHA256"
+                ;;
+              macOS:ARM64)
+                bb_platform=macos-aarch64
+                bb_sha="$BABASHKA_MACOS_AARCH64_SHA256"
+                ;;
+              *)
+                echo "::error::unsupported Babashka runner $RUNNER_OS/$RUNNER_ARCH"
+                exit 1
+                ;;
+            esac
+            bb_archive="/tmp/babashka-${BABASHKA_VERSION}.tar.gz"
+            curl -fsSL "https://github.com/babashka/babashka/releases/download/v${BABASHKA_VERSION}/babashka-${BABASHKA_VERSION}-${bb_platform}.tar.gz" -o "$bb_archive"
+            bb_actual=$(shasum -a 256 "$bb_archive" | awk '{print $1}')
+            if [ "$bb_actual" != "$bb_sha" ]; then
+              echo "::error::Babashka checksum mismatch: expected $bb_sha, got $bb_actual"
+              exit 1
+            fi
+            mkdir -p "$HOME/.local/bin"
+            tar -xzf "$bb_archive" -C "$HOME/.local/bin" bb
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
           if [ "$RUNNER_OS" = "Linux" ]; then
             command -v rg >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
+            command -v yq >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq yq; }
           else
             command -v rg >/dev/null 2>&1 || brew install ripgrep
+            command -v yq >/dev/null 2>&1 || brew install yq
             if [ "$(bash -c 'echo "${BASH_VERSINFO[0]}"')" -lt 4 ]; then
               brew install bash
             fi
@@ -139,6 +203,7 @@ jobs:
         shell: bash
         run: |
           zig version
+          bb --version
           python3 --version
           rg --version | head -1
           # Check the PATH-resolved bash (what `bash foo.sh` + env-shebang
@@ -148,17 +213,88 @@ jobs:
             echo "::error::gate requires bash >= 4 on PATH (PATH bash is $(bash -c 'echo "$BASH_VERSION"'))"; exit 1
           fi
 
+      # Warm the build cache in a step that can RECOVER from a poisoned restore.
+      # A restored `.zig-cache` can reference a file it does not contain (a job
+      # cancelled mid-build used to save one, see the save step below), and
+      # Zig treats that as a hard compilation error rather than rebuilding.
+      # Left alone, `restore-keys` hands that same entry to every later run and
+      # CI stays red until a human deletes it through the API.
+      #
+      # The recovery is UNCONDITIONAL: on any failed warm build, clear the cache
+      # and build once more. Wiping a content-addressed cache is always safe (it
+      # costs a rebuild, nothing else), and the retry is a better discriminator
+      # than any log predicate, because a failure with NO cache present is
+      # unambiguously about the source.
+      #
+      # This step used to gate the recovery on `grep "failed to check cache"`,
+      # the exact wording of the first poisoning observed. A restored cache has
+      # at least two spellings for one condition, and the second one landed on
+      # the v1.14.5 release PR (2026-09-10):
+      #     error: failed to spawn build runner .zig-cache/o/<hash>/build: FileNotFound
+      # The predicate did not match, so the step printed "build failed for a
+      # reason unrelated to the cache" and failed the release for the very
+      # condition it was written to heal. Matching a symptom's wording is how a
+      # self-heal reports a false negative with confidence; not matching at all
+      # cannot.
+      #
+      # This is not extra work on a healthy run: the gate's own first step is
+      # this same build, so a healthy run does it here and finds it warm there.
+      - name: Warm build (self-healing)
+        shell: bash
+        run: |
+          set -uo pipefail
+          if zig build -Dwasm -Doptimize=ReleaseSafe; then
+            exit 0
+          fi
+          echo "::warning::warm build failed, clearing the restored .zig-cache and rebuilding once"
+          rm -rf .zig-cache
+          zig build -Dwasm -Doptimize=ReleaseSafe
+
       - name: ci_gate.sh
         shell: bash
-        env:
-          # push-to-main + nightly + dispatch → FULL gate (== the local full
-          # gate: every e2e step), so a shared-code change that breaks an e2e
-          # step fails on the push, not a day later on the nightly (ADR-0107
-          # revision 2026-07-21). PR → fast core (its merge fires a push event
-          # that runs the full gate before it lands).
-          CLJW_CI_FULL: ${{ github.event_name != 'pull_request' && '1' || '0' }}
-          # The heavier non-default-backend (tree_walk) sweep — a second
-          # ReleaseSafe rebuild, NOT part of the local full gate — stays
-          # nightly/dispatch-only as an extra backstop.
-          CLJW_CI_PARITY: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
         run: bash scripts/ci_gate.sh
+
+      # Regression guard: the wasm32-wasi target must keep compiling (ADR-0193).
+      # Compile-only — a runtime smoke needs a wasm engine the runners do not
+      # ship. Linux leg only; the wasm target is host-arch independent.
+      - name: Build wasm32-wasi target (ADR-0193)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: zig build -Dtarget=wasm32-wasi
+
+      # Save on success OR failure, but NEVER on cancellation.
+      #
+      # Failure is the case worth saving for: the next run is usually a fix for
+      # that red, minutes later, against nearly the same tree, and a failed job
+      # ran its BUILD steps to completion — only a test or a check went red, so
+      # `.zig-cache` is internally consistent.
+      #
+      # A CANCELLED job is the opposite, and this condition was originally
+      # `always()`, which INCLUDES cancellation. Measured 2026-08-19: pushing a
+      # fix fired `cancel-in-progress`, killing the Linux job in the middle of
+      # `zig build`. The save captured `.zig-cache` half-written — an
+      # `o/<hash>` manifest present, `bootstrap_sources_stub.zig` inside it
+      # never flushed. The next run restored that and Zig refused to build:
+      #
+      #   error: failed to check cache: '.zig-cache/o/…/bootstrap_sources_stub.zig'
+      #          file_hash FileNotFound
+      #
+      # Zig does NOT recover from this on its own — it errors instead of
+      # rebuilding. And since `restore-keys` matches by PREFIX, a poisoned
+      # entry is the newest match for every later run, so one cancelled job
+      # wedges the whole lineage until someone deletes the entry by hand. That
+      # is a worse failure mode than the stale-cache bug this caching replaced,
+      # which is why the condition is narrowed rather than the symptom patched.
+      - name: Bound the Zig cache before saving
+        if: success() || failure()
+        shell: bash
+        run: bash scripts/prune_zig_cache.sh
+
+      - name: Save Zig deps + build
+        if: success() || failure()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/zig
+            .zig-cache
+          key: ${{ steps.zigcache.outputs.cache-primary-key }}
