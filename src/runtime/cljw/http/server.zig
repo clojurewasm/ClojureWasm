@@ -3,14 +3,12 @@
 //! `std.Io.net` + `std.http.Server`. Layer 0 (the cljw-original surface tree).
 //!
 //! Ring-style: `run-server` serves a blocking serial accept loop; each request
-//! becomes a Ring request map `{:request-method :get :uri "/path" :query-string
-//! "…" :headers {…} :body "…"}` passed to the handler (invoked via
-//! `rt.vtable.callFn`), whose response map `{:status N :body "…"}` (or a bare
-//! string body) is written back. A response `:body` may also be a primitive
-//! byte-array (`byte-array`, e.g. from `wasm/mem-read-array`): its bytes are
-//! copied verbatim. Header names are lowercased (Ring);
-//! `:body` is nil when the client declared none (read only on
-//! Content-Length/chunked, capped at `max_body_bytes`).
+//! becomes a Ring map `{:request-method :get :uri "/path" :query-string "…"
+//! :headers {…} :body "…"}` for the handler (`rt.vtable.callFn`), whose response
+//! `{:status N :body …}` (or a bare string) is written back. A `:body` is a
+//! string or a primitive byte-array (e.g. `wasm/mem-read-array`), copied
+//! verbatim. Header names are lowercased (Ring); the request `:body` is nil when
+//! none was declared (Content-Length/chunked, capped at `max_body_bytes`).
 //!
 //! Follow-ons (D-257 remainder): per-connection threading + a non-blocking stop
 //! handle (so keep-alive can be re-enabled), and per-request GC rooting of the
