@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: starts cljw's HTTP server as a background process and drives it with curl
 # test/e2e/phase16_http_server.sh — cljw's own HTTP server (ADR-0098).
 # Starts the Ring demo fixture as a bg process, curls GET + POST, asserts the
 # routed body + status (POST also guards the discardBody panic regression), then
