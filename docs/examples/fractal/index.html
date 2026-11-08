@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>cljw fractal zoom: one kernel.wasm, three engines</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d;
+    --fg: #e6edf3; --dim: #8b949e; --accent: #58a6ff; --hot: #f78166;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.45 system-ui, sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  header {
+    padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px;
+    align-items: center; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; }
+  .modes { display: flex; gap: 4px; flex-wrap: wrap; }
+  button, select {
+    background: #21262d; color: var(--fg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer;
+  }
+  button.active { border-color: var(--accent); color: var(--accent); }
+  button:hover { border-color: var(--accent); }
+  .ctl { display: flex; align-items: center; gap: 6px; color: var(--dim); }
+  input[type=range] { accent-color: var(--accent); width: 110px; }
+  #wrap { position: relative; flex: 1; min-height: 50vh; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+  #hud {
+    position: absolute; left: 8px; top: 8px; padding: 6px 9px; border-radius: 6px;
+    background: rgba(13,17,23,.8); border: 1px solid var(--border);
+    font: 11px/1.5 ui-monospace, monospace; color: var(--dim); pointer-events: none;
+    white-space: pre;
+  }
+  #stats {
+    padding: 10px 12px; background: var(--panel); border-top: 1px solid var(--border);
+    display: grid; gap: 10px; grid-template-columns: 1fr;
+  }
+  @media (min-width: 760px) { #stats { grid-template-columns: 1fr 1fr; } }
+  table { border-collapse: collapse; width: 100%; font: 12px/1.5 ui-monospace, monospace; }
+  th, td { text-align: right; padding: 3px 8px; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--dim); font-weight: 500; }
+  #chart { width: 100%; height: 90px; background: #0d1117; border: 1px solid var(--border); border-radius: 6px; }
+  #benchout { white-space: pre; font: 12px/1.5 ui-monospace, monospace; color: var(--dim);
+              max-height: 180px; overflow: auto; }
+  .legend { font: 11px ui-monospace, monospace; color: var(--dim); }
+  .legend b { font-weight: 400; }
+</style>
+</head>
+<body>
+<header>
+  <h1>fractal zoom</h1>
+  <div class="modes" id="modes">
+    <button data-mode="browser">Browser</button>
+    <button data-mode="split">Split</button>
+  </div>
+  <div class="ctl">
+    <label>iter <input type="range" id="iter" min="32" max="2048" step="32" value="256">
+    <span id="iterval">256</span></label>
+  </div>
+  <button id="reset">Reset</button>
+  <button id="bench">Bench</button>
+</header>
+<div id="wrap">
+  <canvas id="view"></canvas>
+  <div id="hud"></div>
+</div>
+<div id="stats">
+  <div>
+    <table id="live">
+      <thead><tr><th>engine</th><th>ms/frame</th><th>Miter/s</th><th>frames</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="legend"><b style="color:#58a6ff">&#9644;</b> browser
+      <b style="color:#3fb950">&#9644;</b> server-jit
+      <b style="color:#d29922">&#9644;</b> server-interp &nbsp;(rolling ms/frame)</div>
+    <canvas id="chart" width="600" height="90"></canvas>
+  </div>
+  <div id="benchout">Bench renders a fixed view list on every engine and reports ms and Miter/s.</div>
+</div>
+<script>
+"use strict";
+
+// ---- view state ------------------------------------------------------------
+const HOME = { cx: -0.6, cy: 0.0, scale: 3.0 / 800 };
+let view = { ...HOME };
+let maxIter = 256;
+let mode = "browser";
+
+const canvas = document.getElementById("view");
+const ctx = canvas.getContext("2d");
+const hud = document.getElementById("hud");
+
+// ---- engines ----------------------------------------------------------------
+// browser: the same kernel.wasm instantiated locally in this tab.
+// server-jit / server-jit-simd / server-interp: native cljw renders with
+// zwasm and returns RGBA. Which server engines exist is answered by GET
+// /engines (jit and interp always; jit-simd only with a SIMD module).
+const kernel = { inst: null, simd: false };
+let serverEngines = ["jit", "interp"];
+
+async function loadServerEngines() {
+  try {
+    const resp = await fetch("/engines");
+    const data = await resp.json();
+    if (Array.isArray(data.engines) && data.engines.length)
+      serverEngines = data.engines;
+  } catch (e) { /* keep the defaults */ }
+  const modes = document.getElementById("modes");
+  for (const eng of serverEngines) {
+    const b = document.createElement("button");
+    b.dataset.mode = "server-" + eng;
+    b.textContent = "Server-" + eng;
+    modes.insertBefore(b, modes.querySelector('[data-mode="split"]'));
+  }
+}
+
+async function loadBrowserKernel() {
+  const resp = await fetch("/kernel.wasm");
+  const bytes = await resp.arrayBuffer();
+  const { instance } = await WebAssembly.instantiate(bytes, {});
+  kernel.inst = instance;
+  kernel.simd = typeof instance.exports.render_simd === "function";
+}
+
+function browserRender(cx, cy, scale, w, h, iter) {
+  const ex = kernel.inst.exports;
+  const t0 = performance.now();
+  ex.set_view(cx, cy, scale);
+  const iters = ex.render(w, h, iter);
+  const ms = performance.now() - t0;
+  const ptr = ex.fb_ptr();
+  const img = new ImageData(new Uint8ClampedArray(ex.memory.buffer, ptr, w * h * 4), w, h);
+  return { img, ms, iters: Number(iters) };
+}
+
+async function serverRender(engine, cx, cy, scale, w, h, iter) {
+  const q = new URLSearchParams({ cx, cy, scale, w, h, iter, engine });
+  const t0 = performance.now();
+  const resp = await fetch("/tile?" + q);
+  if (!resp.ok) throw new Error("tile: HTTP " + resp.status);
+  const buf = await resp.arrayBuffer();
+  const total = performance.now() - t0;
+  const rms = parseFloat(resp.headers.get("X-Render-Ms") || "NaN");
+  const iters = Number(resp.headers.get("X-Iters") || "0");
+  const img = new ImageData(new Uint8ClampedArray(buf), w, h);
+  return { img, ms: Number.isFinite(rms) ? rms : total, totalMs: total, iters };
+}
+
+// ---- render loop (latest-wins, one frame in flight per engine) --------------
+const inflight = { browser: false };
+let dirty = true;
+let frameNo = 0;
+const samples = { browser: [] }; // {ms, mits}
+const totals = { browser: [0, 0, 0] }; // [ms, iters, frames]
+
+function ensureEngine(eng) {
+  if (!samples[eng]) {
+    samples[eng] = [];
+    totals[eng] = [0, 0, 0];
+    inflight[eng] = false;
+  }
+}
+
+function record(engine, ms, iters) {
+  const s = samples[engine];
+  s.push({ ms, mits: iters / ms / 1000 });
+  if (s.length > 120) s.shift();
+  const t = totals[engine];
+  t[0] += ms; t[1] += iters; t[2] += 1;
+}
+
+function markDirty() { dirty = true; requestAnimationFrame(pump); }
+
+function fitCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.floor(canvas.clientWidth * dpr);
+  const h = Math.floor(canvas.clientHeight * dpr);
+  if (w === canvas.width && h === canvas.height) return;
+  canvas.width = Math.min(w, 1024);
+  canvas.height = Math.min(h, 1024);
+  markDirty();
+}
+
+async function pump() {
+  if (!dirty) return;
+  dirty = false;
+  fitCanvas();
+  const w = canvas.width, h = canvas.height;
+  if (w < 8 || h < 8) return;
+  const { cx, cy, scale } = view;
+  const f = ++frameNo;
+  const jobs = [];
+
+  const put = (img, dx, dw) => {
+    if (f !== frameNo) return;
+    const tmp = document.createElement("canvas");
+    tmp.width = img.width; tmp.height = img.height;
+    tmp.getContext("2d").putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tmp, 0, 0, dw, canvas.height, dx, 0, dw, canvas.height);
+  };
+
+  const browserHalf = mode === "split";
+  const bw = browserHalf ? Math.floor(w / 2) : w;
+  const bScale = scale;
+
+  if ((mode === "browser" || browserHalf) && !inflight.browser) {
+    inflight.browser = true;
+    jobs.push((async () => {
+      const r = browserRender(cx, cy, bScale, bw, h, maxIter);
+      record("browser", r.ms, r.iters);
+      put(r.img, 0, bw);
+      inflight.browser = false;
+    })());
+  }
+  const serverModes = mode === "split" ? ["jit"]
+    : mode.startsWith("server-") ? [mode.slice(7)] : [];
+  for (const eng of serverModes) {
+    ensureEngine(eng);
+    if (inflight[eng]) continue;
+    inflight[eng] = true;
+    const sx = browserHalf ? Math.floor(w / 2) : 0;
+    const sw = browserHalf ? w - bw : w;
+    // In split mode the server renders the SAME view rect, right pane.
+    jobs.push(serverRender(eng, cx, cy, scale, sw, h, maxIter).then(r => {
+      record(eng, r.ms, r.iters);
+      put(r.img, sx, sw);
+    }).catch(e => { console.warn(eng, e); })
+      .finally(() => { inflight[eng] = false; }));
+  }
+  if (mode === "split") {
+    // browser pane shows the left view; server pane shows the same view so the
+    // two panes compare like for like, split vertically down the middle.
+  }
+  hud.textContent =
+    `cx ${cx.toExponential(6)} cy ${cy.toExponential(6)}\n` +
+    `scale ${scale.toExponential(3)}  iter ${maxIter}  ${w}x${h}` +
+    (kernel.simd ? "  [render_simd]" : "");
+  drawStats();
+  await Promise.allSettled(jobs);
+  if (dirty) requestAnimationFrame(pump);
+}
+
+// ---- stats ------------------------------------------------------------------
+const liveBody = document.querySelector("#live tbody");
+const PALETTE = ["#58a6ff", "#3fb950", "#d29922", "#f78166", "#bc8cff"];
+const ENGINES = () => ["browser", ...serverEngines.map(e => "server-" + e)];
+const colorOf = eng => PALETTE[ENGINES().indexOf(eng) % PALETTE.length];
+
+function drawStats() {
+  liveBody.innerHTML = "";
+  for (const eng of ENGINES()) {
+    ensureEngine(eng === "browser" ? "browser" : eng.slice(7));
+    const key = eng === "browser" ? "browser" : eng.slice(7);
+    const [ms, iters, frames] = totals[key];
+    if (!frames) continue;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><span style="color:${colorOf(eng)}">&#9644;</span> ${eng}</td>` +
+      `<td>${(ms / frames).toFixed(1)}</td>` +
+      `<td>${(iters / ms / 1000).toFixed(2)}</td><td>${frames}</td>`;
+    liveBody.appendChild(tr);
+  }
+  const c = document.getElementById("chart");
+  const g = c.getContext("2d");
+  g.clearRect(0, 0, c.width, c.height);
+  let maxMs = 1;
+  for (const k in samples) for (const s of samples[k]) maxMs = Math.max(maxMs, s.ms);
+  for (const eng of ENGINES()) {
+    const key = eng === "browser" ? "browser" : eng.slice(7);
+    const s = samples[key];
+    if (!s || s.length < 2) continue;
+    g.strokeStyle = colorOf(eng); g.beginPath();
+    s.forEach((p, i) => {
+      const x = (i / 119) * c.width;
+      const y = c.height - 2 - (p.ms / maxMs) * (c.height - 6);
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    });
+    g.stroke();
+  }
+  document.querySelector(".legend").innerHTML = ENGINES()
+    .map(e => `<b style="color:${colorOf(e)}">&#9644;</b> ${e}`).join("\n") +
+    " &nbsp;(rolling ms/frame)";
+}
+
+// ---- bench ------------------------------------------------------------------
+const VIEWS = [
+  ["full set", -0.6, 0.0, 3.0 / 800, 256],
+  ["seahorse valley", -0.745, 0.112, 0.008 / 800, 512],
+  ["spiral", -0.10109636384562, 0.95628651080914, 0.0005 / 800, 1024],
+  ["deep pinch", -1.768778833, 0.001738996, 1e-6 / 800, 1024],
+];
+async function bench() {
+  const out = document.getElementById("benchout");
+  out.textContent = "benching";
+  const engines = ENGINES();
+  const w = Math.min(canvas.width, 512), h = Math.min(canvas.height, 384);
+  const rows = [["view".padEnd(16), ...engines.map(e => e.padStart(22))].join("")];
+  for (const [name, cx, cy, sc, it] of VIEWS) {
+    const cells = [];
+    for (const eng of engines) {
+      try {
+        const r = eng === "browser"
+          ? browserRender(cx, cy, sc, w, h, it)
+          : await serverRender(eng.slice(7), cx, cy, sc, w, h, it);
+        const mits = (r.iters / r.ms / 1000).toFixed(2);
+        cells.push(`${r.ms.toFixed(1)}ms ${mits}Mi/s`.padStart(22));
+      } catch (e) { cells.push("error".padStart(22)); }
+    }
+    rows.push(name.padEnd(16) + cells.join(""));
+  }
+  rows.push("", `(${w}x${h} per cell; server ms = guest render, no network)`);
+  out.textContent = rows.join("\n");
+}
+
+// ---- interaction -------------------------------------------------------------
+function zoomAt(mx, my, factor) {
+  const r = canvas.getBoundingClientRect();
+  const px = (mx - r.left) * canvas.width / r.width;
+  const py = (my - r.top) * canvas.height / r.height;
+  view.cx += (px - canvas.width / 2) * view.scale * (1 - 1 / factor);
+  view.cy += (py - canvas.height / 2) * view.scale * (1 - 1 / factor);
+  view.scale /= factor;
+  markDirty();
+}
+
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.pow(1.0015, -e.deltaY));
+}, { passive: false });
+
+canvas.addEventListener("dblclick", e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, 2);
+});
+
+let drag = null;
+canvas.addEventListener("pointerdown", e => {
+  drag = { x: e.clientX, y: e.clientY };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const r = canvas.getBoundingClientRect();
+  view.cx -= (e.clientX - drag.x) * canvas.width / r.width * view.scale;
+  view.cy -= (e.clientY - drag.y) * canvas.height / r.height * view.scale;
+  drag = { x: e.clientX, y: e.clientY };
+  markDirty();
+});
+canvas.addEventListener("pointerup", () => { drag = null; });
+canvas.addEventListener("pointercancel", () => { drag = null; });
+
+document.getElementById("iter").addEventListener("input", e => {
+  maxIter = +e.target.value;
+  document.getElementById("iterval").textContent = maxIter;
+  markDirty();
+});
+document.getElementById("reset").addEventListener("click", () => {
+  view = { ...HOME }; markDirty();
+});
+document.getElementById("bench").addEventListener("click", bench);
+document.getElementById("modes").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  mode = b.dataset.mode;
+  for (const x of document.querySelectorAll("#modes button"))
+    x.classList.toggle("active", x === b);
+  markDirty();
+});
+document.querySelector('#modes button[data-mode="browser"]').classList.add("active");
+
+window.addEventListener("resize", fitCanvas);
+
+// ---- boot --------------------------------------------------------------------
+(async () => {
+  await loadServerEngines();
+  try {
+    await loadBrowserKernel();
+  } catch (e) {
+    hud.textContent = "kernel.wasm failed to load: " + e.message;
+    return;
+  }
+  fitCanvas();
+  markDirty();
+})();
+</script>
+</body>
+</html>
