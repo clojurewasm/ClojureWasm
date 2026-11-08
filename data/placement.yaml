@@ -24,8 +24,8 @@
 schema_version: "2.0"
 summary:
   namespaces_required: 36
-  total: 1468
-  zig: 435
+  total: 1469
+  zig: 436
   clj: 807
   value: 220
   unbound: 6
@@ -121,6 +121,7 @@ vars:
   "cljw.internal/__queue-pop": { impl: zig, flags: "-" }
   "cljw.internal/__re-find": { impl: zig, flags: "-" }
   "cljw.internal/__read-instant-timestamp": { impl: zig, flags: "-" }
+  "cljw.internal/__reduce-kv-vector": { impl: zig, flags: "-" }
   "cljw.internal/__reify!": { impl: zig, flags: "-" }
   "cljw.internal/__remove-method!": { impl: zig, flags: "-" }
   "cljw.internal/__resolve": { impl: zig, flags: "-" }

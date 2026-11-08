@@ -1139,11 +1139,17 @@
 (def reduce-kv
   (fn* [f init m]
     (if (vector? m)
-      (loop* [i 0 acc init]
-        (if (< i (count m))
-          (let* [r (f acc i (nth m i))]
-            (if (reduced? r) (deref r) (recur (inc i) r)))
-          acc))
+      ;; A vector or subvec is reduced by index in Zig (no interpreted
+      ;; loop/recur, seq walk or pair allocation per item). `vector?` also
+      ;; admits a MapEntry and a deftype / reify declaring IPersistentVector;
+      ;; the primitive hands those to this generic count/nth loop.
+      (cljw.internal/__reduce-kv-vector f init m
+        (fn* [f init m]
+          (loop* [i 0 acc init]
+            (if (< i (count m))
+              (let* [r (f acc i (nth m i))]
+                (if (reduced? r) (deref r) (recur (inc i) r)))
+              acc))))
       ;; IKVReduce first (a deftype declaring `kvreduce`, D-400 — clj
       ;; consults the interface before any fallback); the sentinel keyword
       ;; is interned, so `identical?` detects "no impl" exactly.
