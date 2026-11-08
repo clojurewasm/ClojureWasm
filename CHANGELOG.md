@@ -7,6 +7,18 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+### Added
+
+- `docs/examples/fractal/` grows into nineteen engines behind one renderer
+  port: Zig, C and Rust wasm kernels (on zwasm and in the browser), plain
+  Clojure on cljw and the JVM, replikativ/raster on the JVM and CUDA through
+  clojurecuda. The page is ClojureScript (re-frame and reagent) with zoom, pan,
+  split comparison and a bench. Fractals are data: Mandelbrot, Burning Ship,
+  Tricorn and the cubic Multibrot, each also as a Julia set, compiled from one
+  expression to the oracle, raster and CUDA, which agree bit for bit.
+  `golden.edn` pins every exact engine; property, mutation and hive-cljs page
+  tests guard it.
+
 ### Changed
 
 - `reduce-kv` on vectors and subvecs now indexes in Zig instead of interpreting
