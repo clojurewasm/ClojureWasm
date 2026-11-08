@@ -7,6 +7,48 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+### Added
+
+- `docs/examples/fractal/` grows into nineteen engines behind one renderer
+  port: Zig, C and Rust wasm kernels (on zwasm and in the browser), plain
+  Clojure on cljw and the JVM, replikativ/raster on the JVM and CUDA through
+  clojurecuda. The page is ClojureScript (re-frame and reagent) with zoom, pan,
+  split comparison and a bench. Fractals are data: Mandelbrot, Burning Ship,
+  Tricorn and the cubic Multibrot, each also as a Julia set, compiled from one
+  expression to the oracle, raster and CUDA, which agree bit for bit.
+  `golden.edn` pins every exact engine; property, mutation and hive-cljs page
+  tests guard it.
+
+### Changed
+
+- `reduce-kv` on vectors and subvecs now indexes in Zig instead of interpreting
+  the per-element loop, preserving reduced early termination and the original
+  indexed keys. On staging with the newer VM and allocator, a pinned-core
+  40-pass, 100k-element vector probe falls from 16.01B to 4.54B user
+  instructions (-71.7%). The `reduce_map` lazy-map shortcut was rejected
+  because it skipped observable lazy realization/memoization; its parity-safe
+  path stays at 29.29B instructions, and `transduce` stays at 28.82B.
+
+### Fixed
+
+- The fractal example page no longer hides its header controls: a bare
+  `canvas` rule positioned the rolling ms/frame chart over the top of the
+  page. The rule is scoped to the fractal view and the chart is a block of
+  the stats panel. A frame faster than the timer resolution shows `-`
+  Miter/s (HUD, live table and bench) instead of `Infinity`. The `phase16_fractal_server` gate now stops its server for real
+  on exit, instead of leaving it holding port 8159 for up to 120 s.
+- `derive` rejects a bad tag or parent with clj's own `AssertionError`
+  (`Assert failed: (namespace parent)` and the rest, in clj's order), and a
+  redundant or cyclic edge with a plain `Exception`, where it raised
+  `ex-info` with cljw-only wording.
+- `(ancestors C)` for a class includes `Object`, in the global hierarchy and
+  in a passed-in one, as clj's superclass walk does; `(ancestors Object)` and
+  an interface stay without it.
+- On glibc, cljw now pins malloc's mmap threshold at 128 KiB at startup
+  (unless `GLIBC_TUNABLES` is set), so long-lived servers that churn
+  64-256 KiB buffers, such as bb-mcp, no longer creep in RSS as glibc raises
+  the threshold and fragments its per-thread arenas. Other libcs are untouched.
+
 ## [1.15.6] - 2026-11-08
 
 ### Added

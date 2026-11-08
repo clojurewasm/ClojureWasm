@@ -229,7 +229,7 @@ have surfaced it.
   and pinned the tag (`build.zig.zon` `.zwasm` = tag URL + hash, `.lazy = true`), then flipped
   `engine.LoadOpts.engine` default `.interp`→`.auto` (removed the PROVISIONAL marker + emptied
   feature_deps#runtime/cljw/wasm/engine_default, same commit): a no-opts `(wasm/load path)` now
-  rides zwasm's JIT-first engine. e2e `phase16_wasm_engine_select.sh` extended — the no-opts
+  rides zwasm's JIT-first engine. e2e `phase16_wasm_engine_select.sh` (now suites/wasm_engine_select_test.clj) extended — the no-opts
   default executes a SIMD body only the JIT can run (`default-simd: 42`), proving the flip.
   Components stay interp-pinned on the zwasm side (D-500), so the component path is unaffected
   and the F-012 diff oracle (explicit `.interp`/`.jit`) is untouched. `to_cljw_09` CONSUMED.

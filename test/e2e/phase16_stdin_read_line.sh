@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: reads process stdin of the cljw binary through a pipe and a file redirect
 # test/e2e/phase16_stdin_read_line.sh — `(read-line)` on process stdin.
 #
 # The 2026-07-06 user-filed bug: `*in*`'s root was nil (no process-stdin

@@ -68,6 +68,7 @@ const root_set = @import("../../runtime/gc/root_set.zig");
 // O-033: the reentrant-call helper `update-in`'s leaf `f` rides (no cycle —
 // `higher_order` imports `runtime/collection/*`, not this Layer-2 file).
 const invokeCallable = @import("higher_order.zig").invokeCallable;
+const reduce_kv_vector = @import("reduce_kv_vector.zig");
 
 // --- conj ---
 
@@ -1384,6 +1385,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "conj", .f = &conjFn },
     .{ .name = "__update-in", .f = &updateInFn },
     .{ .name = "__kv-reduce-or", .f = &kvReduceOrFn },
+    .{ .name = "__reduce-kv-vector", .f = &reduce_kv_vector.run },
     .{ .name = "queue?", .f = &queueQFn },
     .{ .name = "__queue-pop", .f = &queuePopFn },
     .{ .name = "__vector-pop", .f = &vectorPopFn },

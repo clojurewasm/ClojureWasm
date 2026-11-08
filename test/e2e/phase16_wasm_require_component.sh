@@ -5,7 +5,7 @@
 # clojure.core/intern). Exercises: :as ns creation, export-name cleanup
 # (#[constructor]/#[method] markers stripped), cached-handle reuse, resource chain.
 #
-# OPT-IN, like phase16_wasm_component.sh: builds `-Dwasm` and is NOT in the default
+# OPT-IN, like phase16_wasm_ffi.sh: builds `-Dwasm` and is NOT in the default
 # per-commit gate. The zwasm dep resolves from
 # the tag pin in build.zig.zon (fetched on any host).
 set -euo pipefail
