@@ -59,7 +59,7 @@ echo "PASS http-html-body -> $body"
 
 # A primitive byte-array :body is served verbatim: 256 bytes, one of each
 # value 0..255. A UTF-8 path would expand bytes >= 0x80 and grow the body.
-BLEN=$(curl -s "http://127.0.0.1:$PORT/bytes" | wc -c)
+BLEN=$(curl -s "http://127.0.0.1:$PORT/bytes" | wc -c | tr -d ' ')
 [[ "$BLEN" == "256" ]] || fail "GET /bytes length: got $BLEN, want 256"
 BOD=$(curl -s "http://127.0.0.1:$PORT/bytes" | od -An -tu1 | tr -s ' ')
 EXP=""

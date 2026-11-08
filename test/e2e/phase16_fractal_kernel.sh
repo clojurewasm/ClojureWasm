@@ -11,7 +11,7 @@ run_bounded() {
   local secs="$1"; shift
   if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"
   elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@"
-  else fail "timeout or gtimeout is required"; fi
+  else "$@"; fi
 }
 
 # The harness owns building cljw. Never silently rebuild a non-wasm binary.
