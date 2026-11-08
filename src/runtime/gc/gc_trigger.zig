@@ -17,9 +17,9 @@
 //! so callers write `rt.gc.noteOwnedAlloc(n)`.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const gc_heap_mod = @import("gc_heap.zig");
 const root_set_mod = @import("root_set.zig");
+const glibc_policy = @import("glibc_policy.zig");
 
 const GcHeap = gc_heap_mod.GcHeap;
 
@@ -157,15 +157,7 @@ pub const idle_collect_min_bytes: usize = 1024 * 1024;
 pub fn collectBeforeIdle(gc: *GcHeap) void {
     if (pressureBytes(gc) < idle_collect_min_bytes) return;
     requestCollect(gc);
-    trimProcessHeap();
-}
-
-extern "c" fn malloc_trim(pad: usize) c_int;
-
-/// Return glibc's free arena memory to the OS. Other allocators unmap large
-/// frees themselves, so this is a no-op off glibc.
-fn trimProcessHeap() void {
-    if (comptime builtin.link_libc and builtin.target.abi.isGnu()) _ = malloc_trim(0);
+    glibc_policy.trimProcessHeap();
 }
 
 /// True iff a stop-the-world collect may run on this thread right now: no
