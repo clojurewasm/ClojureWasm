@@ -30,8 +30,8 @@
   .ctl { display: flex; align-items: center; gap: 6px; color: var(--dim); }
   input[type=range] { accent-color: var(--accent); width: 110px; }
   #wrap { position: relative; flex: 1; min-height: 50vh; }
-  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
-  canvas:active { cursor: grabbing; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  #view:active { cursor: grabbing; }
   #hud {
     position: absolute; left: 8px; top: 8px; padding: 6px 9px; border-radius: 6px;
     background: rgba(13,17,23,.8); border: 1px solid var(--border);
@@ -47,8 +47,8 @@
   th, td { text-align: right; padding: 3px 8px; border-bottom: 1px solid var(--border); }
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--dim); font-weight: 500; }
-  #chart { width: 100%; height: 90px; background: #0d1117; border: 1px solid var(--border); border-radius: 6px; }
-  #benchout { white-space: pre; font: 12px/1.5 ui-monospace, monospace; color: var(--dim);
+  #chart { display: block; width: 100%; height: 90px; background: #0d1117; border: 1px solid var(--border); border-radius: 6px; }
+  #benchout { white-space: pre; overflow-x: auto; font: 12px/1.5 ui-monospace, monospace; color: var(--dim);
               max-height: 180px; overflow: auto; }
   .legend { font: 11px ui-monospace, monospace; color: var(--dim); }
   .legend b { font-weight: 400; }
@@ -265,7 +265,7 @@ function drawStats() {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td><span style="color:${colorOf(eng)}">&#9644;</span> ${eng}</td>` +
       `<td>${(ms / frames).toFixed(1)}</td>` +
-      `<td>${(iters / ms / 1000).toFixed(2)}</td><td>${frames}</td>`;
+      `<td>${ms > 0 ? (iters / ms / 1000).toFixed(2) : "-"}</td><td>${frames}</td>`;
     liveBody.appendChild(tr);
   }
   const c = document.getElementById("chart");
@@ -310,7 +310,7 @@ async function bench() {
         const r = eng === "browser"
           ? browserRender(cx, cy, sc, w, h, it)
           : await serverRender(eng.slice(7), cx, cy, sc, w, h, it);
-        const mits = (r.iters / r.ms / 1000).toFixed(2);
+        const mits = r.ms > 0 ? (r.iters / r.ms / 1000).toFixed(2) : "-";
         cells.push(`${r.ms.toFixed(1)}ms ${mits}Mi/s`.padStart(22));
       } catch (e) { cells.push("error".padStart(22)); }
     }
