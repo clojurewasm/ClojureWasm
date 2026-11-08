@@ -9,6 +9,35 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ### Changed
 
+- `reduce-kv` on vectors and subvecs now indexes in Zig instead of interpreting
+  the per-element loop, preserving reduced early termination and the original
+  indexed keys. On staging with the newer VM and allocator, a pinned-core
+  40-pass, 100k-element vector probe falls from 16.01B to 4.54B user
+  instructions (-71.7%). The `reduce_map` lazy-map shortcut was rejected
+  because it skipped observable lazy realization/memoization; its parity-safe
+  path stays at 29.29B instructions, and `transduce` stays at 28.82B.
+
+## [1.15.6] - 2026-11-08
+
+### Added
+
+- `cljw.http.server` accepts a primitive byte-array `:body` (for example the
+  result of `wasm/mem-read-array`) and writes its bytes verbatim. Binary
+  responses were impossible before: a String body is UTF-8, so a 640x480 RGBA
+  frame came back as 1,748,379 bytes instead of 1,228,800, and a byte-array
+  body was sent empty. Covered by a 256-byte case in `phase16_http_server`.
+- `docs/examples/fractal/`: a Mandelbrot zoom where one Zig `kernel.wasm` runs
+  on cljw's zwasm (JIT, interpreter, and a simd128 build on the JIT) behind
+  `cljw.http.server`, and in the browser on the same bytes. `bench.clj` checks
+  iteration and framebuffer parity across engines. Two e2e gates,
+  `phase16_fractal_kernel` (parity, and both artifacts rebuilt byte-identical
+  from the header recipes) and `phase16_fractal_server` (routes and tiles over
+  real HTTP), keep the committed artifacts honest.
+
+## [1.15.5] - 2026-10-29
+
+### Changed
+
 - Transient maps and sets now edit owned HAMT paths in place during `into`,
   cloning only shared nodes; `persistent!` freezes ownership so later transients
   cannot mutate published maps. The `into_collections` workload drops from
@@ -41,15 +70,6 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
   user instructions per iteration, down from 1585 (pinned core,
   `instructions:u`); `(loop [i 0] (if (< i n) (recur (inc i)) i))` 601, down
   from 1307. Bytecode format v15 (v14 artifacts are rejected).
-
-- `reduce-kv` on vectors and subvecs now indexes in Zig instead of interpreting
-  the per-element loop, preserving reduced early termination and the original
-  indexed keys. On staging with the newer VM and allocator, a pinned-core
-  40-pass, 100k-element vector probe falls from 16.01B to 4.54B user
-  instructions (-71.7%). The `reduce_map` lazy-map shortcut was rejected
-  because it skipped observable lazy realization/memoization; its parity-safe
-  path stays at 29.29B instructions, and `transduce` stays at 28.82B.
-
 - A string of up to about 4 KB now keeps its bytes inside its own GC cell
   instead of in a separate malloc block freed by a finaliser: one allocation
   per string instead of two. Measured on a pinned core (user instructions, a
