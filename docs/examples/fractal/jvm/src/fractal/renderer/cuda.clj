@@ -1,17 +1,18 @@
 (ns fractal.renderer.cuda
   "CUDA renderers through uncomplicate/clojurecuda: one GPU thread per pixel.
-  escape.cu is compiled at start-up by NVRTC straight to a CUBIN for this GPU
-  (SASS, no PTX JIT, so a toolkit newer than the driver still loads). A CUDA
-  context is current per thread, so the adapter owns ONE worker thread that
-  creates the context and runs every GPU call; callers never see CUDA thread
-  affinity. fp64 with --fmad=false rounds like the JVM (golden parity); fp32
-  trades exactness for the GPU's single-precision throughput."
-  (:require [clojure.java.io :as io]
-            [uncomplicate.clojurecuda.core :as cu]
+  The program is generated from the formula registry (fractal.renderer.cuda-source)
+  and compiled at start-up by NVRTC straight to a CUBIN for this GPU (SASS, no
+  PTX JIT, so a toolkit newer than the driver still loads). A CUDA context is
+  current per thread, so the adapter owns ONE worker thread that creates the
+  context and runs every GPU call; callers never see CUDA thread affinity. fp64
+  with --fmad=false rounds like the JVM (golden parity); fp32 trades exactness
+  for the GPU's single-precision throughput."
+  (:require [uncomplicate.clojurecuda.core :as cu]
             [uncomplicate.clojure-cpp :as cpp]
             [uncomplicate.commons.core :as cc]
             [fractal.renderer :as r]
-            [fractal.tile :as tile])
+            [fractal.tile :as tile]
+            [fractal.renderer.cuda-source :as src])
   (:import (java.util.concurrent Callable ExecutorService Executors ThreadFactory)
            (org.bytedeco.cuda.global nvrtc)
            (org.bytedeco.cuda.nvrtc _nvrtcProgram)
@@ -43,30 +44,32 @@
     (str "-arch=sm_" compute-capability-major compute-capability-minor)))
 
 (defn- open-gpu
-  "On the worker: context, compiled module and kernel functions."
+  "On the worker: context, the generated program compiled, and every kernel
+  function keyed [formula-id seed precision]."
   []
   (cu/init)
   (let [dev (cu/device 0)
         ctx (cu/context dev)]
     (cu/current-context! ctx)
-    (let [prog (cu/compile! (cu/program (slurp (io/resource "fractal/escape.cu")))
-                            ["--fmad=false" (sm-arch dev)])
+    (let [prog (cu/compile! (cu/program (src/program)) ["--fmad=false" (sm-arch dev)])
           m (cu/module (cubin prog))]
       {:ctx ctx
        :device (:name (cc/info dev))
-       :kernels {:f64 (cu/function m "escape_f64") :f32 (cu/function m "escape_f32")}})))
+       :kernels (update-vals (src/kernels) #(cu/function m %))})))
 
 (defn- escape-on-gpu!
   "On the worker: launch kernel for tile t and copy the field back."
-  [kernel {:keys [cx cy scale w h iter] :as t} {:keys [^ints counts ^doubles mag2]}]
-  (let [n (tile/pixels t)]
+  [kernel {:keys [cx cy scale w h iter julia] :as t} {:keys [^ints counts ^doubles mag2]}]
+  (let [n (tile/pixels t)
+        [kr ki] (or julia [0.0 0.0])]
     (cc/with-release [d-counts (cu/mem-alloc-driver (* 4 n))
                       d-mag2 (cu/mem-alloc-driver (* 8 n))
                       h-counts (cpp/int-pointer n)
                       h-mag2 (cpp/double-pointer n)]
       (cu/launch! kernel (cu/grid-2d w h 16 16)
                   (cu/parameters d-counts d-mag2 (int w) (int h)
-                                 (double cx) (double cy) (double scale) (int iter)))
+                                 (double cx) (double cy) (double scale) (int iter)
+                                 (double kr) (double ki)))
       (cu/synchronize!)
       (cu/memcpy-host! d-counts h-counts)
       (cu/memcpy-host! d-mag2 h-mag2)
@@ -77,10 +80,12 @@
 (defrecord Cuda [rid precision gpu worker]
   r/IRenderer
   (id [_] rid)
-  (describe [_] {:parity? (= precision :f64) :heavy? true
+  (describe [_] {:parity? (= precision :f64) :heavy? true :julia? true
+                 :formulas (set (map first (keys (:kernels gpu))))
                  :what (str "CUDA " (name precision) " on " (:device gpu))})
   (escape! [_ t field]
-    (on-gpu worker #(escape-on-gpu! (get-in gpu [:kernels precision]) t field))))
+    (let [kernel (get-in gpu [:kernels [(:formula t) (if (:julia t) :z-plane :c-plane) precision]])]
+      (on-gpu worker #(escape-on-gpu! kernel t field)))))
 
 (def ^:private shared (delay
                             (let [worker (Executors/newSingleThreadExecutor

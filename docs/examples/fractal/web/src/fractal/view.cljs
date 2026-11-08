@@ -6,6 +6,30 @@
 
 (def tour-target {:cx -0.743643887037151 :cy 0.13182590420533})
 
+(def default-fractal
+  "Which set the page shows: a formula id of the JVM's fractal.formula
+  registry, and k when the orbit starts on the z-plane (a Julia set)."
+  {:formula "mandelbrot" :julia nil})
+
+(def builtin-catalog
+  "The formula every engine renders. Servers add the rest (GET /engines)."
+  [{:id "mandelbrot" :what "z^2 + c" :home {:cx -0.5 :cy 0.0 :scale 0.0068359375} :julia [-0.8 0.156]}])
+
+(defn plane-point
+  "The complex point [re im] under canvas pixel (px, py) of a w x h canvas."
+  [{:keys [cx cy scale]} [w h] [px py]]
+  [(+ cx (* (- px (/ w 2)) scale)) (+ cy (* (- py (/ h 2)) scale))])
+
+(defn home-of
+  "The view that frames fractal f on a canvas w pixels wide. Catalog homes
+  are for 512 pixels; a Julia set is framed as the disk of radius 1.7."
+  [catalog {:keys [formula julia]} w]
+  (let [k (/ 512 (max 1 w))
+        entry (or (first (filter #(= formula (:id %)) catalog)) (first builtin-catalog))]
+    (if julia
+      {:cx 0 :cy 0 :scale (* k (/ 3.4 512))}
+      (update (:home entry) :scale * k))))
+
 (defn zoom-at
   "Zoom by factor (>1 in) keeping the plane point under canvas pixel (px, py)
   fixed, on a canvas of w x h pixels."
@@ -53,18 +77,30 @@
 (defn valid? [{:keys [cx cy scale]}]
   (and (js/Number.isFinite cx) (js/Number.isFinite cy) (js/Number.isFinite scale) (pos? scale)))
 
-(defn ->hash [{:keys [cx cy scale]} iter]
-  (str \# (js/URLSearchParams. #js {:cx cx :cy cy :scale scale :iter iter})))
+(defn ->hash
+  "The URL hash of view v at iteration cap iter for fractal f; the formula
+  and k are written only when they differ from plain Mandelbrot."
+  ([v iter] (->hash v iter default-fractal))
+  ([{:keys [cx cy scale]} iter {:keys [formula julia]}]
+   (let [p (js/URLSearchParams. #js {:cx cx :cy cy :scale scale :iter iter})]
+     (when (and formula (not= formula (:formula default-fractal))) (.set p "formula" formula))
+     (when-let [[kr ki] julia] (.set p "jr" kr) (.set p "ji" ki))
+     (str \# p))))
 
 (defn <-hash
-  "Parse a location hash into {:view {...} :iter n}; keys absent or invalid
-  in the hash are absent from the result."
+  "Parse a location hash into {:view {...} :iter n :fractal {...}}; keys
+  absent or invalid in the hash are absent from the result. :fractal is
+  present when the hash names a formula or a Julia k."
   [hash]
   (let [p (js/URLSearchParams. (subs (or hash "") 1))
         n #(when (.has p %) (finite-num (.get p %)))
         v (cond-> {}
             (n "cx") (assoc :cx (n "cx"))
             (n "cy") (assoc :cy (n "cy"))
-            (some-> (n "scale") pos?) (assoc :scale (n "scale")))]
+            (some-> (n "scale") pos?) (assoc :scale (n "scale")))
+        julia (when (and (n "jr") (n "ji")) [(n "jr") (n "ji")])
+        formula (when (seq (.get p "formula")) (.get p "formula"))]
     (cond-> {:view v}
-      (n "iter") (assoc :iter (max 1 (js/Math.round (n "iter")))))))
+      (n "iter") (assoc :iter (max 1 (js/Math.round (n "iter"))))
+      (or formula julia) (assoc :fractal {:formula (or formula (:formula default-fractal))
+                                          :julia julia}))))

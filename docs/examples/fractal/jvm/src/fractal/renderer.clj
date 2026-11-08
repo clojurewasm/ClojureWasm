@@ -5,14 +5,30 @@
   palette is applied once, above the port, so every renderer that computes the
   same escape field paints the same bytes."
   (:require [fractal.palette :as palette]
-            [fractal.tile :as tile]))
+            [fractal.tile :as tile]
+            [fractal.formula :as formula]))
 
 (defprotocol IRenderer
   (id [r] "Engine name as the page and the bench show it.")
-  (describe [r] "{:parity? bool :heavy? bool :what str}. :parity? false for
-                 renderers whose arithmetic differs (fp32), excluded from golden
-                 checks; :heavy? true when billion-iteration views are practical.")
+  (describe [r] "{:parity? bool :heavy? bool :what str :formulas #{id} :julia? bool}.
+                 :parity? false for renderers whose arithmetic differs (fp32),
+                 excluded from golden checks; :heavy? true when billion-iteration
+                 views are practical; :formulas the fractal.formula ids it
+                 renders (absent: Mandelbrot only); :julia? whether it renders
+                 the z-plane seed.")
   (escape! [r t field] "Fill the EscapeField `field` for Tile t."))
+
+(defn formulas
+  "The formula ids r renders. A renderer that names none is Mandelbrot only,
+  so a new formula costs no adapter that does not opt in."
+  [r]
+  (or (:formulas (describe r)) #{formula/default-id}))
+
+(defn renders?
+  "Whether r can render Tile t: its formula, and its seed."
+  [r t]
+  (and (contains? (formulas r) (:formula t formula/default-id))
+       (or (nil? (:julia t)) (boolean (:julia? (describe r))))))
 
 (defn frame
   "Render Tile t on r: {:iters :ms :rgba}. :ms covers the escape computation

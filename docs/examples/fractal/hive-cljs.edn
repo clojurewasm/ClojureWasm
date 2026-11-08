@@ -93,7 +93,7 @@
     :doc   "The bench renders the view list on every engine and reports parity."
     :steps [[:goto "/"]
             [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
-            [:expect-js "window.fractalApi.bench({w:64,h:48}).then(function(r){return r.parity===true && r.rows.length===4*window.fractalApi.engines().length && r.rows.every(function(x){return !x.error;});})"]
+            [:expect-js "window.fractalApi.bench({w:64,h:48}).then(function(r){return r.parity===true && r.rows.length===r.views.length*window.fractalApi.engines().length && r.rows.every(function(x){return !x.error;});})"]
             [:wait-for "#benchtab"]]}
 
    {:id    :jvm-engines
@@ -114,4 +114,44 @@
             [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
             [:expect-js "(function(){var s=document.getElementById('engR');s.value='cuda-f64';s.dispatchEvent(new Event('change',{bubbles:true}));return true;})()"]
             [:click "#split"]
-            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var p=window.fractalApi.panes();if(p.R&&p.R.engine==='cuda-f64'&&p.R.iters>0){clearInterval(t);ok(true);}},100);})"]]}]}}
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var p=window.fractalApi.panes();if(p.R&&p.R.engine==='cuda-f64'&&p.R.iters>0){clearInterval(t);ok(true);}},100);})"]]}
+
+   {:id    :mandelbrot-only-engines-refuse
+    :tags  [:fractal :formula]
+    :doc   "An engine whose caps name only Mandelbrot refuses another formula
+            and a Julia seed, in the page, before any request is made."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "Promise.all([window.fractalApi.render('browser-zig',-0.45,-0.5,0.03,8,8,50,'burning-ship').then(function(){return false;},function(){return true;}), window.fractalApi.render('browser-js',0,0,0.034,8,8,50,'mandelbrot',-0.8,0.156).then(function(){return false;},function(){return true;})]).then(function(rs){return rs[0]&&rs[1];})"]]}
+
+   {:id    :formula-golden
+    :tags  [:fractal :jvm :formula :golden]
+    :doc   "Through the page, every exact engine that renders a formula
+            reproduces golden.edn's burning-ship and multibrot3-julia views:
+            raster on the CPU, CUDA fp64 on the GPU, the plain-Clojure oracle."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "Promise.all(['raster-jvm','cuda-f64','clojure-jvm'].map(function(e){return window.fractalApi.render(e,-0.45,-0.5,0.03,96,72,300,'burning-ship');})).then(function(rs){return rs.every(function(r){return r.iters===630142&&r.checksum===31342209;});})"]
+            [:expect-js "Promise.all(['raster-jvm','cuda-f64','clojure-jvm'].map(function(e){return window.fractalApi.render(e,0,0,0.034,96,72,300,'multibrot3',-0.2,0.75);})).then(function(rs){return rs.every(function(r){return r.iters===370534&&r.checksum===823951201;});})"]]}
+
+   {:id    :formula-switch
+    :tags  [:fractal :jvm :formula :interaction]
+    :doc   "Picking a formula frames it at home, moves the panes to engines
+            that render it (the browser kernels are disabled), and writes it
+            into the URL hash."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "window.fractalApi.formulas().indexOf('tricorn')>=0"]
+            [:expect-js "(function(){var s=document.getElementById('formula');s.value='tricorn';s.dispatchEvent(new Event('change',{bubbles:true}));return true;})()"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var p=window.fractalApi.panes();if(window.fractalApi.fractal().formula==='tricorn'&&p.L&&p.L.iters>0&&window.fractalApi.usable().indexOf(p.L.engine)>=0){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "window.fractalApi.usable().indexOf('browser-zig')<0 && document.querySelector('#engL option[value=\"browser-zig\"]').disabled && new URLSearchParams(location.hash.slice(1)).get('formula')==='tricorn'"]]}
+
+   {:id    :julia-at-cursor
+    :tags  [:fractal :jvm :formula :interaction]
+    :doc   "j opens the Julia set of the point under the cursor; the deep
+            link carries k, and reloading it lands on the same Julia set."
+    :steps [[:goto "/#cx=-0.45&cy=-0.5&scale=0.0055&iter=256&formula=burning-ship"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var p=window.fractalApi.panes();if(window.fractalApi.ready()&&p.L&&p.L.iters>0){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "(function(){var c=document.getElementById('view'),r=c.getBoundingClientRect();c.dispatchEvent(new PointerEvent('pointermove',{pointerId:3,clientX:r.left+r.width*0.25,clientY:r.top+r.height*0.5,bubbles:true}));window.dispatchEvent(new KeyboardEvent('keydown',{key:'j'}));return true;})()"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var f=window.fractalApi.fractal(),p=window.fractalApi.panes();if(f.julia&&f.formula==='burning-ship'&&p.L&&p.L.iters>0&&!p.L.error){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "(function(){var q=new URLSearchParams(location.hash.slice(1));return q.get('formula')==='burning-ship'&&q.has('jr')&&q.has('ji')&&Number(q.get('jr'))<-0.45;})()"]]}]}}

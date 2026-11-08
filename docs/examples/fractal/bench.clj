@@ -22,7 +22,8 @@
 (defn selected? [v] (if ci? (:ci v) (or (not (:heavy v)) heavy?)))
 
 (defn runs? [rr v]
-  (or (not (:heavy v)) (not (:interp? (fractal.cljw.renderer/describe rr)))))
+  (and (fractal.cljw.renderer/renders? rr v)
+       (or (not (:heavy v)) (not (:interp? (fractal.cljw.renderer/describe rr))))))
 
 (defn measure [rr v]
   (let [t (fractal.cljw.tile/tile v)

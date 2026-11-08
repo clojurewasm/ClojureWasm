@@ -17,12 +17,31 @@
 (defn- fmt [n d] (.toFixed n d))
 
 ;; --- header -----------------------------------------------------------------------
-(defn- engine-select [side]
+(defn- engine-select
+  "Every engine, the ones that cannot draw the current fractal disabled."
+  [side]
   (let [engines @(rf/subscribe [:engines])
+        ok? (set (ev/usable {:engines engines :caps @(rf/subscribe [:caps]) :fractal @(rf/subscribe [:fractal])}))
         cur @(rf/subscribe [side])]
     [:select {:id (if (= side :left) "engL" "engR") :value (or cur "")
               :on-change #(rf/dispatch [::ev/set-engine side (.. % -target -value)])}
-     (for [e engines] ^{:key e} [:option e])]))
+     (for [e engines] ^{:key e} [:option {:value e :disabled (not (ok? e))} e])]))
+
+(defn- fractal-controls
+  "The formula on show and the seed: the c-plane set, or its Julia set."
+  []
+  (let [catalog @(rf/subscribe [:catalog])
+        {:keys [formula julia]} @(rf/subscribe [:fractal])]
+    [:div.ctl
+     [:label "fractal "
+      [:select {:id "formula" :value formula
+                :on-change #(rf/dispatch [::ev/set-formula (.. % -target -value)])}
+       (for [{:keys [id what]} catalog] ^{:key id} [:option {:value id :title what} (str id "  " what)])]]
+     [:button {:id "julia" :class (when julia "active") :title "Julia set of this formula (j: k under the cursor)"
+               :on-click #(rf/dispatch [::ev/toggle-julia])}
+      (if julia (str "Julia k=" (.toPrecision (first julia) 4) (if (neg? (second julia)) "" "+")
+                     (.toPrecision (second julia) 4) "i")
+          "Julia")]]))
 
 (defn- coord-inputs []
   (let [draft (r/atom {})]
@@ -47,6 +66,7 @@
         tour? @(rf/subscribe [:tour?])]
     [:header
      [:h1 "fractal zoom"]
+     [fractal-controls]
      [:div.ctl
       [:label "left " [engine-select :left]]
       [:label "right " [engine-select :right]]
@@ -90,6 +110,7 @@
                          (rf/dispatch [::ev/stop-tour])))
     (.addEventListener c "pointermove"
                        (fn [e]
+                         (reset! ev/hover (canvas-point c e))
                          (when-let [[px py] (get @pointers (.-pointerId e))]
                            (let [p (canvas-point c e)]
                              (if (= 2 (count @pointers))
@@ -116,10 +137,11 @@
       (.observe (js/ResizeObserver. fit!) c)
       (fit!))))
 
-(defn- hud-text [{:keys [engine ms iters w h error]} v iter]
+(defn- hud-text [{:keys [engine ms iters w h error]} v iter {:keys [formula julia]}]
   (if error
     (str engine ": " error)
     (str engine "  " (fmt ms 1) " ms  " (fmt (/ iters ms 1000) 1) " Miter/s\n"
+         formula (when julia (str " Julia k=" (.toPrecision (first julia) 6) "," (.toPrecision (second julia) 6))) "\n"
          "x " (.toPrecision (:cx v) 15) "\ny " (.toPrecision (:cy v) 15) "\n"
          "scale " (.toExponential (:scale v) 3) "  zoom " (.toExponential (view/zoom-level v) 2) "x\n"
          "iter " iter "  " w "x" h)))
@@ -137,13 +159,14 @@
       (let [panes @(rf/subscribe [:panes])
             split? @(rf/subscribe [:split?])
             v @(rf/subscribe [:view])
-            iter @(rf/subscribe [:iter])]
+            iter @(rf/subscribe [:iter])
+            f @(rf/subscribe [:fractal])]
         [:div#wrap
          [:canvas#view {:ref mount-canvas!}]
          [:div#divider {:style {:display (if split? "block" "none")}}]
-         [:div#hudL.hud (when-let [p (:L panes)] (hud-text p v iter))]
+         [:div#hudL.hud (when-let [p (:L panes)] (hud-text p v iter f))]
          [:div#hudR.hud {:style {:display (if split? "block" "none")}}
-          (when-let [p (:R panes)] (hud-text p v iter))]]))}))
+          (when-let [p (:R panes)] (hud-text p v iter f))]]))}))
 
 ;; --- stats --------------------------------------------------------------------------
 (defn- draw-chart! [^js c samples engines]
@@ -180,7 +203,9 @@
                     [:td (fmt (/ iters ms 1000) 2)] [:td frames]])]]
      [chart samples engines]
      [:p.note "Wheel or " [:kbd "+"] "/" [:kbd "-"] " zoom at the cursor, drag or arrows/" [:kbd "WASD"]
-      " slide x and y, double-click zooms in (shift: out), two fingers pinch. The URL hash keeps the view."]]))
+      " slide x and y, double-click zooms in (shift: out), two fingers pinch. " [:kbd "j"]
+      " opens the Julia set of the point under the cursor. The URL hash keeps the view and the fractal."
+      " Formulas other than Mandelbrot run on the engines whose caps list them (raster and CUDA on the JVM server)."]]))
 
 (defn bench-table []
   (let [engines @(rf/subscribe [:engines])
@@ -188,8 +213,8 @@
     [:div.scroll
      [:div#benchmeta.note
       (if-not bench
-        "Bench renders a fixed view list on every engine: ms, Miter/s, iteration total (must match) and checksum."
-        (str w "x" h " per cell. Server ms = guest render only. Green = iteration total and checksum equal the first engine's."
+        "Bench renders a fixed view list on every engine that renders it: ms, Miter/s, iteration total (must match) and checksum."
+        (str w "x" h " per cell. Server ms = guest render only. Green = iteration total and checksum equal the first engine's. n/a = the engine does not render that fractal."
              (case parity nil " Running..." true " Parity: all engines agree." " Parity: MISMATCH.")))]
      (when bench
        [:table#benchtab
@@ -200,10 +225,11 @@
            [:tr [:td [swatch engines e] e]
             (for [[n] views
                   :let [r (first (filter #(and (= n (:view %)) (= e (:engine %))) rows))
-                        ref (first (filter #(and (= n (:view %)) (not (:error %))) rows))]]
+                        ref (first (filter #(and (= n (:view %)) (not (:error %)) (not (:skipped %))) rows))]]
               ^{:key n}
               [:td (cond
                      (nil? r) "…"
+                     (:skipped r) [:span.note "n/a"]
                      (:error r) [:span.bad {:title (:error r)} "error"]
                      :else [:span {:title (str "iters " (:iters r) " checksum " (:checksum r))}
                             (fmt (:ms r) 1) " ms "

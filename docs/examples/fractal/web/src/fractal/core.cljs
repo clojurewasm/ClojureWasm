@@ -14,8 +14,9 @@
 
 (defn- on-key [e]
   (when-not (= "INPUT" (.. e -target -tagName))
-    (let [[w] (:canvas @db/app-db)
+    (let [[w h] (:canvas @db/app-db)
           step (/ w 10)
+          [hx hy] (or @ev/hover [(/ w 2) (/ h 2)])
           handled (case (.-key e)
                     ("ArrowLeft" "a") [::ev/pan (- step) 0]
                     ("ArrowRight" "d") [::ev/pan step 0]
@@ -23,25 +24,35 @@
                     ("ArrowDown" "s") [::ev/pan 0 step]
                     ("+" "=") [::ev/zoom-center 1.5]
                     ("-" "_") [::ev/zoom-center (/ 1 1.5)]
+                    "j" [::ev/julia-at hx hy]
                     nil)]
       (when handled
         (.preventDefault e)
         (rf/dispatch handled)))))
 
 (defn- apply-hash! []
-  (let [{v :view iter :iter} (view/<-hash js/location.hash)]
+  (let [{v :view iter :iter f :fractal} (view/<-hash js/location.hash)]
+    (rf/dispatch [::ev/set-fractal (or f view/default-fractal)])
     (rf/dispatch [::ev/set-view (cond-> v iter (assoc :iter iter))])))
 
 (defn- test-surface []
   #js {:view (fn [] (clj->js (assoc (:view @db/app-db) :iter (:iter @db/app-db))))
        :engines (fn [] (clj->js (:engines @db/app-db)))
+       :usable (fn [] (clj->js (ev/usable @db/app-db)))
+       :fractal (fn [] (clj->js (:fractal @db/app-db)))
+       :formulas (fn [] (clj->js (map :id (:catalog @db/app-db))))
        :ready (fn [] (boolean (:ready? @db/app-db)))
        :panes (fn [] (clj->js (:panes @db/app-db)))
        :setView (fn [v] (rf/dispatch-sync [::ev/set-view (js->clj v :keywordize-keys true)]))
+       :setFormula (fn [id] (rf/dispatch-sync [::ev/set-formula id]))
        :zoomAt (fn [px py f] (rf/dispatch-sync [::ev/zoom-at px py f]))
        :pan (fn [dx dy] (rf/dispatch-sync [::ev/pan dx dy]))
-       :render (fn [engine cx cy scale w h iter]
-                 (.then (engines/render-on engine {:cx cx :cy cy :scale scale :w w :h h} iter)
+       ;; formula, jr and ji are optional: absent, the tile is plain Mandelbrot.
+       :render (fn [engine cx cy scale w h iter formula jr ji]
+                 (.then (engines/render-on engine (cond-> {:cx cx :cy cy :scale scale :w w :h h}
+                                                    formula (assoc :formula formula)
+                                                    (some? jr) (assoc :julia [jr ji]))
+                                           iter)
                         (fn [{:keys [ms iters pixels]}]
                           #js {:ms ms :iters iters :checksum (engines/checksum pixels)})))
        :bench (fn [opts]

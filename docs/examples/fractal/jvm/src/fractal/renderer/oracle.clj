@@ -2,37 +2,52 @@
   "The reference renderer: the escape-time definition in plain Clojure, one
   pixel at a time, no library. Every other renderer is tested against it."
   (:require [fractal.renderer :as r]
-            [fractal.tile :as tile]))
+            [fractal.tile :as tile]
+            [fractal.formula :as formula]))
 
-(defn escape
-  "[n mag2] for the point (cr, ci): iterate z <- z^2 + c from 0 while
-  n < limit and |z|^2 <= 4. The operation order is the kernels' exactly."
-  [cr ci limit]
-  (loop [n 0 zr 0.0 zi 0.0]
+(defn orbit
+  "[n mag2] for one orbit: iterate z <- (step zr zi cr ci) from z0 while
+  n < limit and |z|^2 <= 4. Every kernel uses this test in this order."
+  [step zr zi cr ci limit]
+  (loop [n 0 zr (double zr) zi (double zi)]
     (if (and (< n limit) (<= (+ (* zr zr) (* zi zi)) 4.0))
-      (recur (inc n) (+ (- (* zr zr) (* zi zi)) cr) (+ (* (* 2.0 zr) zi) ci))
+      (let [[zr' zi'] (step zr zi cr ci)] (recur (inc n) (double zr') (double zi')))
       [n (+ (* zr zr) (* zi zi))])))
 
+(defn step-fn
+  "Compile a Formula's step (data) to a fn of zr zi cr ci returning [zr' zi']."
+  [f]
+  (eval (list 'fn ['^double zr '^double zi '^double cr '^double ci]
+              (formula/step-form (:step f) ['clojure.core/vector]))))
+
+(defn steps
+  "Formula id -> compiled step, for every formula in registry."
+  ([] (steps formula/registry))
+  ([registry] (into {} (map (fn [[id f]] [id (step-fn f)])) registry)))
+
 (defn fill!
-  "Fill field for tile t with the escape rule esc (default `escape`); returns field."
-  ([t field] (fill! escape t field))
-  ([esc t {:keys [^ints counts ^doubles mag2] :as field}]
-   (let [{:keys [w h iter]} t]
-     (dotimes [y h]
-       (dotimes [x w]
-         (let [[cr ci] (tile/point t x y)
-               [n m] (esc cr ci iter)
-               p (+ (* y w) x)]
-           (aset counts p (int n))
-           (aset mag2 p (double m)))))
-     field)))
+  "Fill field for tile t: orbit rule orb, step fn from step-of (formula id ->
+  step); returns field. The reference passes `orbit` and `steps`; the
+  mutation suite passes deliberately broken ones."
+  [orb step-of t {:keys [^ints counts ^doubles mag2] :as field}]
+  (let [{:keys [w h iter formula]} t
+        step (step-of formula)]
+    (dotimes [y h]
+      (dotimes [x w]
+        (let [[zr zi cr ci] (tile/seed t x y)
+              [n m] (orb step zr zi cr ci iter)
+              p (+ (* y w) x)]
+          (aset counts p (int n))
+          (aset mag2 p (double m)))))
+    field))
 
 ;; esc is the escape rule as a value: the reference passes `escape`, the
 ;; mutation suite passes deliberately broken rules.
-(defrecord Oracle [rid esc]
+(defrecord Oracle [rid orb step-of]
   r/IRenderer
   (id [_] rid)
-  (describe [_] {:parity? true :heavy? false :what "plain Clojure on the JVM, one thread, the reference"})
-  (escape! [_ t field] (fill! esc t field)))
+  (describe [_] {:parity? true :heavy? false :julia? true :formulas (set (keys step-of))
+                 :what "plain Clojure on the JVM, one thread, the reference"})
+  (escape! [_ t field] (fill! orb step-of t field)))
 
-(defn renderer [] (->Oracle "clojure-jvm" escape))
+(defn renderer [] (->Oracle "clojure-jvm" orbit (steps)))

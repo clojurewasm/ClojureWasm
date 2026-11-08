@@ -25,9 +25,11 @@
        :mismatch (golden/verdict v (:iters best) (palette/checksum (:rgba best)))})))
 
 (defn runs?
-  "Whether renderer rr runs view v: heavy views only on :heavy? renderers."
+  "Whether renderer rr runs view v: it renders the view's formula and seed,
+  and heavy views only on :heavy? renderers."
   [rr v]
-  (or (not (:heavy v)) (:heavy? (r/describe rr))))
+  (and (r/renders? rr (golden/view->tile v))
+       (or (not (:heavy v)) (boolean (:heavy? (r/describe rr))))))
 
 (defn rows [renderers views opts]
   (vec (for [rr renderers v views :when (runs? rr v)]

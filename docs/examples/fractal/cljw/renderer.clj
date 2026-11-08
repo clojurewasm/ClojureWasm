@@ -9,6 +9,16 @@
   (describe [r] "{:interp? bool :what str}; interpreted engines skip heavy views.")
   (render! [r t] "Render Tile t: {:iters total :rgba byte-array}."))
 
+(defn renders?
+  "Whether r renders view v ({:formula id :julia [kr ki]}, both optional).
+  Same rule as the JVM port: a renderer that names no :formulas renders
+  Mandelbrot only, and the z-plane seed only when it says :julia?. Every cljw
+  engine today is Mandelbrot on the c-plane."
+  [r v]
+  (let [d (describe r)]
+    (and (contains? (or (:formulas d) #{"mandelbrot"}) (or (:formula v) "mandelbrot"))
+         (or (nil? (:julia v)) (boolean (:julia? d))))))
+
 (defn frame
   "Render Tile t on r, timed: {:iters :rgba :ms}."
   [r t]

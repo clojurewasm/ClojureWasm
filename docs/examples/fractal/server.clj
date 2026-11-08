@@ -61,16 +61,20 @@
 (defn tile-response [q]
   (try
     (let [t (fractal.cljw.tile/parse-query q)
-          engine (get q "engine" "zig-jit")]
-      (if-let [rr (get registry engine)]
-        (let [{:keys [ms iters rgba]} (fractal.cljw.renderer/frame rr t)]
-          {:status 200
-           :headers {"content-type" "application/octet-stream"
-                     "cache-control" "no-store"
-                     "x-render-ms" (format "%.3f" ms)
-                     "x-iters" (str iters)}
-           :body rgba})
-        {:status 400 :body (str "engine must be one of " (vec (keys registry)))}))
+          engine (get q "engine" "zig-jit")
+          want {:formula (get q "formula") :julia (when (get q "jr") [(get q "jr") (get q "ji")])}
+          rr (get registry engine)]
+      (cond
+        (nil? rr) {:status 400 :body (str "engine must be one of " (vec (keys registry)))}
+        (not (fractal.cljw.renderer/renders? rr want))
+        {:status 400 :body (str engine " renders Mandelbrot on the c-plane only")}
+        :else (let [{:keys [ms iters rgba]} (fractal.cljw.renderer/frame rr t)]
+                {:status 200
+                 :headers {"content-type" "application/octet-stream"
+                           "cache-control" "no-store"
+                           "x-render-ms" (format "%.3f" ms)
+                           "x-iters" (str iters)}
+                 :body rgba})))
     (catch Throwable e
       {:status 400 :body (str "tile error: " (.getMessage e))})))
 
@@ -78,9 +82,9 @@
 (defn handler [req]
   (let [q (fractal.cljw.tile/query-map (:query-string req))]
     (case (:uri req)
-      "/" {:status 200
-           :headers {"content-type" "text/html; charset=utf-8"}
-           :body (slurp (str public "/index.html"))}
+      ("/" "/index.html") {:status 200
+                           :headers {"content-type" "text/html; charset=utf-8"}
+                           :body (slurp (str public "/index.html"))}
       "/kernel.wasm" (if-let [bytes (get kernel-bytes (get q "k" "zig"))]
                        {:status 200
                         :headers {"content-type" "application/wasm" "cache-control" "no-cache"}
