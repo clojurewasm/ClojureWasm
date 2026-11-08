@@ -46,6 +46,12 @@
 
 (defn zoom-level [{:keys [scale]}] (/ (:scale home) scale))
 
+(defn mits
+  "Million iterations per second of a frame, or nil when ms is not positive:
+  a frame under the timer resolution has no meaningful rate."
+  [iters ms]
+  (when (and (js/Number.isFinite ms) (pos? ms)) (/ iters ms 1000)))
+
 (defn pane-view
   "The view one pane renders: pane (dx, dw) of a W x H canvas, at resolution
   factor res. Panes are slices of one shared view, so a split seam is

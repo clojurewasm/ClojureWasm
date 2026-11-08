@@ -7,6 +7,15 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+### Fixed
+
+- The fractal example page no longer hides its header controls: a bare
+  `canvas` rule positioned the rolling ms/frame chart over the top of the
+  page. The rule is scoped to the fractal view and the chart is a block of
+  the stats panel. A frame faster than the timer resolution shows `-`
+  Miter/s (HUD, live table and bench) instead of `Infinity`. The `phase16_fractal_server` gate now stops its server for real
+  on exit, instead of leaving it holding port 8159 for up to 120 s.
+
 ## [1.15.6] - 2026-11-08
 
 ### Added
