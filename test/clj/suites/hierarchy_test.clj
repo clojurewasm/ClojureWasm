@@ -146,3 +146,40 @@
 
 (deftest underive-with-non-hierarchy-map-throws
   (is (thrown? Throwable (underive {} ::g4-a ::g4-b))))
+
+;; derive checks its arguments with clj's own asserts, so a bad tag or parent
+;; is an AssertionError carrying clj's exact message, never ex-info.
+(defn- assert-msg [f]
+  (try (f) nil (catch AssertionError e (ex-message e))))
+
+(deftest derive-validation-is-an-assertion-error
+  (is (= "Assert failed: (namespace parent)"
+         (assert-msg #(derive ::g5-a :g5-b))))
+  (is (= "Assert failed: (or (class? tag) (and (instance? clojure.lang.Named tag) (namespace tag)))"
+         (assert-msg #(derive :g5-a ::g5-b))))
+  (is (= "Assert failed: (not= tag parent)"
+         (assert-msg #(derive (make-hierarchy) :g5-a :g5-a))))
+  (is (= "Assert failed: (or (class? tag) (instance? clojure.lang.Named tag))"
+         (assert-msg #(derive (make-hierarchy) "s" :g5-a))))
+  (is (= "Assert failed: (instance? clojure.lang.Named parent)"
+         (assert-msg #(derive (make-hierarchy) ::g5-a String))))
+  (is (thrown? ClassCastException (derive ::g5-a String))))
+
+;; A cyclic edge is a plain Exception in clj, not ex-info.
+(deftest derive-cycle-is-a-plain-exception
+  (let [h (derive (make-hierarchy) ::g6-a ::g6-b)
+        e (try (derive h ::g6-b ::g6-a) nil (catch Exception e e))]
+    (is (some? e))
+    (is (not (instance? clojure.lang.ExceptionInfo e)))
+    (is (= "Cyclic derivation: :suites.hierarchy-test/g6-a has :suites.hierarchy-test/g6-b as ancestor"
+           (ex-message e)))))
+
+;; Every class but Object has Object among its ancestors, in the global
+;; hierarchy and in an ad-hoc one.
+(deftest class-ancestors-include-object
+  (is (contains? (ancestors clojure.lang.PersistentHashSet) Object))
+  (is (contains? (ancestors Long) Object))
+  (is (contains? (ancestors (derive (make-hierarchy) clojure.lang.PersistentVector ::g7-o)
+                            clojure.lang.PersistentVector)
+                 Object))
+  (is (nil? (ancestors Object))))

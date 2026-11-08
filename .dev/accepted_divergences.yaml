@@ -1081,28 +1081,6 @@ accepted:
     example: '(let [l (lazy-seq 1)] (try (seq l) (catch Exception _ nil)) (count l)) => cljw throws again / clj 0.'
     derives_from: "ADR-0143 (failed realization is never cached) + ADR-0197 (one publication state, immutable inner links and retained retry captures)."
     pin: "test/clj/suites/lazy_seqable_test.clj — non-seqable-bodies-raise-on-every-touch and realization-state-follows-ad067; test/golden/cases/lazy_seqable_bodies.expected — scalar retries, closed thunk retry, inner realized."
-  - id: "AD-068"
-    area: "hierarchy"
-    summary: |-
-      `derive` accepts a CLASS as the parent, where clj raises
-      `ClassCastException`. clj's 2-arity asserts `(namespace parent)`, and a
-      `Class` is not `Named`, so `(derive ::tag String)` throws there.
-      ADR-0109 makes a host class a first-class hierarchy participant in cljw:
-      `isa?` already answers on class parents, `defmulti` dispatches on them,
-      and `(derive ::x Object)` is the way a keyword tag joins that graph.
-      The edge is REAL rather than implied by `Object` being the universal
-      supertype — `(isa? ::x Object)` is false until the derive installs it —
-      so refusing a class parent would make an ADR-0109 hierarchy expressible
-      only through `make-hierarchy`, which the global `defmulti` path does not
-      read. Every OTHER bad shape is rejected exactly as clj rejects it: a
-      non-named parent, an un-namespaced parent in the 2-arity, and a tag that
-      is neither a class nor a namespaced symbol/keyword.
-      The 3-arity is deliberately more permissive than the 2-arity on
-      namespacing, in both runtimes: a hierarchy value you pass in is your own,
-      while the global one is shared across every namespace.
-    example: '(derive :user/tag String) => cljw installs the edge / clj throws ClassCastException. The reverse, (derive ::x Object) then (isa? ::x Object), is true in cljw and unreachable in clj.'
-    derives_from: "ADR-0109 (one host-class-VALUE resolver; a class is a hierarchy participant)."
-    pin: "test/e2e/phase14_opaque_host_class.sh — the derive_object case; clojure.core-test.derive carries the one residual upstream failure this row explains."
   - id: AD-069
     area: numerics
     summary: '`(int x)` / `(byte x)` / `(short x)` yield a Long: cljw has no Integer / Byte / Short types, so `(instance? Integer (int 0))` is false where clj is true. The narrowing RANGE is still enforced the way clj enforces it, so `(int 2147483648)` raises in both; only the RESULT TYPE differs.'
