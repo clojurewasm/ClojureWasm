@@ -13,8 +13,22 @@
 # Auto-defense: `scripts/check_accepted_divergences.sh --gate` enforces
 # (a) the file is well-formed, (b) every entry cites a non-empty
 # `derives_from`, (c) every entry's `pin` test path (when not "none") exists
-# so the divergent cljw behaviour is locked against accidental change, and
-# (d) COVERAGE.md's "Acceptable divergences" section points here (no drift).
+# so the divergent cljw behaviour is locked against accidental change,
+# (d) COVERAGE.md's "Acceptable divergences" section points here (no drift),
+# and (e) every entry carries a `check` (ADR-0208), one of:
+#
+#   check: {expr: <forms>, clj: <rendering>, cljw: <rendering>}
+#   check: {prose: <why no single expression can show the divergence>}
+#
+# `expr` is evaluated through scripts/ad_check_render.clj on the built cljw
+# (must render `cljw`) and, when `clojure` is on PATH, on Clojure 1.12.4 with
+# TZ Asia/Tokyo and en-US locale (must render `clj`); the two recorded
+# renderings must differ, or the row is STALE. A rendering is pr-str of the
+# last form's value, `throws <SimpleName>` of the root cause, or `aborts` when
+# the cljw process dies before rendering. Each expr loads in its own namespace
+# `ad-check.<id>`; normalise identity hashes inside the expr. `prose` is not a
+# second `why`: the row's `why` says why the divergence is accepted, `prose`
+# says why it cannot be shown by one evaluation.
 #
 # To PROMOTE an accepted divergence back to "should match clj" (i.e. decide
 # it is actually a bug): remove its entry here + open a debt row + add a
@@ -32,6 +46,11 @@ accepted:
       meaningful. cljw's order is deterministic for a given insert sequence.
     derives_from: "Clojure unordered-collection semantics (value equality is order-independent); ADR-0045 (HAMT representation)"
     pin: "test/diff/clj_corpus/print_repr.txt (cljw-side order asserted)"
+    check:
+      expr: |-
+        (pr-str #{1 2 3})
+      clj: '"#{1 3 2}"'
+      cljw: '"#{1 2 3}"'
   - id: "AD-002"
     summary: "Opaque reference values (atom / volatile / fn / transient collections / etc.) print as `#<tag>` not clj's `#object[Class 0xADDR {...}]`"
     example: '(pr-str (atom 1)) => cljw "#<atom>" / clj "#object[clojure.lang.Atom 0x.. {:status :ready, :val 1}]". Verified 2026-06-16 (code reality): (pr-str (transient [1 2])) => cljw "#<transient_vector>" / clj "#object[clojure.lang.PersistentVector$TransientVector 0x.. \"..@..\"]"; (transient {..}) => "#<transient_map>"; (transient #{..}) => "#<transient_set>" — same opaque #<tag> mechanism as atom/fn.'
@@ -42,6 +61,11 @@ accepted:
       impossible and undesirable. The value is opaque either way.
     derives_from: "F-011 (behavioural equivalence on VALUE, not identity); ADR-0059 (no-JVM-Class)"
     pin: "none — identity-hash dependent on the clj side (not value-comparable)"
+    check:
+      expr: |-
+        (clojure.string/replace (pr-str (atom 1)) #"0x[0-9a-f]+|@[0-9a-f]+" "@")
+      clj: '"#object[clojure.lang.Atom @ {:status :ready, :val 1}]"'
+      cljw: '"#<atom>"'
   - id: "AD-003"
     summary: "`(class x)` / `(type x)` return the simple name for cljw-NATIVE types, not the Java FQCN (Java-surface-backed classes DO carry the FQCN per ADR-0174)"
     example: '(class 5) => cljw Long / clj java.lang.Long; but (class (java.util.Date. 0)) => java.util.Date in BOTH'
@@ -58,6 +82,11 @@ accepted:
       additionally lacks clj's "class " toString prefix in both regimes.
     derives_from: "ADR-0059 (no-JVM rule); ADR-0174 (identity rule); no_jvm_specific_assumption.md"
     pin: "test/diff/clj_corpus/print_repr.txt + test/diff/clj_corpus/str_char.txt (native simple names) + test/e2e/phase14_host_class_identity.sh (surface FQCNs)"
+    check:
+      expr: |-
+        (class 5)
+      clj: 'java.lang.Long'
+      cljw: 'Long'
   - id: "AD-004"
     summary: "`(float x)` and `(.floatValue x)` yield an f64; cljw has no f32 representation"
     example: "(float 1/3) => cljw 0.3333333333333333 / clj 0.33333334 (f32); (.floatValue 16777217) => cljw 1.6777217E7 / clj 1.6777216E7"
@@ -71,6 +100,11 @@ accepted:
       `(.floatValue 0.1)` as 0.10000000149011612 where clj prints 0.1).
     derives_from: "F-005 (numeric tower: single internal double)"
     pin: "test/clj/suites/number_value_methods_test.clj (float-value-is-the-double-as-float-is); otherwise value-dependent (the f64 is correct; only the f32-narrowing is absent)"
+    check:
+      expr: |-
+        (float 1/3)
+      clj: '0.33333334'
+      cljw: '0.3333333333333333'
   - id: "AD-005"
     summary: "Subnormal double shortest-rendering differs by the last digit"
     example: "smallest positive double => cljw 5.0E-324 / clj 4.9E-324 (the SAME f64 bit pattern)"
@@ -79,6 +113,11 @@ accepted:
       decimal rendering of a subnormal differs. The value is bit-identical.
     derives_from: "F-005 (IEEE-754 f64; rendering is a shortest-round-trip cosmetic)"
     pin: "none — single subnormal edge, value bit-identical"
+    check:
+      expr: |-
+        Double/MIN_VALUE
+      clj: '4.9E-324'
+      cljw: '5.0E-324'
   - id: "AD-007"
     summary: "Error rendering shows cljw's catalog Kind, not the JVM exception class"
     example: '(quot 10 0) => cljw "[arithmetic_error] ..." / clj "ArithmeticException ..." (both reject). Also `(class <caught-ex>)`: cljw returns its own simple-named exception class (AD-003), Kind-derived, which APPROXIMATES but does not always match clj''s per-case JVM class — e.g. `(inc nil)`/`(+ nil 1)` => cljw ClassCastException / clj NullPointerException; `(count 5)` => cljw IllegalArgumentException / clj UnsupportedOperationException; `(inc "x")` => ClassCastException in BOTH. Both ALWAYS reject the same inputs.'
@@ -99,6 +138,11 @@ accepted:
       as the low-priority D-433, not this AD.)
     derives_from: "ADR-0059 (no-JVM); error_catalog_only.md (catalog is the message SSOT)"
     pin: "test/e2e/* error-rendering cases (cljw Kind asserted); behaviour = reject, verified"
+    check:
+      expr: |-
+        (inc nil)
+      clj: 'throws NullPointerException'
+      cljw: 'throws ClassCastException'
   - id: "AD-008"
     summary: "Long arithmetic overflow past i64 auto-promotes to BigInt; clj's checked `+`/`*` THROW instead"
     example: '(* 9223372036854775807 2) => cljw 18446744073709551614N (BigInt) / clj THROW ArithmeticException "integer overflow"'
@@ -116,6 +160,11 @@ accepted:
       is tracked in D-211 for when they land.
     derives_from: "F-005 (numeric tower: auto-promote on overflow is the chosen cljw surface)"
     pin: "none — clj diverges (throws) by design; cljw's promote result is pinned by the D-165/overflow cycle's e2e (campaign C7, next session)"
+    check:
+      expr: |-
+        (* 9223372036854775807 2)
+      clj: 'throws ArithmeticException'
+      cljw: '18446744073709551614N'
   - id: "AD-009"
     summary: "cljw carries ONE hash system: `(hash x)` (hasheq) is clj-PORTABLE for value types incl. defrecords (2026-07-16 alignment), and `.hashCode` / format `%h` DELEGATE to it — where clj/JVM has a SECOND, Java-side `Object.hashCode` system (`(.hashCode \"abc\")` → 96354 ≠ `(hash \"abc\")` → 74834163) that cljw does not reproduce. Residual hasheq divergences: >i64 ratio/BigDecimal components; deftype stays identity-based."
     example: '(hash "abc") => 74834163 BOTH ; (hash :user/k) / (hash 1/2) / (hash 1.5M) / (hash [1 2]) all match clj (corpus hash_compare.txt) ; (.hashCode "abc") => cljw 74834163 (= hash) / clj 96354 (Java String.hashCode) ; (hash (->Pt 1 2)) => -1763326040 BOTH (records joined 2026-07-16)'
@@ -140,6 +189,11 @@ accepted:
       records_method_values.txt).
     derives_from: "ADR-0059 (no-JVM: no second Object.hashCode system, no identity hashes) + F-011 (the observable `(hash x)` values now MATCH clj for data; the single-hash delegation is the internal-representation freedom) + AD-028 (the mapHash/mapHasheq sibling)."
     pin: "test/diff/clj_corpus/hash_compare.txt — 30+ `(hash …)` golden values locked against real clj across every aligned type; test/diff/clj_corpus/object_methods.txt — `(= (.hashCode \"abc\") (hash \"abc\"))` → true (single-system delegation locked); test/clj/suites/format_test.clj: the hash-conversion deftest pins `%h`/`%H` lowercase-hex rendering."
+    check:
+      expr: |-
+        (.hashCode "abc")
+      clj: '96354'
+      cljw: '74834163'
   - id: "AD-010"
     summary: "a Namespace value prints as `#object[Namespace \"<name>\"]` (no JVM class FQN, no `0xADDR` identity hash)"
     example: '(pr-str *ns*) => cljw "#object[Namespace \"user\"]" / clj "#object[clojure.lang.Namespace 0x5ad10c1a \"user\"]" ; (str *ns*) => "user" (matches clj)'
@@ -153,6 +207,11 @@ accepted:
       `#object[…]` form (pr / prn / print / println) diverges.
     derives_from: "ADR-0059 (no-JVM: no class FQN); AD-002 (opaque-ref identity-hash not reproducible); ADR-0083"
     pin: "test/clj/suites/vars_namespaces_test.clj — `(str *ns*)` => user + `(pr-str *ns*)` => #object[Namespace \"user\"] (the cljw form locked)"
+    check:
+      expr: |-
+        (clojure.string/replace (pr-str (the-ns 'clojure.core)) #"0x[0-9a-f]+|@[0-9a-f]+" "@")
+      clj: '"#object[clojure.lang.Namespace @ \"clojure.core\"]"'
+      cljw: '"#object[Namespace \"clojure.core\"]"'
   - id: "AD-012"
     summary: "A PersistentQueue prints as a readable `#queue (…)` (cljw) instead of clj's opaque `#object[clojure.lang.PersistentQueue 0x… \"…@hash\"]`"
     example: '(pr-str (conj clojure.lang.PersistentQueue/EMPTY 1 2 3)) => cljw "#queue (1 2 3)" / clj "#object[clojure.lang.PersistentQueue 0x… \"clojure.lang.PersistentQueue@…\"]"'
@@ -168,6 +227,11 @@ accepted:
       `str` and `pr-str` of a queue are intentionally identical. ADR-0087.
     derives_from: "ADR-0059 (no-JVM identity hash); ADR-0087 (PersistentQueue)"
     pin: "test/clj/suites/persistent_queue_test.clj — locks `(pr-str (conj EMPTY 1 2 3))` => `#queue (1 2 3)`, empty => `#queue ()`, and the `#queue` reader round-trip"
+    check:
+      expr: |-
+        (clojure.string/replace (pr-str (conj clojure.lang.PersistentQueue/EMPTY 1 2 3)) #"0x[0-9a-f]+|@[0-9a-f]+" "@")
+      clj: '"#object[clojure.lang.PersistentQueue @ \"clojure.lang.PersistentQueue@\"]"'
+      cljw: '"#queue (1 2 3)"'
   - id: "AD-013"
     summary: "cljw STM is retry-only — it drops JVM's `barge` (a running transaction preempting a younger conflicting one). Result-equivalent: serializability holds; only contention fairness/throughput differ (unobservable in the committed state)."
     why: |-
@@ -185,6 +249,8 @@ accepted:
       the observable serializability contract the retry-only engine upholds.
     derives_from: "ADR-0090 §3 (MVCC retry-only LockingTransaction) + §4 (no-barge)"
     pin: "test/clj/suites/concurrency_host_test.clj — `dosync_concurrent_serializable` locks 4 threads × 100 `(dosync (alter c inc))` => exactly 400 (the serializable, no-lost-update result the retry-only engine produces under contention)"
+    check:
+      prose: 'Barging is a contention-scheduling policy. The committed state of every transaction history is the same with or without it, so no expression''s value shows it; only throughput and fairness under contention differ.'
   - id: "AD-015"
     summary: "An ESCAPED `with-local-vars` local var, deref'd AFTER its dynamic extent, returns `nil` in cljw, where JVM returns an unreproducible `#object[clojure.lang.Var$Unbound 0x…]` opaque."
     example: '(var-get (with-local-vars [x 5] x)) => cljw nil / clj #object[Var$Unbound 0x…]'
@@ -204,6 +270,11 @@ accepted:
       `nil` instead of an unreproducible opaque.
     derives_from: "F-006 (Vars gpa-owned + GC-membrane-filtered; no Unbound sentinel) + ADR-0097 (anon local Var lifetime) + the opaque-ref non-reproducibility class"
     pin: "test/clj/suites/vars_namespaces_test.clj — `escape-nil` asserts `(var-get (with-local-vars [x 5] x))` => nil (cljw's safe divergent value, not JVM's Var$Unbound opaque)"
+    check:
+      expr: |-
+        (let [v (var-get (with-local-vars [x 5] x))] (if (nil? v) :nil (.getSimpleName (class v))))
+      clj: '"Unbound"'
+      cljw: ':nil'
   - id: "AD-016"
     summary: "`(biginteger x)` yields cljw's BigInt — prints `5N` (clj `5`) and `(class (biginteger 5))` is `BigInt` (clj `java.math.BigInteger`). cljw has no separate BigInteger type."
     example: '(biginteger 5) => cljw 5N / clj 5 ; (class (biginteger 5)) => cljw BigInt / clj java.math.BigInteger'
@@ -232,6 +303,11 @@ accepted:
       -1 in both.
     derives_from: "F-005 (numeric tower collapses BigInt/BigInteger into one `.big_int`) + AD-003 (simple class name, no JVM Class)"
     pin: "test/clj/suites/biginteger_test.clj — the `biginteger-is-bigint-the-ad-016-divergence` deftest (cases biginteger_prints_N + biginteger_class_bigint) locks cljw's `5N` print and BigInt class (the divergent values, not clj's 5 / java.math.BigInteger)"
+    check:
+      expr: |-
+        [(biginteger 5) (class (biginteger 5))]
+      clj: '[5 java.math.BigInteger]'
+      cljw: '[5N BigInt]'
   - id: "AD-017"
     summary: "A deftype mutable field's `^long` / primitive type hint is parsed-and-ignored; cljw does not enforce clj's 'must assign primitive to primitive mutable'."
     example: '(deftype C [^:unsynchronized-mutable ^long n] P (go [this] (set! n "hi") n)) (go (->C 0)) => cljw "hi" / clj compile error (primitive mismatch)'
@@ -247,6 +323,13 @@ accepted:
       `:volatile-mutable` keyword (assignability) is acted on.
     derives_from: "F-004 (NaN-box uniform 8-byte Value, no primitive field storage) + F-005 (no primitive specialization) + ADR-0104"
     pin: "test/e2e/phase14_deftype_mutable.sh — long_hint_ignored_accepts_non_long (a `^long` mutable field accepts a String set)"
+    check:
+      expr: |-
+        (defprotocol P (go [this]))
+        (deftype C [^:unsynchronized-mutable ^long n] P (go [this] (set! n "hi") n))
+        (go (->C 0))
+      clj: 'throws IllegalArgumentException'
+      cljw: '"hi"'
   - id: "AD-018"
     summary: "quot/rem/mod whose QUOTIENT is non-finite — any NaN operand, or a +/-Inf dividend — yield a non-finite result (NaN or +/-Inf) in cljw; JVM Clojure THROWS NumberFormatException (a non-finite quotient routes through new BigDecimal). An Inf DIVISOR over a finite dividend has a finite (0) quotient and AGREES (both NaN)."
     example: '(quot ##Inf 3) => cljw ##Inf / clj THROW; (rem ##Inf 3) => cljw ##NaN / clj THROW; (quot ##-Inf 3) => cljw ##-Inf / clj THROW; (mod ##NaN 3) => cljw ##NaN / clj THROW "Infinite or NaN"; (mod 3 ##Inf) => ##NaN in BOTH (Inf divisor, finite quotient — not a divergence)'
@@ -267,6 +350,11 @@ accepted:
       2026-08-17 against the clj oracle).
     derives_from: "F-005 (numeric tower: single internal f64, one clean float quot/rem/mod path) + AD-008 (cljw's cleaner numeric surface where clj throws)"
     pin: "test/clj/suites/numeric_tower_test.clj — the `non-finite-operands` deftest: quot_nan/rem_nan/mod_nan_d/mod_nan_v (NaN family) + quot_inf/rem_inf/mod_inf/quot_ninf (+/-Inf-dividend family) lock cljw's non-finite result (clj throws). Each assertion carries its original case name as a trailing comment."
+    check:
+      expr: |-
+        (quot ##Inf 3)
+      clj: 'throws NumberFormatException'
+      cljw: '##Inf'
   - id: "AD-019"
     summary: "Array type arguments are advisory: `make-array` / `into-array` ignore their class argument and build an object array, type hints (`^\"[B\"`, `^ints`) are ignored, and `aset-long` / `aset-int` / `aset-double` store into an object array where clj throws. The typed constructors (`long-array`, `byte-array`, ...) DO build typed native storage (ADR-0204)."
     example: '(let [c (make-array Long 2 2)] (aset-int c 0 0 3) (aget c 0 0)) => cljw 3 / clj IllegalArgumentException ; (class (object-array 0)) => cljw "array" / clj "[Ljava.lang.Object;"'
@@ -274,6 +362,11 @@ accepted:
       cljw has no Class objects (ADR-0059 / AD-003), so `Long`, `Integer/TYPE` and a `^"[B"` hint carry no element kind for `make-array` / `into-array` to read. Those build object arrays, which is what `(make-array Long n)` is on the JVM too (a boxed `Long[]`). clj then refuses `aset-long` on a boxed array because `Array.setLong` wants a primitive `long[]`; cljw has no primitive-versus-boxed class to key that refusal on, so the store succeeds. The typed constructors build typed arrays (byte i8 ... double f64, ADR-0204): their values, `aset` strictness, `bytes?`, `Arrays/equals` and `Arrays/sort` match clj. The simple class name (`array`) is the AD-003 no-JVM-class surface applied to arrays.
     derives_from: "ADR-0059 / AD-003 (no JVM Class objects, so a class argument names no element kind) + ADR-0204 (typed array storage for the typed constructors)"
     pin: "test/e2e/phase14_arity_parity.sh — `AD-019 (aset-long a i j v)` / `AD-019 (aset-double a i j v)` / `AD-019 (aset-int a i j v)` lock the store into a make-array object array; test/clj/suites/arrays_test.clj — array_class_simple (class is `array`)"
+    check:
+      expr: |-
+        (let [c (make-array Long 2 2)] (aset-int c 0 0 3) (aget c 0 0))
+      clj: 'throws IllegalArgumentException'
+      cljw: '3'
   - id: "AD-020"
     summary: "A java.util.Random (any host_instance) prints opaquely as `#<java.util.Random>` — clj prints `#object[java.util.Random 0x… …]` with a non-reproducible identity hash."
     example: '(pr-str (java.util.Random. 0)) => cljw "#<java.util.Random>" / clj "#object[java.util.Random 0x.. java.util.Random@..]"'
@@ -288,6 +381,11 @@ accepted:
       `java.util.Random` (simple, not the JVM Class object) is the AD-003 surface.
     derives_from: "AD-002 (opaque-ref identity-hash print cljw cannot mirror) + ADR-0059 (no JVM Class) + ADR-0106"
     pin: "test/clj/suites/random_test.clj — print_opaque (#<java.util.Random>) + class (java.util.Random)"
+    check:
+      expr: |-
+        (clojure.string/replace (pr-str (java.util.Random. 0)) #"0x[0-9a-f]+|@[0-9a-f]+" "@")
+      clj: '"#object[java.util.Random @ \"java.util.Random@\"]"'
+      cljw: '"#<java.util.Random>"'
   - id: "AD-021"
     summary: "A namespace VALUE (e.g. `:ns` in `(meta #'x)`) prints opaquely as `#object[Namespace \"name\"]` — simple class name, no identity hash — vs clj's `#object[clojure.lang.Namespace 0x… \"name\"]`."
     example: '(pr-str (:ns (meta #''map))) => cljw "#object[Namespace \"clojure.core\"]" / clj "#object[clojure.lang.Namespace 0x.. \"clojure.core\"]"'
@@ -301,6 +399,11 @@ accepted:
       identity rendering diverges. Same family as AD-002 / AD-020.
     derives_from: "AD-002 (opaque-ref identity-hash print cljw cannot mirror) + AD-003 (simple class name, ADR-0059 no JVM Class) + ADR-0083 (namespace as first-class value)"
     pin: "test/e2e/phase14_var_metadata.sh — synth_ns_render (#object[Namespace \"clojure.core\"]) + synth_ns_core (ns-name equivalence)"
+    check:
+      expr: |-
+        (clojure.string/replace (pr-str (:ns (meta #'map))) #"0x[0-9a-f]+|@[0-9a-f]+" "@")
+      clj: '"#object[clojure.lang.Namespace @ \"clojure.core\"]"'
+      cljw: '"#object[Namespace \"clojure.core\"]"'
   - id: "AD-022"
     summary: "An unresolved `clojure.lang.*` / `clojure.asm.*` reference defers to a CALL-time `feature_not_supported` (ADR-0113) instead of resolving (JVM) — so a fn whose body names such a JVM-internal class DEFINES + the namespace LOADS; the ref errors only if evaluated."
     example: '(do (defn f [] (clojure.lang.RT/baseLoader)) :ok) => cljw :ok (loads); (f) => "clojure.lang.RT/baseLoader is not supported in ClojureWasm". clj: (clojure.lang.RT/baseLoader) returns a ClassLoader.'
@@ -317,6 +420,12 @@ accepted:
       its timing diverges.
     derives_from: "ADR-0113 (deferred host-class refs) + ADR-0059 (no JVM class) + provisional_marker.md (explicit runtime error OK, silent no-op forbidden)"
     pin: "test/clj/suites/forms_and_literals_test.clj (p15-deferred-host-ref: defines_and_loads + typo_stays_loud) + test/e2e/phase15_deferred_host_ref.sh (raises_when_called, the uncatchable call-time raise)"
+    check:
+      expr: |-
+        (defn f [] (clojure.lang.RT/baseLoader))
+        (some? (f))
+      clj: 'true'
+      cljw: 'aborts'
   - id: "AD-023"
     summary: "Extending a protocol TO a host_inert java interface (`(extend-protocol P java.util.Map …)`) is a LOAD-ONLY no-op in cljw: the section loads but never dispatches, because no cljw value has a java.util.Map host type (cljw maps are native PersistentArrayMap/HashMap, not java.util.Map). A map receiver falls to the protocol's Object default (or raises if none)."
     example: '(do (defprotocol P (m [x])) (extend-protocol P java.util.Map (m [x] :map) Object (m [x] :obj)) (m {:a 1})) => cljw :obj (Map impl inert, falls to Object); clj => :map (a Clojure map IS a java.util.Map).'
@@ -334,6 +443,13 @@ accepted:
       java.util.Map (ADR-0103), here applied at the extend-TARGET position.
     derives_from: "ADR-0103 (host_inert java interfaces) + ADR-0059 (no JVM class hierarchy) + ADR-0114 Decision C-1"
     pin: "test/e2e/phase14_extend_protocol_targets.sh — map_target_inert (falls to Object) + object_fallback"
+    check:
+      expr: |-
+        (defprotocol P (m [x]))
+        (extend-protocol P java.util.Map (m [x] :map) Object (m [x] :obj))
+        (m {:a 1})
+      clj: ':map'
+      cljw: ':obj'
   - id: "AD-024"
     summary: "A cljw stack trace (`Trace:` / EDN `:trace`) shows ONLY user frames; cljw's own implementation — host builtins AND the embedded stdlib (`clojure.*` / `cljw.*`) — is elided uniformly. clj shows `clojure.core` frames in a full trace (its `pst` filters only the `RestFn`/`AFn` trampolines)."
     example: '(map (fn [x] (/ x 0)) [1 2]) → cljw trace = just `user/fn__N`, NOT `clojure.core/map` (a .clj stdlib fn over the `-map-eager` builtin) nor a nameless internal `fn` frame. clj''s trace includes clojure.core frames + machinery.'
@@ -353,6 +469,12 @@ accepted:
       may surface stdlib frames (like clj's `pst`).
     derives_from: "ADR-0119 (callable naming + the trace-visibility discipline `isUserNs`) + user directive 2026-06-08 (host/stdlib/user is non-uniform → follow a discipline, not ad-hoc, for good UX)"
     pin: "test/e2e/phase14_error_format.sh — error_trace_discipline (map → user-only trace, no clojure.* / nameless internal frame)"
+    check:
+      expr: |-
+        (let [e (try (doall (map (fn [x] (/ x 0)) [1 2])) (catch Throwable e e))]
+          (boolean (some #(clojure.string/includes? (pr-str %) "clojure.core") (:trace (Throwable->map e)))))
+      clj: 'true'
+      cljw: 'false'
   - id: "AD-025"
     summary: "A callable value (`fn` / `defmulti` / protocol method fn / BUILTIN) prints as `#<ns/name>` (`#<fn>` when unnamed) — clj prints `#object[user$boom__N 0xHASH \"user$boom__N@…\"]` with a munged JVM class + identity hash. A builtin prints `#<clojure.core/+>` (home ns clojure.core per ADR-0171, matching `(resolve '+)` => `#'clojure.core/+`). `str` and `pr` render identically (both reach the same site; clj agrees)."
     example: '(pr-str (defn boom [] 1)) => cljw "#<user/boom>" / clj "#object[user$boom__... 0x.. \"user$boom__...@..\"]" ; (pr-str (fn [])) => cljw "#<user/fn__N>" (or "#<fn>" if nameless) ; (pr-str +) => cljw "#<clojure.core/+>" / clj "#object[clojure.core$_PLUS_ 0x.. …]" ; (str defmulti-val) == (pr-str defmulti-val) (no str↔pr split, matching clj)'
@@ -373,6 +495,11 @@ accepted:
       iteration order.
     derives_from: "ADR-0121 (callable print naming) + AD-002 (opaque refs print #<…> not #object[…]) + AD-003 (simple names) + ADR-0059 (no JVM class hierarchy)"
     pin: "test/e2e/phase14_callable_print.sh — fn_named + fn_anon + defmulti + str_eq_pr + builtin_named (#<clojure.core/+>) + builtin_inc (#<clojure.core/inc>, the inc/inc' tie-break) + builtin_str_eq_pr"
+    check:
+      expr: |-
+        (clojure.string/replace (pr-str +) #"0x[0-9a-f]+|@[0-9a-f]+" "@")
+      clj: '"#object[clojure.core$_PLUS_ @ \"clojure.core$_PLUS_@\"]"'
+      cljw: '"#<clojure.core/+>"'
   - id: "AD-026"
     summary: "`read-string` is eval-free: `#=(form)` (clj's read-eval reader macro) is NOT evaluated. clj reads with `*read-eval*` true by default, so `(read-string \"#=(+ 1 2)\")` returns 3; cljw's EDN-based reader has no `#=` reader function, so it raises `No reader function for tag =` — reading data never executes code."
     example: '(read-string "#=(+ 1 2)") => clj 3 (evaluated) / cljw error "No reader function for tag =" (not evaluated)'
@@ -387,6 +514,11 @@ accepted:
       "fix" back into an eval-on-read RCE.
     derives_from: "ADR-0122 (read-string eval-free by design) + SE-8 (security audit secure-by-default property)"
     pin: "test/e2e/phase14_read_string.sh — rs_no_read_eval (#=(+ 1 2) must not yield 3)"
+    check:
+      expr: |-
+        (read-string "#=(+ 1 2)")
+      clj: '3'
+      cljw: 'throws RuntimeException'
   - id: "AD-027"
     summary: "java.util.Map/Collection/Iterable methods (iterator/entrySet/keySet/values/size/…) declared UNDER a clojure.lang.* deftype-supertype section are ACCEPTED-AND-DROPPED (load-level, no dispatch), not raised. clj's IPersistentMap/Set/Vector extend Iterable/Map/Collection, so a lib may group these java methods there (flatland.ordered.map); cljw has no java dispatch (ADR-0059), so a later `(.iterator x)` is DECLINED (method-not-found), exactly as a whole host_inert java section is dropped (ADR-0103) — at method granularity (D-372, ADR-0102 am2)."
     example: '(deftype OM [m] clojure.lang.IPersistentMap (valAt [this k] (get m k)) (iterator [this] (clojure.lang.SeqIterator. (.seq this)))) => loads; (.valAt x k) dispatches; (.iterator x) => method-not-found (NOT the JVM-only body, NOT a silent value)'
@@ -408,6 +540,12 @@ accepted:
       library-driven discovery survives.
     derives_from: "ADR-0059/AD-003 (no-JVM: java methods have no cljw dispatch) + ADR-0103 (host_inert accept-don't-dispatch) + ADR-0102 am2 (method-granularity application) + F-013 (definition-derived closed set)"
     pin: "test/e2e/phase14_java_method_grouping.sh — case 2 (a dropped .iterator is DECLINED, never silently run)"
+    check:
+      expr: |-
+        (deftype OM [m] clojure.lang.IPersistentMap (valAt [this k] (get m k)) (iterator [this] (.iterator ^Iterable m)))
+        (.hasNext (.iterator (OM. {:a 1})))
+      clj: 'true'
+      cljw: 'throws IllegalArgumentException'
   - id: "AD-028"
     summary: "`clojure.lang.APersistentMap/mapHash` and `/mapHasheq` return cljw's SINGLE content hash (= `(hash m)`), NOT clj's distinct additive `Object.hashCode` (mapHash) vs murmur `hasheq` (mapHasheq). cljw collapsed the JVM two-hash split into one `valueHash` (ADR-0108), so a custom-collection deftype's `.hashCode` (via mapHash) and `(hash inst)` agree with an `=`-equal native map within cljw — the observable collision contract — at the cost of clj's internal additive/murmur shapes (unobservable per AD-009)."
     example: '(= (clojure.lang.APersistentMap/mapHash {:a 1 :b 2}) (hash {:a 1 :b 2})) => cljw true / clj false ; (= (APersistentMap/mapHash m) (APersistentMap/mapHasheq m)) => cljw true / clj false'
@@ -426,6 +564,11 @@ accepted:
       DA-fork (ADR-0108 am1) Alt 2.
     derives_from: "AD-009 (cljw-native hash, intra-cljw consistency only) + ADR-0108 am1 (the DA-fork decision) + F-011 (observable equivalence over unobservable JVM bit-shape)"
     pin: "test/diff/clj_corpus/clojure_lang_coll_hash.txt (the two `(= (mapHash …) (hash …))` / `(= (mapHash …) (mapHasheq …))` lines lock cljw=true)"
+    check:
+      expr: |-
+        (= (clojure.lang.APersistentMap/mapHash {:a 1 :b 2}) (hash {:a 1 :b 2}))
+      clj: 'false'
+      cljw: 'true'
   - id: "AD-029"
     summary: "`clojure.stacktrace/print-stack-trace` / `print-cause-trace` print per-frame `<ns>/<fn> (<file>:<line>)` lines (cljw-native format), NOT JVM `Class.method (File.java:line)` frames — cljw has no JVM `StackTraceElement` (ADR-0059). A CAUGHT exception carries frames (ADR-0120) so they print via `(stack-trace e)` (ADR-0140); a NEVER-THROWN ex-info has no frames so it keeps the `[no stack trace available]` marker. Frames are user-only (AD-024); no demunge regex (cljw carries ns+fn separately). The `*e`-dependent REPL helper `e` is not provided."
     example: '(with-out-str (clojure.stacktrace/print-stack-trace <caught e>)) => cljw "ArithmeticException: Divide by zero\n at user/boom (FILE:LINE)\n    user/mid (FILE:LINE)" / clj "java.lang.ArithmeticException: Divide by zero\n at user$boom… (REPL:1)\n …". A never-thrown (ex-info "x" {}) → cljw "ExceptionInfo: x\n{}\n at [no stack trace available]".'
@@ -446,6 +589,13 @@ accepted:
       real owner.)
     derives_from: "ADR-0059 (no JVM Throwable / StackTraceElement) + AD-024 (user-frames-only trace) + AD-003 (simple class name) + ADR-0140 (cljw-shaped frame seq)"
     pin: "test/clj/suites/test_reporters_test.clj — caught_prints_user_frame + caught_no_marker lock the cljw-native per-frame format; print_cause_trace + unthrown_no_frames lock the frame-less marker + clj-faithful cause chain"
+    check:
+      expr: |-
+        (require 'clojure.stacktrace)
+        (let [e (try (/ 1 0) (catch Exception e e))]
+          (boolean (re-find #"\.java:\d+" (with-out-str (clojure.stacktrace/print-stack-trace e)))))
+      clj: 'true'
+      cljw: 'false'
   - id: "AD-030"
     summary: "`(format \"%c\" <integer>)` is rejected by cljw for EVERY integer, where clj accepts an Integer (`(format \"%c\" (int 65))` → \"A\") but rejects a Long (`(format \"%c\" 65)` → IllegalFormatConversionException). cljw collapses int/Long into ONE integer type (F-005), so it cannot reproduce clj's Integer-accepts / Long-rejects split and chooses to reject all integers (D-267 option (b)). `%c` with an actual char (`\\A` / `(char 65)`) is clj-parity in both."
     example: '(format "%c" (int 65)) => cljw type_error / clj "A" ; (format "%c" 65) => cljw type_error / clj IllegalFormatConversionException ; (format "%c" (char 65)) => both "A"'
@@ -463,6 +613,11 @@ accepted:
       IllegalFormatConversionException) per AD-007.
     derives_from: "F-005 (numeric tower: int/Long collapse — cljw has no distinct Integer, so the Integer-accepts/Long-rejects split is unreproducible) + AD-007 (error Kind, not the JVM exception class)"
     pin: "test/clj/suites/format_test.clj: the character-conversions deftest locks cljw's `%c` integer and long rejection and the char-arg parity"
+    check:
+      expr: |-
+        (format "%c" (int 65))
+      clj: '"A"'
+      cljw: 'throws IllegalArgumentException'
   - id: "AD-031"
     summary: "Ratio components `(numerator r)` / `(denominator r)` (and integer results derived from them, e.g. `(clojure.math.numeric-tower/floor 5/2)` / `(ceil 5/2)`) narrow to Long when they fit i64; clj returns a BigInteger (numerator/denominator) / BigInt (floor/ceil). VALUE is `=` in both; only the class NAME + `N`-suffix print diverge."
     example: '(numerator 5/2) => cljw 5 (Long) / clj 5 (java.math.BigInteger) ; (clojure.math.numeric-tower/floor 5/2) => cljw 2 / clj 2N ; (ceil 5/2) => cljw 3 / clj 3N ; (= 2 2N) => true in both'
@@ -484,6 +639,11 @@ accepted:
       (not the FQCN) is additionally the AD-003 no-JVM-class surface.
     derives_from: "F-005 (numeric tower: collapse + narrow-when-fits) + AD-016 (biginteger ≡ bigint, narrow integer results) + AD-003 (simple class name, no JVM Class)"
     pin: "test/e2e/phase14_ratio_accessors.sh — num + long_eq lock cljw's Long-narrowed numerator/denominator (the divergent type, not clj's BigInteger); floor/ceil-on-ratio derive directly from this narrowing. test/conformance/verified_projects/math.numeric-tower/verify.clj exercises the full surface (round/floor/ceil/sqrt/expt/gcd/lcm/abs) value-equal to clj."
+    check:
+      expr: |-
+        (class (numerator 5/2))
+      clj: 'java.math.BigInteger'
+      cljw: 'Long'
   - id: "AD-032"
     summary: "cljw java.util.HashMap/TreeMap/ArrayList seq-views are cljw collections, not Java view objects: `(seq hm)` → cljw MapEntry pairs (`[k v]`) not `java.util.HashMap$Node` / `TreeMap$Entry`; `(.keySet hm)` / `(.values hm)` → a cljw seq not a `java.util.Set`/`Collection` view; `(seq al)` → a plain element seq. into / map-key/val-over-seq / sort-of-keySet / count / destructuring are identical. (TreeSet is NOT in this class — its `(seq ts)` yields plain elements that match clj.)"
     example: '(seq hm) => cljw ([:a 9]) / clj (#object[java.util.HashMap$Node 0x.. :a=9]) ; (into {} hm) => {:a 9} in both'
@@ -499,6 +659,11 @@ accepted:
       clj — only the raw entry OBJECT type in `(seq hm)` differs.
     derives_from: "ADR-0059 (no-JVM: no java.util.HashMap$Node) + AD-002 (Java entry pr embeds a non-reproducible identity hash) + D-425"
     pin: "test/e2e/phase14_hashmap.sh — seq_cljw_entry asserts ([:a 9]) (the cljw MapEntry form); into asserts {:a 9} (clj-equal); keySet/values assert cljw-collection results (value-equal to clj). test/e2e/phase14_arraylist.sh — seq asserts the plain element seq. test/e2e/phase14_treemap.sh — the cljw MapEntry seq + cljw-seq keySet/values forms (sorted); the clj-parity corpus pins only the VALUE-equal matched forms (into / map-key-over-seq / sort-of-keySet)."
+    check:
+      expr: |-
+        (vector? (first (seq (java.util.HashMap. {:a 9}))))
+      clj: 'false'
+      cljw: 'true'
   - id: "AD-033"
     summary: "`clojure.core/Throwable->map` `:trace` and per-`:via` `:at` are cljw-shaped `{:ns :fn :file :line :column}` maps, NOT JVM `[class method file line]` 4-vectors. `(stack-trace e)` (ADR-0140) returns the same maps. `:cause`/`:via`(`:type`/`:message`/`:data`)/`:data` are clj-faithful."
     example: '(:trace (Throwable->map <caught e>)) => cljw [{:ns "user" :fn "boom" :file "f.clj" :line 2 :column 19} …] / clj [[user$boom invoke "f.clj" 2] …] ; (:at (first (:via (Throwable->map e)))) => cljw a {:ns …} map / clj a [class method file line] 4-vec'
@@ -516,6 +681,11 @@ accepted:
       clj-documented way gets the map (not 4 slots) — the recorded divergence.
     derives_from: "ADR-0059 (no JVM StackTraceElement) + AD-003 (no JVM class fiction) + AD-007 (cljw-native trace representation) + ADR-0140 (frame-seq shape)"
     pin: "test/e2e/phase14_throwable_map.sh — caught_trace_present/caught_at_present/caught_trace_fn lock the map-shaped :trace/:at for a caught exception; trace_absent/at_absent lock the omit-when-frame-less invariant"
+    check:
+      expr: |-
+        (let [e (try (/ 1 0) (catch Exception e e))] (map? (first (:trace (Throwable->map e)))))
+      clj: 'false'
+      cljw: 'true'
   - id: "AD-034"
     summary: "cljw's volatile-grade concurrency cells (atom / volatile / ref / agent / `^:volatile-mutable` deftype fields) use `.acquire`/`.release` ordering, NOT `.seq_cst`; the JMM cross-independent-volatile total order (IRIW) is not guaranteed."
     example: "Two independent `^:volatile-mutable` fields (or two atoms) written on two threads: two observer threads can disagree on the relative order of the writes — JVM `volatile` (sequentially consistent across volatile accesses) forbids this; cljw's acquire/release permits it."
@@ -537,6 +707,8 @@ accepted:
       locks. See ADR-0152 (the conscious election + the DA's seq_cst analysis).
     derives_from: "ADR-0152 (uniform acquire/release volatile-grade ordering) — JMM volatile = seq_cst across volatile accesses; cljw's acquire/release omits the IRIW cross-cell total order. Substrate: atom.zig/volatile.zig/iref.zig/agent.zig + the D-444 deftype field path."
     pin: "test/e2e/phase14_deftype_mutable.sh — the :volatile-mutable field increments correctly (the by-construction half: the field IS atomic acquire/release; the IRIW gap itself is non-deterministic + untestable)"
+    check:
+      prose: 'The IRIW reordering that acquire/release permits is a non-deterministic interleaving across four threads. No single run is guaranteed to exhibit it, so no expression has a stable rendering on cljw.'
   - id: "AD-036"
     summary: "The 2-arg array ctors `(byte-array size n)` / `(short-array size n)` / `(char-array size n)` FILL with a number init; clj throws (`IllegalArgumentException`, 'Don't know how to create ISeq from: java.lang.Long') because the JVM `Numbers` overload for those element types has no number-fill branch."
     example: "(vec (byte-array 3 65)) => cljw [65 65 65] / clj THROWS ; (int (aget (char-array 3 65) 0)) => cljw 65 / clj THROWS ; matching cases agree: (vec (int-array 5 7)) => [7 7 7 7 7], (vec (byte-array 3 [1 2])) => [1 2 0]"
@@ -558,6 +730,11 @@ accepted:
       clj-byte-identical and corpus-pinned.
     derives_from: "F-011 (uniform shared mechanism over per-JVM-type overload accidents): every typed constructor shares one native fill (ADR-0204), so a number init fills every kind alike. DA fork 2026-06-18 (private/notes/D446-array2arg-da-fork.md)."
     pin: "test/e2e/phase14_arity_parity.sh — `AD-036 (byte-array n num)` locks (vec (byte-array 3 65)) => [65 65 65] and `AD-036 (char-array n int)` locks (int (aget (char-array 3 65) 0)) => 65 (cljw fills where clj throws)"
+    check:
+      expr: |-
+        (vec (byte-array 3 65))
+      clj: 'throws IllegalArgumentException'
+      cljw: '[65 65 65]'
   - id: "AD-037"
     summary: "`(str <lazy_seq>)` renders the realized ELEMENTS `(…)`; clj renders the LazySeq's identity-hash `toString` (`clojure.lang.LazySeq@<hash>`)."
     example: '(str (map inc [1 2 3])) => cljw "(2 3 4)" / clj "clojure.lang.LazySeq@7c42" ; (str (interpose :x (range 3))) => cljw "(0 :x 1 :x 2)" / clj "clojure.lang.LazySeq@14428d92". pr-str MATCHES in both ("(2 3 4)"); a seq''d/list/vector/chunked_cons also matches in both ((str (seq (map inc [1 2 3]))) => "(2 3 4)" both).'
@@ -578,6 +755,11 @@ accepted:
       match clj.
     derives_from: "AD-002 (non-reproducible JVM identity hash is not mirrored) + ADR-0054 (the print path realizes a lazy seq to its elements). clj's LazySeq.toString is the un-overridden Object.toString; no cljw analogue exists."
     pin: "test/clj/suites/lazy_map_test.clj — `str_lazyseq_elements` locks (str (map inc [1 2 3])) => \"(2 3 4)\" and `str_interpose_lazy` locks (str (interpose :x (range 3))) => \"(0 :x 1 :x 2)\" (cljw's deterministic element form, vs clj's identity-hash toString)"
+    check:
+      expr: |-
+        (clojure.string/replace (str (map inc [1 2 3])) #"@[0-9a-f]+" "@")
+      clj: '"clojure.lang.LazySeq@"'
+      cljw: '"(2 3 4)"'
   - id: "AD-040"
     summary: "A cascading macro (`cond`, and similar) macroexpand-1's to the FULL nested form in cljw, where clj expands ONE clause and leaves a recursive `(clojure.core/cond …)` call. Functionally identical; the expanded form (and the nested macro's namespace) differ."
     example: "(macroexpand-1 '(cond a 1 :else 2)) => cljw \"(if a 1 (if :else 2 nil))\" / clj \"(if a 1 (clojure.core/cond :else 2))\". Running the macro is identical: (cond false 1 :else 2) => 2 both. NOTE: `when` DOES byte-match clj (`(if c (do body))`, fixed) — only the recursive-cascade macros (cond/condp/…) differ."
@@ -595,6 +777,11 @@ accepted:
       recursive-cascade cases keep cljw's full-expand shape.
     derives_from: "F-011 (behavioural equivalence is the contract; the macros run identically — only the intermediate macroexpand-1 FORM differs; cljw's Zig transforms lower eagerly in one step). Functionally-equivalent expansion form, like ClojureScript's macroexpansions vs JVM clj."
     pin: "test/clj/suites/control_macros_test.clj — `cond-expands-to-the-full-nested-if` locks (macroexpand-1 '(cond a 1 :else 2)) => (if a 1 (if :else 2 nil)) (cljw's full form), and `when-expands-like-clj`/`when-not-expands-like-clj` lock when's and when-not's byte-match with clj"
+    check:
+      expr: |-
+        (macroexpand-1 '(cond a 1 :else 2))
+      clj: '(if a 1 (clojure.core/cond :else 2))'
+      cljw: '(if a 1 (if :else 2 nil))'
   - id: "AD-041"
     summary: "clojure.test's FAIL/ERROR ` (file:line)` suffix points at the DEFTEST var's line (from Var source meta, D-563b) where clj points at the failing assertion's line (JVM stack frame); and `report :error` prints the exception's value instead of clj's JVM cause trace. Names, expected/actual, context, and counts all match clj."
     example: "(deftest a (is (= 1 2))) in f.clj: cljw `FAIL in (a) (f.clj:LINE-OF-DEFTEST)` / clj `FAIL in (a) (f.clj:LINE-OF-IS)`. An erroring test: cljw `  actual: #error {…}` (the ex value) / clj a multi-line `clojure.lang.ExceptionInfo … at …` cause trace."
@@ -611,6 +798,14 @@ accepted:
       byte-for-line.
     derives_from: "ADR-0059 (no-JVM: no JVM stack / class-file source positions) + F-011 (behavioural equivalence — pass/fail/error outcomes + counts match; only the unreproducible location/trace text differs)."
     pin: "test/clj/suites/test_reporters_test.clj (suffix present, deftest-var-sourced) + test/clj/suites/concurrency_host_test.clj (the Var meta channel) + test/e2e/phase15_var_source_meta.sh (AOT round-trip)."
+    check:
+      expr: |-
+        (require 'clojure.test)
+        (clojure.test/deftest t
+          (clojure.test/is (= 1 2)))
+        (second (re-find #":(\d+)\)" (with-out-str (binding [clojure.test/*test-out* *out*] (clojure.test/test-var #'t)))))
+      clj: '"4"'
+      cljw: '"3"'
   - id: "AD-042"
     summary: "`(pr-str v)` / `(str v)` print the bare ISO toString for a `java.time.*` value (Instant, Duration, …), where clj's `pr` emits the opaque `#object[java.time.X 0x.. \"ISO\"]` identity form. cljw makes both str and pr the toString; the value's `(str …)`, method results, and `=` all match clj."
     example: "(pr-str (java.time.Instant/ofEpochSecond 0)) => cljw \"1970-01-01T00:00:00Z\" / clj \"#object[java.time.Instant 0x5d3411d \\\"1970-01-01T00:00:00Z\\\"]\". (str (java.time.Duration/ofSeconds 90)) => both \"PT1M30S\"."
@@ -626,6 +821,11 @@ accepted:
       `=` — matches clj exactly.
     derives_from: "ADR-0059 (no-JVM: no identity-hash `#object[…]` object form) + F-011 (behavioural equivalence — toString / method results / `=` match; only the unreproducible identity-wrapped pr form differs)."
     pin: "test/clj/suites/java_time_values_test.clj — lock `(str v)` = the bare ISO toString (Instant ISO_INSTANT variable fraction + `Z`; Duration `PT…`; LocalDateTime ISO-local conditional seconds + variable fraction; LocalDate `yyyy-MM-dd`; LocalTime ISO-local time) and the instance-method + value-`=` results; the absent `#object[…]` pr wrapper is the locked divergence."
+    check:
+      expr: |-
+        (clojure.string/replace (pr-str (java.time.Instant/ofEpochSecond 0)) #"0x[0-9a-f]+|@[0-9a-f]+" "@")
+      clj: '"#object[java.time.Instant @ \"1970-01-01T00:00:00Z\"]"'
+      cljw: '"1970-01-01T00:00:00Z"'
   - id: "AD-043"
     summary: "`(compare a b)` on java.time values (LocalDate/LocalDateTime …) and host enums returns the SIGN (-1/0/1) where clj returns a field-difference / ordinal-difference MAGNITUDE. The SIGN is identical, so sort order / branch behaviour match; only the non-zero magnitude differs. (Strings / chars / keywords / symbols return clj's exact Java compareTo magnitude since 2026-07-16 — `(compare \"a\" \"c\")` → -2 — so the divergence is TEMPORAL/ENUM-only.)"
     example: "(compare (java.time.LocalDate/of 2024 6 1) (java.time.LocalDate/of 2024 1 1)) => cljw 1 / clj 5. (compare java.time.DayOfWeek/MONDAY java.time.DayOfWeek/SUNDAY) => cljw -1 / clj -6 (ordinal diff). (compare (java.time.Instant/ofEpochSecond 5) (java.time.Instant/ofEpochSecond 9)) => -1 BOTH (Instant/Duration/LocalTime already match — they use a sign-returning Long/Integer.compare). (sort …) is identical either way."
@@ -645,6 +845,11 @@ accepted:
       follow the sign-based design; this AD records that residual class.
     derives_from: "java.lang.Comparable / java.util.Comparator contract (only the SIGN of compareTo/compare is specified; magnitude is implementation-defined) + ADR-0053 (cljw compare is Order-based) + ADR-0059 (no JVM-internal magnitude reproduction)."
     pin: "test/clj/suites/java_time_values_test.clj — locks the TEMPORAL sign results (`(compare LocalDate-jun LocalDate-jan)` => 1, clj 5) + `(sort [LocalDate …])` ordering + the string-family MAGNITUDE parity (`string-family-magnitude`: `(compare \"a\" \"c\")` => -2). test/clj/suites/java_time_values_test.clj (block `enum-compare`) locks the host-enum sign result `(compare DayOfWeek/MONDAY DayOfWeek/SUNDAY)` => -1 (clj -6) + a sort by ordinal (ADR-0161)."
+    check:
+      expr: |-
+        (compare (java.time.LocalDate/of 2024 6 1) (java.time.LocalDate/of 2024 1 1))
+      clj: '5'
+      cljw: '1'
   - id: "AD-044"
     summary: "`(class x)` / `(type x)` of a callable / seq-view / reference / transient returns a STABLE clj-faithful simple class name (`Fn` / `MultiFn` / `LazySeq` / `LongRange` / `Atom` / `Ref` / `Future` / `Promise` / …); clj returns a per-fn GENERATED class (`user$eval$fn__135`, `clojure.core$_PLUS_`) for closures/builtins and a per-call REIFY class for future/promise that cljw has no analog for."
     example: '(class (fn [x] x)) => cljw "Fn" / clj "user$eval$fn__135". (class +) => cljw "Fn" / clj "clojure.core$_PLUS_". (class (future 1)) => cljw "Future" / clj "core$future_call$reify__8578". (class (map inc [1])) => cljw "LazySeq" / clj "clojure.lang.LazySeq" (this one matches).'
@@ -664,6 +869,11 @@ accepted:
       the names are NOT `instance?` targets (no `clojure.lang.*` FQCN to resolve).
     derives_from: "ADR-0059 (no JVM Class) + AD-003 (simple class name, no JVM FQCN) — extended to callables/seq-views/refs which clj backs with generated/reify classes."
     pin: "test/clj/suites/class_type_test.clj — the `class-of-callables-and-refs` deftest: anon fn/builtin => Fn, multifn => MultiFn, lazyseq/range/chunkseq/future/agent/atom/ref/volatile/delay/reduced/tvec, and the class-level `(isa? (class +) clojure.lang.IFn)` (the IFn isa? still resolves through the renamed callable classes)."
+    check:
+      expr: |-
+        (class +)
+      clj: 'clojure.core$_PLUS_'
+      cljw: 'Fn'
   - id: "AD-045"
     summary: "`send-via` / `set-agent-send-executor!` / `set-agent-send-off-executor!` RAISE (`value_error`) instead of dispatching on / configuring a user-supplied executor — cljw has no `java.util.concurrent.ExecutorService` type, so there is no executor to pass or configure. clj runs these for real against its global agent thread pools."
     example: '(send-via my-executor a inc) / (set-agent-send-executor! my-executor) => cljw raises "ClojureWasm has no configurable executor — agents run on a per-agent worker …" / clj dispatches-via / mutates the pool.'
@@ -681,6 +891,11 @@ accepted:
       diverges, because it presupposes a subsystem cljw deliberately lacks.
     derives_from: "ADR-0093 (per-agent worker, no shared pool) + ADR-0155 (D-442 classification) + the no-`java.util.concurrent`-executor model + provisional_marker.md permanent-no-op-forbidden."
     pin: "test/clj/suites/agent_test.clj, deftest agent-executor-fns-raise — agent_send_via_raises / agent_set_executor_raises / agent_set_off_executor_raises (all three raise the no-configurable-executor message)."
+    check:
+      expr: |-
+        (do (send-via nil (agent 0) identity) :sent)
+      clj: ':sent'
+      cljw: 'throws IllegalArgumentException'
   - id: "AD-046"
     summary: "After `(shutdown-agents)`, a dropped `send` does NOT fire an agent's `:error-handler` — cljw silently drops the action; clj routes the swallowed `RejectedExecutionException` to the handler if one is set. The COMMON case (no handler) MATCHES clj exactly: send returns the agent, no throw, action never runs."
     example: '(do (shutdown-agents) (let [a (agent 0 :error-handler h)] (send a inc))) => cljw drops, h NOT called / clj drops, h called with a RejectedExecutionException. Without a handler both runtimes drop silently (identical).'
@@ -707,6 +922,8 @@ accepted:
       throws to the caller; the oracle shows it does not) and is corrected here.
     derives_from: "F-011 (clj-parity authoritative; the no-handler path matches exactly) + ADR-0093 (per-agent worker, no java.util.concurrent executor / no RejectedExecutionException type) + ADR-0155 (D-442 shutdown-agents classification) + provisional_marker.md permanent-no-op-forbidden (the silent drop is the clj-faithful terminal no-op, audited)."
     pin: "test/clj/suites/agent_test.clj, deftest shutdown-agents-is-process-global (each case in a child cljw, since shutdown-agents is process-global) — shutdown_agents_send_returns_agent (send returns the agent, no throw), shutdown_agents_action_dropped (state unchanged), shutdown_agents_no_handler_fire (cljw does NOT fire the :error-handler on the dropped send: log stays empty)."
+    check:
+      prose: 'shutdown-agents is process-global and irreversible: evaluating it would end agent dispatch for every later row in the same clj process. The cljw side is pinned by suites that run it in a child process.'
   - id: "AD-047"
     summary: "A host java.util collection's `str`/`.toString` renders in CLOJURE content form (`[1 2]`, `{:a 1, :b 2}`, `#{1 2}`), not JVM toString form (`[1, 2]`, `{:b=2, :a=1}` with `=` pairs + JVM iteration order). The `pr`/`pr-str`/REPL form MATCHES clj exactly (`[1 2]` / `#{1 2}` / `{:a 1}`) — D-468; only the str-form (Java toString) diverges."
     example: '(str (doto (java.util.HashMap.) (.put :a 1) (.put :b 2))) => cljw "{:a 1, :b 2}" / clj "{:b=2, :a=1}"; (str (java.util.ArrayList. [1 2])) => cljw "[1 2]" / clj "[1, 2]"'
@@ -731,6 +948,11 @@ accepted:
       str is an interop edge.
     derives_from: "ADR-0059 (no JVM — cljw does not reproduce JVM AbstractMap/AbstractCollection toString form) + AD-001 (non-reproducible collection iteration order) + AD-003 (cljw renders host surface in cljw form, not JVM form) + F-011 (the pr/pr-str form matches clj exactly; only the JVM-toString str-form diverges) + D-468 (the content-print mechanism)."
     pin: "test/diff/class_corpus/ArrayList.txt + test/diff/class_corpus/HashMap.txt — the D-468 print cases lock cljw's pr content-form; the str Clojure-form divergence is asserted in test/e2e/phase14_hashmap.sh (str_clojure_form + print_pr_content)."
+    check:
+      expr: |-
+        (str (java.util.ArrayList. [1 2]))
+      clj: '"[1, 2]"'
+      cljw: '"[1 2]"'
   - id: "AD-048"
     summary: "`(str record)` / `(.toString record)` renders the cljw CONTENT form (`#Pt{:x 1, :y 2}`), same as pr-str — NOT clj's `Object.toString` identity form (`user.Pt@3c6f0c2c` = FQCN + identity hash). A defrecord/deftype does not override toString, so clj's str is the JVM default."
     example: '(str (->Pt 1 2)) => cljw "#Pt{:x 1, :y 2}" / clj "user.Pt@<hash>" (where (defrecord Pt [x y]))'
@@ -749,6 +971,12 @@ accepted:
       "cljw does not reproduce JVM Object/Abstract* toString surface details".
     derives_from: "ADR-0059 (no JVM — no class FQN, no Object.toString identity form) + AD-002 (non-reproducible identity hash) + AD-003 (cljw renders the record with its simple name, not the JVM FQCN) + F-011 (pr-str already matches modulo the AD-003 simple name; only the JVM-Object.toString str-form diverges)."
     pin: "test/clj/suites/defrecord_test.clj: defrecord-str-content-form (str of a record = its #Name{...} content form, not Class@hash) + defrecord-print-map-style (the pr-form it mirrors). Repointed 2026-09-09 when the phase7 defrecord e2e migrated to this native suite (the pin-path check extracts EVERY path in this field, so the retired shell must not be named here). The suite asserts BOTH forms against one derived expectation, so str and pr cannot drift apart unnoticed."
+    check:
+      expr: |-
+        (defrecord Pt [x y])
+        (re-find #"^[^@]+" (str (->Pt 1 2)))
+      clj: '"ad_check.ad_048.Pt"'
+      cljw: '"#ad-check.ad-048.Pt{:x 1, :y 2}"'
   - id: "AD-050"
     summary: "A float-zero DIVISOR yields IEEE ±Inf/NaN on EVERY cljw `/` path; clj returns ±Inf only on its compile-inlined 2-arg literal path and THROWS `ArithmeticException: Divide by zero` on the runtime path (1-arg `(/ 0.0)`, `(apply / …)`, `(reduce / …)`). An INTEGER-zero divisor throws in BOTH (parity). VALUE-bearing common case `(/ x 0.0)` matches clj (±Inf)."
     example: '(/ 1.0 0.0) => ##Inf in BOTH ; (/ 0.0) => cljw ##Inf / clj THROW ; (apply / [1.0 0.0]) => cljw ##Inf / clj THROW ; (reduce / [1.0 2.0 0.0]) => cljw ##Inf / clj THROW ; (/ 1 0) => THROW in both'
@@ -769,6 +997,11 @@ accepted:
       or throwing on `(/ 1.0 0.0)` too (breaking the common case) — both worse.
     derives_from: "F-005 (numeric tower = IEEE f64 semantics: float-zero divisor → ±Inf/NaN, integer-zero → throw) + ADR-0059 (no JVM Compiler — cljw has no operand-type inlining pass, so it cannot reproduce clj's inline-vs-runtime split) + F-011 (the common `(/ x 0.0)` literal path matches clj's inlined ±Inf exactly; only the rare runtime-dispatched 1-arg/apply/reduce path diverges)."
     pin: "test/e2e/phase14_float_div.sh — `ad050_recip`/`ad050_recip_n`/`ad050_apply`/`ad050_reduce` lock cljw's IEEE ±Inf form (NOT clj's throw) on the runtime paths; `pos_inf`/`int_zero` lock the clj-IDENTICAL inlined-±Inf + integer-throw surfaces."
+    check:
+      expr: |-
+        (/ 0.0)
+      clj: 'throws ArithmeticException'
+      cljw: '##Inf'
   - id: "AD-052"
     summary: "format's `%t` date/time conversions render in UTC with fixed English names (month/day/am-pm) and a fixed `+0000`/`UTC` zone; the JVM renders in the process's default TIME ZONE and LOCALE (a JST/ja machine shows shifted hours and 金曜日/2月/午後)."
     example: '(format "%tH" 0) => cljw "00" (UTC) / clj-on-JST "09" ; (format "%ta" 1234567890123) => cljw "Fri" / clj-on-ja "金"'
@@ -785,6 +1018,11 @@ accepted:
       English-locale JVM.
     derives_from: "ADR-0059 no-JVM (no host tz/locale database dependency) + F-011 (the deterministic-environment rendering matches TZ=UTC/en JVM exactly; only the host-env-dependent rendering diverges) + D-462 (tz database out of scope for the edge/wasm target)."
     pin: "test/clj/suites/format_test.clj: the `date-time-family` deftest pins the `%t` UTC/English renderings (epoch-0 hour 00, Thu/Jan names, +0000/UTC zone)."
+    check:
+      expr: |-
+        (format "%tH" 0)
+      clj: '"09"'
+      cljw: '"00"'
   - id: "AD-053"
     summary: "`(all-ns)` / `(find-ns 'cljw.internal)` expose the kernel-helper namespace `cljw.internal` (the home of the `__`-prefixed Zig primitives macro expansions call qualified); mainline Clojure has no such namespace."
     example: "(some? (find-ns 'cljw.internal)) => cljw true / clj false (no such ns). (contains? (ns-publics 'clojure.core) '__class) => false BOTH (internals never pollute the core surface)."
@@ -802,6 +1040,11 @@ accepted:
       a closed set.
     derives_from: "ADR-0171 (rt merge — internals need a public qualified home for macro expansions) + ADR-0059 no-JVM (cljw owns the cljw.* namespace surface) + F-011 (every public var's home ns now MATCHES clj; only the extra internal ns is cljw-specific)."
     pin: "test/clj/suites/vars_namespaces_test.clj — `ad053-internal-ns` locks (find-ns 'cljw.internal) present, `ad053-rt-gone` locks the old `rt` ns absent, `ad053-no-leak` locks __-internals out of clojure.core's publics."
+    check:
+      expr: |-
+        (some? (find-ns 'cljw.internal))
+      clj: 'false'
+      cljw: 'true'
   - id: "AD-054"
     summary: "Class-name completion (nREPL `completions` on an uppercase / dotted prefix) offers cljw's CLOSED class universe — the `rt.types` registry (host surfaces, deftypes, the java.lang/java.math default imports) — where mainline scans the whole JVM classpath and leaks internal classes (`java.lang.CharacterData00`, `sun.nio.cs.ext.Big5`, …)."
     example: "prefix \"Character\" => cljw [Character, java.lang.Character] / mainline additionally java.lang.CharacterData00…, com.sun.… (26 candidates). Every cljw candidate resolves; the mainline extras are not even loadable classes for user code."
@@ -816,6 +1059,8 @@ accepted:
       cljw ⊆ mainline + a curated MUST list for class groups, not equality.
     derives_from: "ADR-0059 no-JVM (no classpath, no JVM-internal classes) + ADR-0029/ADR-0050 (rt.types is the closed host-class SSOT; resolveJavaSurface defines reachability) + F-011 (every class a user can actually USE completes identically; only the un-usable classpath leak differs)."
     pin: "test/e2e/phase14_nrepl_completion.sh — classes|Character / classes|Big subset assertions + the MUST-NOT java.lang.CharacterData00 lock (cljw never fakes the leak)."
+    check:
+      prose: 'The divergence is in nREPL completion candidates, which an evaluated expression cannot reach; it needs a client talking to a server.'
   - id: "AD-055"
     summary: "System/getProperties returns a cljw persistent map (clj: java.util.Properties), and System/identityHashCode is cljw's identity hash (immediates share identity per value bits; no JVM object headers)."
     example: '(class (System/getProperties)) => cljw PersistentArrayMap / clj java.util.Properties; (System/identityHashCode 5) is stable across calls in cljw (JVM: stable only via the Integer cache) — map-shaped reads (get / into {}) and nil→0 are oracle-identical.'
@@ -829,6 +1074,11 @@ accepted:
       immediates already pinned. nil → 0 matches the JVM exactly.
     derives_from: "ADR-0059 (no-JVM) + ADR-0174 D5 (System close-out) + F-014 clause 1 (Properties is a platform artifact) + F-004 (NaN-box immediates carry identity in their bits)."
     pin: "test/e2e/phase14_system_members.sh (getprops_* / idhash_* cases)."
+    check:
+      expr: |-
+        (class (System/getProperties))
+      clj: 'java.util.Properties'
+      cljw: 'PersistentHashMap'
   - id: "AD-056"
     summary: "Process exit does not wait for pending futures/agents: a fire-and-forget `(future …)` / `(send …)` whose worker is still RUNNING at main-exit is killed by the exiting process (mainline: non-daemon pool threads keep the JVM alive until `shutdown-agents` / the 60s pool keepalive)."
     example: "`(do (future (Thread/sleep 60000)) :ok)` => cljw prints :ok and exits immediately / mainline hangs ~60s (or until shutdown-agents)."
@@ -843,6 +1093,8 @@ accepted:
       still waited for (bounded), so finished side effects are never cut.
     derives_from: "ADR-0176 (live-worker teardown guard; the JVM-exact wait-for-futures flip enumerated + rejected there as a separate product decision) + ADR-0059 no-JVM (no executor pools) + ADR-0174 D6 (the daemon hard-exit idiom ADR-0176 generalises)."
     pin: "test/e2e/phase14_future_promise_delay.sh — `exit_pending_future` (a 60s-sleeper future + prompt :ok exit, bounded)."
+    check:
+      prose: 'The divergence is when the process exits after the last form. An expression''s value renders before exit on both runtimes, and the JVM side would hold the evaluator open for the sleeping future.'
   - id: "AD-057"
     summary: "clojure.core publishes 107 public names JVM Clojure does not: protocol names (ISeq, ILookup, Seqable, …), their `-name` methods (-first, -count, -assoc, -assoc-ex, …), and a few cljw-original conveniences (array?, queue?, re-find-all, …). The count is data/core_surface_extras.txt, which check_core_surface.sh gates; this prose had drifted to 104 and is corrected to match."
     example: "(contains? (set (map name (keys (ns-publics 'clojure.core)))) \"ISeq\") => cljw true / clj false. `clojure.lang.ISeq` is a Java INTERFACE upstream, not a clojure.core var."
@@ -865,6 +1117,11 @@ accepted:
       indistinguishable from a bug.
     derives_from: "ADR-0007 (Option beta — TypeDescriptor + protocols in place of the JVM class/interface system) + ADR-0059 (no-JVM: clojure.lang.* are not host classes)."
     pin: "test/e2e/phase14_core_surface_protocols.sh — deftype against ISeq / ILookup dispatches through first / get, and scripts/check_core_surface.sh asserts the extra-name set equals data/core_surface_extras.txt."
+    check:
+      expr: |-
+        (contains? (ns-publics 'clojure.core) 'ISeq)
+      clj: 'false'
+      cljw: 'true'
   - id: "AD-058"
     area: "clojure.core.reducers"
     summary: |-
@@ -893,6 +1150,8 @@ accepted:
       (`foldvec`, `Cat`'s `coll-fold`), so a later parallelisation is local.
     derives_from: "ADR-0093 (no ForkJoinPool / java.util.concurrent executor surface) + ADR-0059 (no-JVM) + the ClojureScript precedent (clojure/core/reducers.cljs ships the same sequential fold)."
     pin: "test/clj/suites/core_libs_phase16_test.clj, deftest reducers-ns — `fold-value-on-a-large-vector` (a 10,000-element vector, well past any plausible cutoff n) and `fold-with-a-distinct-combiner` (the 4-arity arm, where a combiner that is not the reducef must still be honoured). Both assert the VALUE, so a later parallelisation cannot change it. Plus test/diff/clj_corpus/reducers.txt, whose fold rows are golden pairs against real clj."
+    check:
+      prose: 'fold answers the same value on both runtimes. The divergence is parallelism, a performance characteristic no value can show.'
   - id: "AD-059"
     area: "clojure.set"
     summary: |-
@@ -917,6 +1176,8 @@ accepted:
       be wrong.
     derives_from: "ADR-0181 (doc coverage is a ledger of decisions) + .claude/rules/clj_attribution.md (the two header variants) + EPL-1.0 §7 redistribution."
     pin: "scripts/check_clj_attribution.sh --gate (the variant-1 file set must equal legal/NOTICE's list, both directions) + test/diff/clj_corpus/set_arity.txt (17 golden pairs incl. every arity and the :doc/:arglists reads)."
+    check:
+      prose: 'A licensing-posture note about docstring provenance, not a runtime behaviour. There is nothing to evaluate.'
   - id: "AD-060"
     area: "regex"
     summary: |-
@@ -939,6 +1200,11 @@ accepted:
     example: '(re-pattern "(a)\\1") => cljw UNCATCHABLE "this regex feature … is not supported" / clj #"(a)\1" compiles and (re-matches #"(a)\1" "aa") => ["aa" "a"]'
     derives_from: "ADR-0031 (Pike-NFA, non-backtracking invariant — linear-time matching is the security property, F-002 finished form)."
     pin: "test/e2e/regex_parity_gaps.sh — backref compile raises the uncatchable unsupported signal and a (catch Throwable …) does NOT swallow it."
+    check:
+      expr: |-
+        (some? (re-matches (re-pattern "(a)\\1") "aa"))
+      clj: 'true'
+      cljw: 'aborts'
   - id: "AD-061"
     area: "concurrency"
     summary: |-
@@ -959,6 +1225,8 @@ accepted:
     example: '(let [s (java.util.concurrent.Semaphore. 1 true)] (.isFair s)) => true, yet a thread that has waited longer has no priority over a newcomer, unlike the JVM.'
     derives_from: "ADR-0029 (host surface registry) + ADR-0106 (host_instance state) + the budgeted-sleep wait Thread/sleep owns (D-442 / D-571)."
     pin: "test/e2e/semaphore.sh — isFair_records_flag (the flag round-trips) + queue_length_while_parked (a parked waiter is counted, and the permit is handed over)."
+    check:
+      prose: 'Both runtimes answer .isFair true. The divergence is FIFO hand-off order under sustained contention, which is non-deterministic per run.'
   - id: "AD-062"
     area: "concurrency"
     summary: |-
@@ -975,6 +1243,11 @@ accepted:
     example: '(let [a (java.util.concurrent.atomic.AtomicInteger. Integer/MAX_VALUE)] (.incrementAndGet a)) => cljw 2147483648 / clj -2147483648'
     derives_from: "ADR-0059 (no JVM) + cljw's single i64 integer width (D-165 Long/BigInt origins)."
     pin: "test/e2e/concurrent_atomics.sh — atomicinteger_no_32bit_truncation."
+    check:
+      expr: |-
+        (let [a (java.util.concurrent.atomic.AtomicInteger. Integer/MAX_VALUE)] (.incrementAndGet a))
+      clj: '-2147483648'
+      cljw: '2147483648'
   - id: "AD-063"
     area: "runtime"
     summary: |-
@@ -995,6 +1268,11 @@ accepted:
     example: 'CLJW_EVAL_MAX_HEAP_MB unset: (.maxMemory (Runtime/getRuntime)) => 9223372036854775807 (no ceiling) / with CLJW_EVAL_MAX_HEAP_MB=64 => 67108864, and the pressure ratio becomes real.'
     derives_from: "ADR-0028 (mark-sweep + adaptive threshold) + ADR-0125 / D-352 (per-eval heap ceiling) + ADR-0059 (no JVM)."
     pin: "test/e2e/concurrent_atomics.sh — runtime_memory_is_coherent + runtime_maxmemory_unmetered_is_exact_long; test/clj/suites/gc_heap_return_test.clj."
+    check:
+      expr: |-
+        (= Long/MAX_VALUE (.maxMemory (Runtime/getRuntime)))
+      clj: 'false'
+      cljw: 'true'
   - id: "AD-064"
     area: "concurrency"
     summary: |-
@@ -1013,6 +1291,13 @@ accepted:
     example: '(let [q (java.util.concurrent.LinkedBlockingQueue. 8)] (.offer q 1) (.drainTo q [])) => cljw [1] / clj 1, with the element pushed into the (mutable) target collection.'
     derives_from: "ADR-0059 (no JVM) + cljw persistent collections (no mutable drain target)."
     pin: "test/e2e/linked_blocking_queue.sh — drainTo_returns_and_empties."
+    check:
+      expr: |-
+        (let [q (java.util.concurrent.LinkedBlockingQueue. 8) t (java.util.ArrayList.)]
+          (.offer q 1)
+          [(.drainTo q t) (count t)])
+      clj: '[1 1]'
+      cljw: '[[1] 0]'
   - id: "AD-065"
     area: "concurrency"
     summary: |-
@@ -1033,9 +1318,19 @@ accepted:
       `.cancel` still reports truthfully: it returns true only when THIS call is
       the one that cancelled a still-pending future, false for a future that
       already realised or was already cancelled — the JVM's contract.
-    example: '(let [f (future (Thread/sleep 5000))] [(.cancel f false) (.isCancelled f)]) => cljw [true true] / clj [false false] — the JVM refuses to cancel a running task when the flag is false.'
+    example: '(let [f (future (Thread/sleep 300) :done)] (Thread/sleep 50) (.cancel f false) ...) then wait: cljw stops the sleeping task (a side effect after the sleep never happens) / clj lets the running task finish, because cancel(false) never interrupts. Both answer [true true] for [(.cancel f false) (.isCancelled f)] on a running future: the JVM marks the Future cancelled without interrupting it. Corrected 2026-11-11: the earlier text claimed clj answers [false false], which real clj 1.12.4 refutes.'
     derives_from: "D-442 / ADR-0153 (cooperative cancellation) + ADR-0059 (no JVM thread interrupt)."
     pin: "test/clj/suites/future_methods_test.clj — cancel_flag_is_ignored_ad065."
+    check:
+      expr: |-
+        (let [a (atom :not-finished)
+              f (future (Thread/sleep 300) (reset! a :finished))]
+          (Thread/sleep 50)
+          (.cancel f false)
+          (Thread/sleep 1000)
+          @a)
+      clj: ':finished'
+      cljw: ':not-finished'
   - id: "AD-066"
     area: "collections"
     summary: |-
@@ -1061,6 +1356,11 @@ accepted:
     example: '(class (seq [1 2 3])) => cljw ArraySeq / clj clojure.lang.PersistentVector$ChunkedSeq. Also `(class (seq (into-array [1 2])))` would be ArraySeq in BOTH — the one backing for which the shared name is exact.'
     derives_from: "AD-003 (simple class name for cljw-native types) + F-004 A14 slot reservation + the F-005 family-collapse precedent."
     pin: "test/clj/suites/vector_seq_view_test.clj — the `the-class-name-is-the-reserved-slot-name` deftest (case class_name), asserting (str (class (seq [1 2]))) => \"ArraySeq\"."
+    check:
+      expr: |-
+        (class (seq [1 2 3]))
+      clj: 'clojure.lang.PersistentVector$ChunkedSeq'
+      cljw: 'ArraySeq'
   - id: "AD-067"
     area: "collections"
     summary: |-
@@ -1081,6 +1381,11 @@ accepted:
     example: '(let [l (lazy-seq 1)] (try (seq l) (catch Exception _ nil)) (count l)) => cljw throws again / clj 0.'
     derives_from: "ADR-0143 (failed realization is never cached) + ADR-0197 (one publication state, immutable inner links and retained retry captures)."
     pin: "test/clj/suites/lazy_seqable_test.clj — non-seqable-bodies-raise-on-every-touch and realization-state-follows-ad067; test/golden/cases/lazy_seqable_bodies.expected — scalar retries, closed thunk retry, inner realized."
+    check:
+      expr: |-
+        (let [l (lazy-seq 1)] (try (seq l) (catch Exception _ nil)) (count l))
+      clj: '0'
+      cljw: 'throws IllegalArgumentException'
   - id: AD-069
     area: numerics
     summary: '`(int x)` / `(byte x)` / `(short x)` yield a Long: cljw has no Integer / Byte / Short types, so `(instance? Integer (int 0))` is false where clj is true. The narrowing RANGE is still enforced the way clj enforces it, so `(int 2147483648)` raises in both; only the RESULT TYPE differs.'
@@ -1088,6 +1393,11 @@ accepted:
     why: 'F-005 fixes the numeric tower as a single internal i64 for exact integers, and ADR-0059 means cljw has no JVM Class to be an instance OF. A distinct Integer / Byte / Short would be three representations the tower does not carry. What the casts DO carry is the range contract: clj rejects a value that would not survive the narrowing, and cljw rejects the same values, so code that relies on `int` to bound a value behaves identically. It is the identity of the box, not the arithmetic, that differs. Sibling of AD-004 (float yields an f64) and AD-016 (biginteger yields BigInt).'
     derives_from: 'F-005 (numeric tower: one exact-integer type) + ADR-0059 (no JVM Class).'
     pin: test/diff/clj_corpus/narrowing_casts.txt pins the range contract (the part that must match clj); the class divergence is what clojure.core-test.{int,byte,short} report as their residual instance? failures, tracked for a :cljw suite branch.
+    check:
+      expr: |-
+        (class (int 0))
+      clj: 'java.lang.Integer'
+      cljw: 'Long'
   - id: AD-070
     area: numerics
     summary: 'A narrowing cast range-checks a double BEFORE truncating it, for every double. clj picks its cast overload by STATIC type: a double LITERAL reaches `byteCast(double)`, which range-checks first, while a boxed Double reaches `byteCast(Object)`, which truncates through `longCast` and then checks. So `(byte 127.000001)` raises in both runtimes, but `(byte (identity 127.000001))` is 127 in clj and raises in cljw.'
@@ -1095,6 +1405,11 @@ accepted:
     why: 'The two clj answers for one value come from JVM static overload selection, which cljw has no equivalent of: a cljw double is one unboxed f64 whatever expression produced it (F-005), so the cast cannot know whether its argument was written as a literal. One rule has to cover both, and the primitive-overload rule is the one that carries the intent of a narrowing cast: `(byte 127.9)` asks for a byte, and 127.9 is not one. The boxed rule would instead make `byte` a silent truncation, which is what `unchecked-byte` is for. The suite tests the literal form, so this choice is also the clj-matching one where clj is unambiguous.'
     derives_from: F-005 (a double is one unboxed f64; no static primitive/boxed distinction).
     pin: test/diff/clj_corpus/narrowing_casts.txt (the agreeing cases) + suites.numeric-tower-test/narrowing-cast-range, which asserts cljw raises for the boxed form.
+    check:
+      expr: |-
+        (byte (identity 127.000001))
+      clj: '127'
+      cljw: 'throws IllegalArgumentException'
   - id: AD-071
     area: collections
     summary: '`keys` / `vals` demand a map and check EAGERLY, so every non-map raises. clj answers nil for an EMPTY non-map (`(keys #{})`, `(keys "")`) and raises only on realization for a non-empty one. cljw is also more lenient in the other direction: `(keys (list [:a 1]))` is `(:a)`, where clj rejects a vector pair per element.'
@@ -1102,6 +1417,11 @@ accepted:
     why: 'clj `keys` builds a KeySeq over `seq(coll)` and casts each element to IMapEntry only when that element is walked. Both clj behaviours fall out of that and neither is a contract: nil for an empty set is simply "the lazy seq was never walked", which is why the SAME expression over a non-empty set throws instead, and the per-element cast is what rejects a `[k v]` vector that every other cljw path treats as an entry. Adopting the nil would mean answering nil for one argument and throwing for a larger argument of the same type, which is a worse contract than rejecting both. cljw checks the argument once, up front, and reports which type failed. The leniency half is the same coin: cljw has ONE notion of a map entry (ADR-0078 / D-209, a 2-vector), so a seq of pairs is a seq of entries here.'
     derives_from: 'F-011 read with ADR-0078 (a MapEntry IS a 2-vector in cljw), plus the eager-argument-check convention: a type error names the argument, not the element reached later.'
     pin: suites.map-helpers-test/keys-vals-demand-a-map — pins that the empty cases keep raising and that a seq of vector pairs keeps working.
+    check:
+      expr: |-
+        (keys #{})
+      clj: 'nil'
+      cljw: 'throws IllegalArgumentException'
   - id: AD-072
     area: numerics
     summary: '`rationalize` on a BigDecimal whose value is INTEGRAL answers cljws machine integer (`(rationalize 1.0M)` => `1`), where clj answers a BigInt (`1N`). The values are `=`; only the printed N differs.'
@@ -1109,6 +1429,11 @@ accepted:
     why: clj routes rationalize through BigDecimal.toBigInteger, so the result type is fixed by the OPERATION and a small value still carries the BigInt tag. cljw has one exact-integer type whose storage tier is chosen by MAGNITUDE (F-005), so a value that fits the machine integer is stored and printed as one no matter which operation produced it. Adopting cljs answer would mean a second exact-integer type that exists only to print an N, which F-005 exists to refuse. The same shape is already accepted in the other direction as AD-016.
     derives_from: F-005 (one exact-integer type, tier chosen by magnitude), read with AD-016 which accepts the mirror case.
     pin: suites.numeric-tower-test/rationalize-bigdec-is-exact - pins that the integral arm answers the exact INTEGER (1.0M is 1, never the unscaled 10) and that the wide-significand cases keep every digit.
+    check:
+      expr: |-
+        (rationalize 1.0M)
+      clj: '1N'
+      cljw: '1'
   - id: AD-073
     area: interop
     summary: '`(Boolean. x)` answers the plain `true`/`false`, so `(if (Boolean. "false") :t :f)` is `:f` in cljw where clj''s non-nil Boolean box makes it `:t`.'
@@ -1116,6 +1441,11 @@ accepted:
     why: cljw has no boxed Boolean; `true` and `false` are the only booleans (ADR-0059), and every box ctor answers the nearest cljw VALUE, the shape AD-004 (float) and AD-069 (int) already accept. The only observable consequence is the truthiness of a false box, the footgun Java deprecated this constructor over. A box that is `=` to false yet truthy would need a second false value that exists only to reproduce it.
     derives_from: ADR-0059 (class/type answer an interned descriptor; there is no boxed-primitive object), read with AD-004 and AD-069 which accept the same value-not-box shape for float and int.
     pin: suites.box-ctors-test/boolean-ctor-is-the-plain-value - pins that `(Boolean. "false")` is `false` itself, so the false branch is taken.
+    check:
+      expr: |-
+        (if (Boolean. "false") :truthy :falsey)
+      clj: ':truthy'
+      cljw: ':falsey'
   - id: AD-074
     area: interop
     summary: '`(Short. 7)` and `(Byte. 7)` answer 7 in cljw, where clj throws IllegalArgumentException because a long literal matches neither the `(short)` nor the `(byte)` ctor.'
@@ -1123,6 +1453,11 @@ accepted:
     why: cljw has no short or byte type (AD-069), so `(short 7)` IS the Long 7 and the ctor cannot tell `(Short. (short 7))`, which clj accepts, from `(Short. 7)`, which it rejects. Rejecting integers would break the valid form to reproduce the error on the invalid one. The range check still holds, so every value a Short or Byte could not hold is refused as in clj.
     derives_from: F-005 (no short/byte primitive; one exact-integer type), read with AD-069 which accepts `(short x)` / `(byte x)` yielding a Long.
     pin: suites.box-ctors-test/short-and-byte-take-in-range-integers - pins that `(Short. 7)` and `(Short. (short 7))` both answer 7 and that an out-of-range integer still raises IllegalArgumentException.
+    check:
+      expr: |-
+        (Short. 7)
+      clj: 'throws IllegalArgumentException'
+      cljw: '7'
   - id: AD-075
     area: equality
     summary: '`(= date ts)` is false when a java.util.Date and a java.sql.Timestamp name the same millisecond, where clj answers true; cljw keeps `=` symmetric, and clj already answers `(= ts date)` false.'
@@ -1130,6 +1465,12 @@ accepted:
     why: 'Timestamp extends Date on the JVM, so Date.equals(Object) accepts a Timestamp by millisecond, while Timestamp.equals(Object) rejects every non-Timestamp. The Timestamp javadoc itself calls the pair not symmetric and says the inheritance is implementation inheritance, not type inheritance. Porting it would make `=` depend on argument order, and every hashed collection would then depend on insertion order: clj builds (hash-set t d) as one element and (hash-set d t) as two. cljw models Timestamp as its own value type (D-382: a distinct descriptor carrying epoch-ms plus nanos, never collapsed onto Date), and `=` over temporal values compares within one type, which keeps `=` symmetric and `=` implies equal hash, the two laws src/testing/prop_equal.zig pins. The hashes already agree with clj, so only the cross-type Date-first comparison differs.'
     derives_from: 'D-382 (Timestamp is its own neutral value type with a distinct descriptor; collapsing it onto Date was the rejected smell, user 2026-06-10) + F-014 (linguistically-general Java, not a JVM reimplementation: the JDK equals-contract violation is not ported) + the symmetric `=` law pinned by src/testing/prop_equal.zig.'
     pin: test/e2e/temporal_hash_eq.sh same_hash_distinct_types - asserts on both backends that (= d t) is false and (get {t :t} d) is nil for a Date and a Timestamp of the same millisecond, next to the clj-matching (= t d) false and (count (hash-set d t)) 2.
+    check:
+      expr: |-
+        (require 'clojure.instant)
+        (let [t (clojure.instant/read-instant-timestamp "1970-01-01T00:00:00.005Z") d (java.util.Date. 5)] (= d t))
+      clj: 'true'
+      cljw: 'false'
   - id: AD-076
     area: strings
     summary: 'A string is indexed by Unicode CODE POINT, not by UTF-16 code unit. `count`, `subs`, `nth`, `get`, `seq`/`first`, `(map int s)` and the interop methods `.length`, `.charAt`, `.indexOf` and `.substring` all count a character outside the Basic Multilingual Plane (emoji, rare CJK, most historic scripts) as ONE position, where clj counts its surrogate pair as two. BMP text, including multibyte characters such as é or 世, indexes identically in both runtimes.'
@@ -1159,3 +1500,32 @@ accepted:
       the porting guidance.
     derives_from: 'F-011 read at the VALUE level (a string is a sequence of characters; the JVM storage encoding is not surface), plus D-217 (a String is Indexed by codepoint) and D-179 / O-060 (string seq is a UTF-8 byte-offset view over code points). No JVM, ADR-0059: there is no UTF-16 backing store to expose.'
     pin: "test/clj/suites/string_code_point_test.clj (every expression in the example, language and interop surfaces) + test/golden/cases/string_unicode.clj (count of a string holding \U0001F30D, and (count \"\U0001F30D\") => 1)."
+    check:
+      expr: "(count \"\U0001F30D\")"
+      clj: '2'
+      cljw: '1'
+  - id: AD-077
+    area: interop
+    summary: 'A primitive type hint other than `^long` / `^double` on a fn parameter (`^int`, `^short`, `^byte`, `^float`, `^char`, `^boolean`) is accepted and ignored. clj refuses the fn at compile time with IllegalArgumentException "Only long and double primitives are supported". The same hint on a `let` local is accepted by cljw where clj throws UnsupportedOperationException.'
+    example: '((fn [^int x] x) 5) => cljw 5 / clj IllegalArgumentException "Only long and double primitives are supported". (defn g [^int x] x) => cljw #''user/g / clj the same IllegalArgumentException. (let [^int x 5] x) => cljw 5 / clj UnsupportedOperationException. ((fn [^long x] x) 5) => 5 in both.'
+    why: |-
+      The JVM compiler emits primitive-specialised fn invoke methods only for
+      long and double (the IFn$LD... interfaces), so a narrower primitive hint
+      names a method signature that does not exist and the compile refuses it.
+      cljw has no primitive-specialised invoke paths at all: one integer type and
+      one float type (F-005), every parameter a uniform 8-byte Value (F-004), and
+      type hints advisory everywhere (ADR-0059; the AD-017 / AD-019 family). A
+      hint that selects no code path cannot be wrong, so it is accepted and
+      ignored rather than refused for a reason that only exists on the JVM.
+      Recorded, not fixed, because refusing it would mean reproducing a JVM
+      bytecode limitation as a cljw rule. Code that compiles on clj never
+      carries such a hint, so the divergence only ever accepts more programs,
+      never changes the value of one clj accepts. Found by the jolt comparison
+      2026-11-11 (memory 20261111112306-2358d882), where jolt shares it.
+    derives_from: "F-004 (uniform Value, no primitive slots) + F-005 (no primitive specialisation) + ADR-0059 (hints are advisory, no JVM bytecode surface); same family as AD-017 and AD-019"
+    pin: "none — the executable check below is the pin: it locks cljw's 5 and clj's IllegalArgumentException on every gate run"
+    check:
+      expr: |-
+        ((fn [^int x] x) 5)
+      clj: 'throws IllegalArgumentException'
+      cljw: '5'

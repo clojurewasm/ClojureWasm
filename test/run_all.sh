@@ -58,7 +58,7 @@ SMOKE_E2E=""
 # Static invariants belong here by COST, not category. Measured via --only on
 # 2026-09-03: doc_coverage 2s, epipe_head 2s, gate_parity 0s. portable_timeout
 # remains full-only at 13s; e2e_reach was already present and measured 10s.
-SMOKE_CORE="zig_fmt_check,zig_build_test_vm,zig_build_test_tree_walk,zlinter,build_cljw,lazy_ns_replay,corpus_regression,test_clj_suites,test_reach,e2e_reach,entrypoint_surface,repr_decode,doc_coverage,epipe_head,epipe_grep,gate_parity"
+SMOKE_CORE="zig_fmt_check,zig_build_test_vm,zig_build_test_tree_walk,zlinter,build_cljw,lazy_ns_replay,corpus_regression,accepted_divergences,test_clj_suites,test_reach,e2e_reach,entrypoint_surface,repr_decode,doc_coverage,epipe_head,epipe_grep,gate_parity"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -382,12 +382,6 @@ run_step "changelog_reachability" "bash scripts/check_changelog_reachability.sh 
 # enforced it; the ADR and the enum had diverged in both directions.
 run_step "special_form_enum"    "bash scripts/check_special_form_enum.sh"
 
-# Accepted clj-divergence ledger (.dev/accepted_divergences.yaml): every
-# AD-NNN cites a justifying invariant + a pinning test, and COVERAGE.md
-# points at the SSOT. Keeps the "NOT a bug" list a trust contract that
-# cannot drift or accept-without-reason. Rule: accepted_divergences.md.
-run_step "accepted_divergences" "bash scripts/check_accepted_divergences.sh --gate"
-
 
 # Formatting gate — mirrors CI's ci_gate.sh step (1/2) so a non-canonical
 # file fails LOCALLY at smoke time, not 15 minutes later in CI (2026-07-02:
@@ -488,6 +482,16 @@ run_step "release_deps"         "bash scripts/check_release_deps.sh"
 # drift. See .claude/rules/clj_diff_sweep.md.
 run_step "lazy_ns_replay"      "bash scripts/check_lazy_ns_replay.sh"
 run_step "corpus_regression"   "bb scripts/corpus_regression.clj"
+
+# Accepted clj-divergence ledger (.dev/accepted_divergences.yaml): every
+# AD-NNN cites a justifying invariant + a pinning test, COVERAGE.md points at
+# the SSOT, and every row's `check` expr is RE-EVALUATED (ADR-0208): on the
+# fresh zig-out/bin/cljw it must render the recorded `cljw`, on reference
+# Clojure (when `clojure` is on PATH; a boxed SKIPPED banner otherwise) the
+# recorded `clj`, and the two must differ. A converged or falsely-claimed
+# divergence fails here instead of living on as a stale row. Runs after
+# build_cljw because it needs the binary. Rule: memory 20260909234822-74759eeb.
+run_step "accepted_divergences" "bash scripts/check_accepted_divergences.sh --gate"
 
 # Host-class member truth (ADR-0174 D9): compat_tiers.yaml per-class member
 # lists must match the registered descriptors (both directions). Runs AFTER
