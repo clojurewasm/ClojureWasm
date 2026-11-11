@@ -72,6 +72,10 @@ is one reader conditional:
 `hive_call(op, json) -> char*` and `hive_free`: a Go c-shared, Rust cdylib,
 C or Zig library alike.
 
+[`jolt/`](./jolt/README.md) drives a Clojure library compiled to native code by
+jolt, through its `add` and `mandel` exports and through this same
+`hive_call.clj`, unchanged.
+
 ```sh
 cljw -M docs/examples/ffi/hive_call.clj /path/to/libvectorcraft.so ops
 # {:ok true, :value [{:doc "Execute an engine command ...", :name "engine.execute", ...} ...]}
