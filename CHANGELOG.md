@@ -7,6 +7,18 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+### Added
+
+- **`cljw.ffi/function-at`: call a function pointer.** `(ffi/function-at
+  addr [:long :long] :long)` turns an integer code address, such as one a C
+  API returns (a vtable slot, a plugin registry, jolt's `jolt_lookup`), into
+  an ordinary Clojure fn, with the same types and limits as `function`. No
+  library owns an address, so `close` does not reach it and there is no
+  `:closed` error; the caller keeps the code loaded. A NULL address (0 or
+  nil) throws `{:ffi/error :symbol :address addr}` at creation, a bad
+  signature `{:ffi/error :signature :address addr :reason ...}` (ADR-0202
+  amendment).
+
 ## [1.15.7] - 2026-11-08
 
 ### Added

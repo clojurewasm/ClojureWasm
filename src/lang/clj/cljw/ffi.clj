@@ -12,6 +12,8 @@
 ;; storage, no copy); :bytes copies a byte array. At most 6 integer-class and 8 :double arguments; no
 ;; varargs, no structs by value, no float. Failures are ex-info with
 ;; {:ffi/error :open|:symbol|:signature|:arity|:arg-type|:closed ...}.
+;; `function` resolves a symbol in a library; `function-at` calls a raw
+;; function pointer, which no library owns (so no :closed rule reaches it).
 ;; Require-on-demand, and present only on x86_64 / aarch64 Linux and macOS.
 (ns cljw.ffi
   (:refer-clojure :exclude [bytes]))
@@ -47,6 +49,25 @@
       ([a b] (-invoke lib f a b))
       ([a b c] (-invoke lib f a b c))
       ([a b c & more] (apply -invoke lib f a b c more)))))
+
+(defn function-at
+  "A Clojure fn calling the C function at address `addr`, an integer: a
+   function pointer a C API handed back (a vtable slot, a plugin registry,
+   `jolt_lookup`). `arg-types` and `ret-type` are as for `function`.
+
+   No library owns an address, so `close` cannot invalidate the fn and there
+   is no {:ffi/error :closed}: the caller owns the address's validity, and the
+   code behind it must stay loaded while the fn is called. A NULL address, 0
+   or nil, throws {:ffi/error :symbol :address addr}; a non-integer throws
+   {:ffi/error :arg-type}."
+  [addr arg-types ret-type]
+  (let [f (-prepare-at addr (if (sequential? arg-types) (vec arg-types) arg-types) ret-type)]
+    (fn ffi-function-at
+      ([] (-invoke-at f))
+      ([a] (-invoke-at f a))
+      ([a b] (-invoke-at f a b))
+      ([a b c] (-invoke-at f a b c))
+      ([a b c & more] (apply -invoke-at f a b c more)))))
 
 (defn call
   "Call C symbol `name` in `lib` once: ((function lib name arg-types ret-type) args...)."

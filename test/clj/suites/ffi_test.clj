@@ -172,6 +172,59 @@
       (is (= {:ffi/error :closed} (ffi-error #(ffi/function l "add_i" [:int :int] :int))))
       (is (= {:ffi/error :closed} (ffi-error #(ffi/sym l "add_i")))))))
 
+(deftest function-pointers
+  (testing "a function pointer C hands back is called through function-at"
+    (let [addr ((f "get_adder" [] :pointer))
+          add (ffi/function-at addr [:long :long] :long)]
+      (is (pos? addr))
+      (is (fn? add))
+      (is (= 5 (add 2 3)))
+      (is (= 9000000000 (add 4000000000 5000000000)))
+      (is (= [3 5] (map add [1 2] [2 3])))
+      (is (= 10 (apply add [4 6])))))
+  (testing "a :double function pointer reads the float register"
+    (is (= 3.5 ((ffi/function-at ((f "get_halver" [] :pointer)) [:double] :double) 7.0))))
+  (testing "an address from sym is callable too, and agrees with function"
+    (is (= 7 ((ffi/function-at (ffi/sym @lib "add_i") [:int :int] :int) 3 4))))
+  (testing "no library owns an address: closing the library it came from does not :closed it"
+    (let [l (ffi/open so)
+          add (ffi/function-at ((ffi/function l "get_adder" [] :pointer)) [:long :long] :long)]
+      (ffi/close l)
+      (is (= 3 (add 1 2))))))
+
+(deftest function-pointer-errors
+  (testing "a NULL address is refused at creation, never called"
+    (is (= {:ffi/error :symbol :address 0}
+           (ffi-error #(ffi/function-at 0 [:long :long] :long))))
+    (is (= {:ffi/error :symbol :address nil}
+           (ffi-error #(ffi/function-at nil [:long :long] :long))))
+    (is (= {:ffi/error :symbol :address 0}
+           (ffi-error #(ffi/function-at ((f "get_null_fn" [] :pointer)) [:long :long] :long))))
+    (is (re-find #"^ffi: no function at a NULL address"
+                 (try (ffi/function-at 0 [] :void) (catch Exception e (ex-message e))))))
+  (testing "an address must be an integer"
+    (is (= {:ffi/error :arg-type :index 0 :type :pointer}
+           (ffi-error #(ffi/function-at "get_adder" [] :long))))
+    (is (= {:ffi/error :arg-type :index 0 :type :pointer}
+           (ffi-error #(ffi/function-at 1.5 [] :long)))))
+  (testing "a bad signature is refused at creation and names the address"
+    (let [addr ((f "get_adder" [] :pointer))]
+      (doseq [[args ret] [[[:long :float] :long]
+                          [[:long :long] :struct]
+                          [(vec (repeat 7 :long)) :long]
+                          [(vec (repeat 9 :double)) :double]
+                          [[:void] :long]
+                          [[] :bytes]
+                          [#{:long} :long]]]
+        (let [d (ffi-error #(ffi/function-at addr args ret))]
+          (is (= :signature (:ffi/error d)) (pr-str args ret))
+          (is (= addr (:address d)))
+          (is (string? (:reason d)))))))
+  (testing "a wrong argument count and a wrong argument type"
+    (let [add (ffi/function-at ((f "get_adder" [] :pointer)) [:long :long] :long)]
+      (is (= {:ffi/error :arity :expected 2 :got 1} (ffi-error #(add 1))))
+      (is (= {:ffi/error :arg-type :index 1 :type :long} (ffi-error #(add 1 "two")))))))
+
 ;; ── live: the hive C ABI ────────────────────────────────────────────────────
 
 (defn- native-dir []
