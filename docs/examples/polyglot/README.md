@@ -1,4 +1,4 @@
-# Polyglot: C, Zig, Rust and Go guests, and three Clojure hosts
+# Polyglot: C, Zig, Rust and Go guests, and four Clojure hosts
 
 One directory, every way another language meets `cljw`. Run it:
 
@@ -65,22 +65,45 @@ Three things the demo surfaced, each now a comment in the source that hit it:
 - **`:args` is the whole argv, program name first**, exactly as a process sees
   it. Go's `os.Args[1:]` is empty when the caller forgets argv[0].
 
-## One program, three hosts
+## One program, four hosts
 
 [`hosts.cljc`](./hosts.cljc) computes word frequencies, a ratio and a bigint,
 and prints one map. The only host-specific form is the `:host` string, chosen
 by reader conditional: `cljw` reads the feature set `{:cljw :clj :default}`,
 [clojurust](https://github.com/BuddhiLW/clojurust) (`cljrs`) reads `{:rust}`,
-the JVM reads `{:clj :default}`.
+[jolt](https://github.com/jolt-lang/jolt) reads `{:jolt :clj :default}`, the
+JVM reads `{:clj :default}`.
 
 ```sh
 cljw hosts.cljc
 cljrs run hosts.cljc
+jolt hosts.cljc
 clojure -M hosts.cljc
 ```
 
 Measured 2026-09-14 (cljw v1.14.7, cljrs 0.1.0, Clojure 1.12): the three lines
 differ only in `:host`, including `11/4` and `1000000016000000063`.
+
+Measured 2026-11-11 (cljw v1.15.3, jolt v0.8.19, Clojure 1.13.0-alpha10),
+running the file, not `-e`. `hosts.cljc` is the only host-free `.cljc` in the
+repository; it requires only `clojure.string`.
+
+| file       | runtime            | result             | note                                                              |
+|------------|--------------------|--------------------|-------------------------------------------------------------------|
+| hosts.cljc | `clojure -M` (JVM) | exit 0, same value | `:host "jvm"`                                                     |
+| hosts.cljc | `cljw`             | exit 0, same value | `:host "cljw"`                                                    |
+| hosts.cljc | `jolt`             | exit 0, same value | `:host "jolt"` after one `:jolt` branch; before it, `:host "jvm"` |
+| hosts.cljc | `cljrs`            | not run            | not on PATH on the measuring machine                              |
+
+The computation needed no change on jolt: `re-seq`, `frequencies`, `sort-by`
+on vector keys, the ratio `11/4` and the bigint `1000000016000000063` all
+match. The one edit is in the host line. jolt answers true for `:clj` as well
+as `:jolt`, and a reader conditional takes the first branch whose feature is
+present, so the old form
+`#?(:cljw "cljw" :rust "cljrs" :clj "jvm" :default "unknown")` reported jolt
+as the JVM. The `:jolt` branch sits before `:clj` for that reason, the same
+way `:cljw` already did. A `:bb` branch was not taken under `jolt FILE` in the
+same run, so `:bb` is no way to pick jolt.
 
 ## Rebuilding the guests
 
