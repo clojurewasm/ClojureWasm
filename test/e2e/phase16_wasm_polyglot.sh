@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: runs zig cc / rustc / go to rebuild the guests and compares against other Clojure hosts on PATH
 # test/e2e/phase16_wasm_polyglot.sh — the polyglot demo (docs/examples/polyglot)
 # is a gated claim, not prose. Two legs:
 #
@@ -15,9 +16,9 @@
 # when `go` is on PATH and the probe prints PASS go-command, otherwise the probe
 # prints SKIP go-command and this test requires that line instead.
 #
-# hosts.cljc runs on cljw always, and on cljrs / JVM Clojure when those are on
-# PATH (CLJRS_BIN overrides the cljrs lookup); every host present must print the
-# same line.
+# hosts.cljc runs on cljw always, and on cljrs / jolt / JVM Clojure when those
+# are on PATH (CLJRS_BIN and JOLT_BIN override the lookups); every host present
+# must print the same line.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 BIN="zig-out/bin/cljw"
@@ -103,6 +104,16 @@ $got"
 cljw:  $expected
 cljrs: $got"
   hosts="$hosts, cljrs"
+fi
+
+jolt_bin="${JOLT_BIN:-$(command -v jolt || true)}"
+if [ -n "$jolt_bin" ] && [ -x "$jolt_bin" ]; then
+  got="$(cd "$DEMO" && run_bounded 60 "$jolt_bin" hosts.cljc 2>&1)" || fail "hosts.cljc failed on jolt:
+$got"
+  [ "${got/:host \"jolt\"/:host \"cljw\"}" = "$expected" ] || fail "jolt disagrees with cljw on hosts.cljc:
+cljw: $expected
+jolt: $got"
+  hosts="$hosts, jolt"
 fi
 
 if command -v clojure >/dev/null 2>&1 && [ -z "${CLJW_POLYGLOT_SKIP_JVM:-}" ]; then

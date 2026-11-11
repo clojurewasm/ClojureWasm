@@ -346,11 +346,19 @@ pub const GcHeap = struct {
 
         const obj: *T = @ptrCast(@alignCast(raw));
         const hdr: *HeapHeader = @ptrCast(@alignCast(raw));
-        try self.allocations.append(self.infra, .{
+        const rec: gc_types.AllocRecord = .{
             .header = hdr,
             .size = effective_size,
             .alignment = align_t,
-        });
+        };
+        // CLJW-PERF-ALLOC-FASTPATH: the side list almost always has room
+        // (it only grows, and sweep swap-removes), so store in place and
+        // leave the out-of-line `append` to the growth case.
+        if (self.allocations.items.len < self.allocations.capacity) {
+            self.allocations.appendAssumeCapacity(rec);
+        } else {
+            try self.allocations.append(self.infra, rec);
+        }
         self.stats.bytes_allocated += effective_size;
         self.stats.alloc_count += 1;
         self.bytes_since_last_gc += effective_size;
@@ -359,11 +367,19 @@ pub const GcHeap = struct {
 
     /// Backing memory for one cell: a page-heap slot when the cell is small,
     /// an `infra` block otherwise. Caller holds `gc_mutex`.
-    fn cellAlloc(self: *GcHeap, size: usize, alignment: std.mem.Alignment) error{OutOfMemory}![*]u8 {
+    /// Inline (CLJW-PERF-ALLOC-FASTPATH): `alignment` and usually `size` are
+    /// comptime-known at each `allocSized` instance, so the small/large
+    /// choice and the size class fold away and the page fast path lands in
+    /// the caller with no call, error-union spill or stack canary.
+    inline fn cellAlloc(self: *GcHeap, size: usize, alignment: std.mem.Alignment) error{OutOfMemory}![*]u8 {
         if (page_heap_mod.isSmall(size, alignment)) {
             self.stats.small_allocs += 1;
             return self.pages.alloc(size) orelse error.OutOfMemory;
         }
+        return self.cellAllocLarge(size, alignment);
+    }
+
+    noinline fn cellAllocLarge(self: *GcHeap, size: usize, alignment: std.mem.Alignment) error{OutOfMemory}![*]u8 {
         const mem = self.infra.rawAlloc(size, alignment, @returnAddress()) orelse return error.OutOfMemory;
         self.large_live_bytes += size;
         return mem;

@@ -93,18 +93,34 @@ pub const HamtNode = extern struct {
     }
 };
 
-/// 32-element tail array. `len` tracks the populated prefix (1..32);
-/// `slots[0..len]` are the live Values. When `len` reaches 32 the
-/// tail promotes to a leaf HamtNode under `root` (5.4.b conj).
+/// The vector's last 1..32 elements. The slots are the cell's trailing
+/// storage, sized to exactly `len` (one GC cell, the ADR-0184 shape): every
+/// tail change copies the tail anyway (persistent conj / pop / assoc), so a
+/// 32-slot reserve buys nothing and made a 2-vector's tail a 272-byte cell.
+/// When `len` reaches 32 the tail promotes to a leaf HamtNode under `root`
+/// (5.4.b conj).
+// PERF: exact-size tail cell, 32 bytes for a 2-vector instead of 272 [refs: O-091]
 pub const TailNode = extern struct {
     header: HeapHeader,
     _pad: [2]u8 = .{ 0, 0 },
     len: u32 = 0,
-    slots: [BRANCH_FACTOR]Value = @splat(Value.nil_val),
 
     comptime {
         std.debug.assert(@alignOf(TailNode) >= 8);
         std.debug.assert(@offsetOf(TailNode, "header") == 0);
+        std.debug.assert(@sizeOf(TailNode) % @alignOf(Value) == 0);
+    }
+
+    /// The live elements, `len` of them.
+    pub fn items(self: *const TailNode) []const Value {
+        const base: [*]const Value = @ptrCast(@alignCast(@as([*]const u8, @ptrCast(self)) + @sizeOf(TailNode)));
+        return base[0..self.len];
+    }
+
+    /// The live elements, writable: only for a tail still being built.
+    pub fn itemsMut(self: *TailNode) []Value {
+        const base: [*]Value = @ptrCast(@alignCast(@as([*]u8, @ptrCast(self)) + @sizeOf(TailNode)));
+        return base[0..self.len];
     }
 };
 
@@ -140,16 +156,18 @@ inline fn copyHamt(rt: *Runtime, slots: *const [BRANCH_FACTOR]Value) !*HamtNode 
     return c;
 }
 
-/// A fresh TailNode of length `len` whose live prefix is `prefix` (len >=
-/// prefix.len). Slots past `len` stay nil so the node matches a `.{}`-built
-/// one; slots in `[prefix.len, len)` are the caller's to fill. PERF: [refs: O-074]
+/// A fresh TailNode of length `len` (1..32) whose live prefix is `prefix`
+/// (len >= prefix.len). Slots in `[prefix.len, len)` are nil until the caller
+/// fills them, so the trace never reads an uninitialised slot. PERF: [refs: O-074]
 inline fn newTail(rt: *Runtime, len: u32, prefix: []const Value) !*TailNode {
-    const t = try rt.gc.alloc(TailNode);
+    std.debug.assert(len >= 1 and len <= BRANCH_FACTOR and prefix.len <= len);
+    const t = try rt.gc.allocWithTail(TailNode, @as(usize, len) * @sizeOf(Value));
     t.header = HeapHeader.init(.tail_node);
     t._pad = .{ 0, 0 };
     t.len = len;
-    @memcpy(t.slots[0..prefix.len], prefix);
-    @memset(t.slots[len..], Value.nil_val);
+    const slots = t.itemsMut();
+    @memcpy(slots[0..prefix.len], prefix);
+    @memset(slots[prefix.len..], Value.nil_val);
     return t;
 }
 
@@ -183,7 +201,7 @@ pub fn traceHamtNode(gc_ptr: *anyopaque, header: *HeapHeader) void {
 pub fn traceTailNode(gc_ptr: *anyopaque, header: *HeapHeader) void {
     const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
     const t: *TailNode = @ptrCast(@alignCast(header));
-    for (t.slots[0..t.len]) |slot| {
+    for (t.items()) |slot| {
         if (slot.heapHeader()) |h| mark_sweep.mark(gc, h);
     }
 }
@@ -228,16 +246,16 @@ pub fn conj(rt: *Runtime, v: Value, x: Value) !Value {
     // Fast path: tail has space (< BRANCH_FACTOR elements).
     const tail_size = if (old.tail) |t| t.len else 0;
     if (tail_size < BRANCH_FACTOR) {
-        const prefix: []const Value = if (old.tail) |t| t.slots[0..tail_size] else &.{};
+        const prefix: []const Value = if (old.tail) |t| t.items() else &.{};
         const new_tail = try newTail(rt, tail_size + 1, prefix);
-        new_tail.slots[tail_size] = x;
+        new_tail.itemsMut()[tail_size] = x;
         return try newVector(rt, old.count + 1, old.shift, old.root, new_tail, old.meta);
     }
 
     // Tail-full path: promote the old tail to a leaf HamtNode under
     // root; new tail holds just `x`. The promoted leaf goes into the
     // root trie via pushTail, possibly growing the trie depth.
-    const tail_as_leaf = try copyHamt(rt, &old.tail.?.slots);
+    const tail_as_leaf = try copyHamt(rt, old.tail.?.items()[0..BRANCH_FACTOR]);
 
     const old_count = old.count;
     var new_shift = old.shift;
@@ -266,9 +284,7 @@ pub fn conj(rt: *Runtime, v: Value, x: Value) !Value {
         new_shift = 0;
     }
 
-    const new_tail = try rt.gc.alloc(TailNode);
-    new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = 1 };
-    new_tail.slots[0] = x;
+    const new_tail = try newTail(rt, 1, &.{x});
     return try newVector(rt, old_count + 1, new_shift, new_root, new_tail, old.meta);
 }
 
@@ -290,9 +306,7 @@ pub fn pop(rt: *Runtime, v: Value) !Value {
     // Fast path: tail has > 1 element — copy tail with len-1.
     const tail_size = if (old.tail) |t| t.len else 0;
     if (tail_size > 1) {
-        const new_tail = try rt.gc.alloc(TailNode);
-        new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_size - 1 };
-        @memcpy(new_tail.slots[0 .. tail_size - 1], old.tail.?.slots[0 .. tail_size - 1]);
+        const new_tail = try newTail(rt, tail_size - 1, old.tail.?.items()[0 .. tail_size - 1]);
         return try newVector(rt, old.count - 1, old.shift, old.root, new_tail, old.meta);
     }
 
@@ -300,9 +314,7 @@ pub fn pop(rt: *Runtime, v: Value) !Value {
     // become the new tail. May collapse trie depth if the root's
     // first slot is empty after the pull.
     const new_tail_leaf = arrayFor(old, old.count - 2);
-    const new_tail = try rt.gc.alloc(TailNode);
-    new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = BRANCH_FACTOR };
-    @memcpy(&new_tail.slots, &new_tail_leaf.slots);
+    const new_tail = try newTail(rt, BRANCH_FACTOR, &new_tail_leaf.slots);
 
     var new_root: ?*HamtNode = null;
     var new_shift = old.shift;
@@ -340,8 +352,8 @@ pub fn assoc(rt: *Runtime, v: Value, i: u32, x: Value) !Value {
 
     if (i >= tailoff(old.count)) {
         const tail_size = if (old.tail) |t| t.len else 0;
-        const new_tail = try newTail(rt, tail_size, old.tail.?.slots[0..tail_size]);
-        new_tail.slots[i - tailoff(old.count)] = x;
+        const new_tail = try newTail(rt, tail_size, old.tail.?.items());
+        new_tail.itemsMut()[i - tailoff(old.count)] = x;
         return try newVector(rt, old.count, old.shift, old.root, new_tail, old.meta);
     }
 
@@ -408,9 +420,7 @@ pub fn fromSlice(rt: *Runtime, items: []const Value) !Value {
     const off = tailoff(n); // multiple of 32; in-root element count
     const tail_len = n - off; // 1..32 for n > 0
 
-    const tail = try rt.gc.alloc(TailNode);
-    tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_len };
-    @memcpy(tail.slots[0..tail_len], items[off..n]);
+    const tail = try newTail(rt, tail_len, items[off..n]);
 
     if (off == 0) {
         // n ≤ 32: tail-only, no root (matches conj's tail fast path).
@@ -575,7 +585,7 @@ pub fn nth(v: Value, i: u32) Value {
     if (i >= tailoff(vec.count)) {
         // In-tail path: trivial index into the 32-slot tail.
         const t = vec.tail orelse return Value.nil_val;
-        return t.slots[i - tailoff(vec.count)];
+        return t.items()[i - tailoff(vec.count)];
     }
 
     // In-root path: walk down the HAMT via `(i >>> level) & MASK` at
@@ -632,31 +642,43 @@ test "HamtNode struct layout: header at 0, 32 slots inlined" {
     try testing.expect(@alignOf(HamtNode) >= 8);
 }
 
-test "TailNode struct layout: header at 0, 32 slots + len" {
+/// A stack TailNode with its `n` trailing slots, laid out as one GC cell is.
+fn StackTail(comptime n: usize) type {
+    return extern struct {
+        node: TailNode,
+        slots: [n]Value,
+    };
+}
+
+test "TailNode struct layout: header at 0, slots trail the 8-byte head" {
     try testing.expectEqual(@as(usize, 0), @offsetOf(TailNode, "header"));
-    const default_tail: TailNode = .{ .header = HeapHeader.init(.tail_node) };
-    try testing.expectEqual(@as(usize, BRANCH_FACTOR), default_tail.slots.len);
+    try testing.expectEqual(@as(usize, 16), @sizeOf(TailNode));
     try testing.expect(@alignOf(TailNode) >= 8);
+    try testing.expectEqual(@sizeOf(TailNode), @offsetOf(StackTail(2), "slots"));
+}
+
+test "a tail cell is sized to its length" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    const before = fix.rt.gc.stats.bytes_allocated;
+    _ = try fromSlice(&fix.rt, &.{ Value.initInteger(1), Value.initInteger(2) });
+    // Vector head + a 2-slot tail, not a 32-slot one.
+    const tail_bytes = @sizeOf(TailNode) + 2 * @sizeOf(Value);
+    try testing.expectEqual(@as(usize, @sizeOf(Vector) + tail_bytes), fix.rt.gc.stats.bytes_allocated - before);
 }
 
 test "nth in-tail path: handcrafted vector of 3 elements" {
-    var tail = TailNode{
-        .header = HeapHeader.init(.tail_node),
-        .len = 3,
-        .slots = blk: {
-            var s: [BRANCH_FACTOR]Value = @splat(Value.nil_val);
-            s[0] = Value.initInteger(10);
-            s[1] = Value.initInteger(20);
-            s[2] = Value.initInteger(30);
-            break :blk s;
-        },
+    var tail = StackTail(3){
+        .node = .{ .header = HeapHeader.init(.tail_node), .len = 3 },
+        .slots = .{ Value.initInteger(10), Value.initInteger(20), Value.initInteger(30) },
     };
     var vec = Vector{
         .header = HeapHeader.init(.vector),
         .count = 3,
         .shift = 0,
         .root = null,
-        .tail = &tail,
+        .tail = &tail.node,
     };
     const v = Value.encodeHeapPtr(.vector, &vec);
 
@@ -961,21 +983,16 @@ test "nth in-root path: handcrafted shift=5 vector with 33 elements" {
             break :blk s;
         },
     };
-    var tail = TailNode{
-        .header = HeapHeader.init(.tail_node),
-        .len = 1,
-        .slots = blk: {
-            var s: [BRANCH_FACTOR]Value = @splat(Value.nil_val);
-            s[0] = Value.initInteger(132); // index 32 = first tail elem
-            break :blk s;
-        },
+    var tail = StackTail(1){
+        .node = .{ .header = HeapHeader.init(.tail_node), .len = 1 },
+        .slots = .{Value.initInteger(132)}, // index 32 = first tail elem
     };
     var vec = Vector{
         .header = HeapHeader.init(.vector),
         .count = 33,
         .shift = 0, // root IS the leaf (1 level)
         .root = &leaf0,
-        .tail = &tail,
+        .tail = &tail.node,
     };
     const v = Value.encodeHeapPtr(.vector, &vec);
 

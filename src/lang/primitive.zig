@@ -56,6 +56,7 @@ const namespace_prim = @import("primitive/namespace.zig");
 const macroexpand_prim = @import("primitive/macroexpand.zig");
 const array_prim = @import("primitive/array.zig");
 const map_step = @import("primitive/map_step.zig");
+const lazy_step = @import("primitive/lazy_step.zig");
 
 pub const RegisterError = error{
     InternalNamespaceMissing,
@@ -116,6 +117,7 @@ pub fn registerAll(env: *Env) !void {
     try macroexpand_prim.register(env, clojure_core_ns); // D-229 macroexpand-1/macroexpand
     try array_prim.register(env, clojure_core_ns); // ADR-0105 / D-287 Java arrays
     try map_step.register(env, clojure_core_ns); // ADR-0205 multi-coll map step
+    try lazy_step.register(env, clojure_core_ns); // O-110 native lazy producers
 
     // Phase 14 row 14.1 (D-079 discharge): walk every
     // `runtime/java/<pkg>/<Class>.zig`'s `___HOST_EXTENSION`

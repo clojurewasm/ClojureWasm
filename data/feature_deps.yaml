@@ -116,7 +116,7 @@ entries:
       components stay interp-pinned on the zwasm side (D-500) so the
       component path is unaffected, and the F-012 diff oracle uses the
       explicit `.interp`/`.jit` forms so it is untouched. Verified + locked
-      by the surface e2e (phase16_wasm_engine_select.sh — the no-opts
+      by the surface suite (test/clj/suites/wasm_engine_select_test.clj — the no-opts
       default now runs a SIMD body that only JIT can execute) and the
       engine.zig dual-engine unit test. Discharges cljw D-488.
     kind: runtime_layer

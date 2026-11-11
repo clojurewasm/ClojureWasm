@@ -98,7 +98,9 @@ pub const MAGIC: [4]u8 = .{ 'C', 'L', 'J', 'W' };
 // v10: def operands capture Var constants instead of caller-relative names.
 // v9 added op_var_meta; v8 unified host-class FQCNs; v7 compacted WireInstr
 // and interned the name pool; v6 merged rt into clojure.core.
-pub const VERSION: u16 = 14;
+// v15: the op_inc / op_dec opcodes (O-102). A
+// v14 decoder rejects them, so v14 is rejected too (as v9 did for op_var_meta).
+pub const VERSION: u16 = 15;
 
 pub const SerializeError = error{
     OutOfMemory,

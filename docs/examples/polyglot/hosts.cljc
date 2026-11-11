@@ -1,7 +1,8 @@
-;; One Clojure program, three hosts.
+;; One Clojure program, four hosts.
 ;;
 ;;   cljw hosts.cljc              ClojureWasm   feature set {:cljw :clj :default}
 ;;   cljrs run hosts.cljc         clojurust     feature set {:rust ...}
+;;   jolt hosts.cljc              jolt          feature set {:jolt :clj :default}
 ;;   clojure -M hosts.cljc        JVM Clojure   feature set {:clj :default}
 ;;
 ;; Only the :host line differs per runtime; the computation is host-free
@@ -9,7 +10,8 @@
 (ns polyglot.hosts
   (:require [clojure.string :as str]))
 
-(def host #?(:cljw "cljw" :rust "cljrs" :clj "jvm" :default "unknown"))
+;; jolt also reads :clj, so :jolt must come before :clj.
+(def host #?(:cljw "cljw" :rust "cljrs" :jolt "jolt" :clj "jvm" :default "unknown"))
 
 (defn top-words [n text]
   (->> (re-seq #"[A-Za-z]+" text)

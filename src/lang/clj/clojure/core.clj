@@ -158,16 +158,11 @@
 ;; `map` stamps the descriptor on the outer node reduce sees. [refs: O-023]
 (def -map-lazy
   (fn* [f coll]
-    ;; PERF: chunked source → transform a whole 32-chunk per thunk (O-004).
-    (lazy-seq
-      (let [s (seq coll)]
-        (if s
-          (if (chunked-seq? s)
-            ;; PERF: O-032 in-Zig chunk drain — the per-element `.clj` loop moved
-            ;; into `cljw.internal/__chunk-map-step` (producer analogue of reduceFn's O-004 drain).
-            (chunk-cons (cljw.internal/__chunk-map-step f s) (-map-lazy f (chunk-rest s)))
-            (cons (f (first s)) (-map-lazy f (rest s))))
-          nil)))))
+    ;; PERF: O-110 the node body runs in Zig (`__map-lazy`, lazy_step.zig):
+    ;; (lazy-seq (when-let [s (seq coll)] (if (chunked-seq? s) (chunk-cons
+    ;; <f over the chunk, O-032> (-map-lazy f (chunk-rest s))) (cons (f (first
+    ;; s)) (-map-lazy f (rest s)))))) with no closure or eval re-entry per node.
+    (cljw.internal/__map-lazy f coll)))
 ;; PERF: O-062 internal lazy body for 2/3-coll `map`: one lazy node per element
 ;; (clj's multi-coll map is unchunked), whose body is the Zig `__map-step`
 ;; (seq all, f on the firsts, recur on the rests). Passes itself as `self`.
@@ -212,18 +207,11 @@
 ;; PERF: O-023 internal lazy body for `filter` — recurses on itself, no stamp.
 (def -filter-lazy
   (fn* [pred coll]
-    (lazy-seq
-      (let [s (seq coll)]
-        (if s
-          (if (chunked-seq? s)
-            ;; PERF: O-032 in-Zig chunk drain — the per-element `.clj` loop moved
-            ;; into `cljw.internal/__chunk-filter-step` (survivors-only partial chunk).
-            (chunk-cons (cljw.internal/__chunk-filter-step pred s) (-filter-lazy pred (chunk-rest s)))
-            (let [v (first s)]
-              (if (pred v)
-                (cons v (-filter-lazy pred (rest s)))
-                (-filter-lazy pred (rest s)))))
-          nil)))))
+    ;; PERF: O-110 the node body runs in Zig (`__filter-lazy`, lazy_step.zig):
+    ;; a chunked source keeps chunk-of-32 survivors (O-032), an unchunked one
+    ;; conses each survivor onto (-filter-lazy pred (rest s)); a non-match
+    ;; continues in the same realization, as clj's recursive body does.
+    (cljw.internal/__filter-lazy pred coll)))
 (def filter
   (fn* ([pred]
         ;; transducer arity
@@ -247,13 +235,18 @@
                         result (if (> m 0) (rf result input) result)]
                     (if (not (> nm 0)) (ensure-reduced result) result)))))))
        ([n coll]
-        (lazy-seq
-          (if (pos? n)
-            (let [s (seq coll)]
-              (if s
-                (cons (first s) (take (dec n) (rest s)))
-                nil))
-            nil)))))
+        ;; PERF: O-110 a fixed-precision n takes native lazy nodes
+        ;; (`__take-lazy`, lazy_step.zig) with this exact body; any other n
+        ;; (a double, a ratio) keeps the interpreted one.
+        (if (int? n)
+          (cljw.internal/__take-lazy n coll)
+          (lazy-seq
+            (if (pos? n)
+              (let [s (seq coll)]
+                (if s
+                  (cons (first s) (take (dec n) (rest s)))
+                  nil))
+              nil))))))
 (def drop
   (fn* ([n]
         ;; transducer arity: stateful (skips the first n inputs)
@@ -1146,11 +1139,17 @@
 (def reduce-kv
   (fn* [f init m]
     (if (vector? m)
-      (loop* [i 0 acc init]
-        (if (< i (count m))
-          (let* [r (f acc i (nth m i))]
-            (if (reduced? r) (deref r) (recur (inc i) r)))
-          acc))
+      ;; A vector or subvec is reduced by index in Zig (no interpreted
+      ;; loop/recur, seq walk or pair allocation per item). `vector?` also
+      ;; admits a MapEntry and a deftype / reify declaring IPersistentVector;
+      ;; the primitive hands those to this generic count/nth loop.
+      (cljw.internal/__reduce-kv-vector f init m
+        (fn* [f init m]
+          (loop* [i 0 acc init]
+            (if (< i (count m))
+              (let* [r (f acc i (nth m i))]
+                (if (reduced? r) (deref r) (recur (inc i) r)))
+              acc))))
       ;; IKVReduce first (a deftype declaring `kvreduce`, D-400 — clj
       ;; consults the interface before any fallback); the sentinel keyword
       ;; is interned, so `identical?` detects "no impl" exactly.
@@ -1574,7 +1573,10 @@
 ;; a fn body's free symbols at analysis time, so a forward ref to a Var
 ;; def'd later in the file fails to resolve.
 (def iterate
-  (fn* [f x] (lazy-seq (cons x (iterate f (f x))))))
+  ;; PERF: O-110 native lazy nodes (`__iterate-lazy`, lazy_step.zig). As clj's
+  ;; Iterate, `f` runs only when the element after x is realized, never for
+  ;; (first (iterate f x)).
+  (fn* [f x] (cljw.internal/__iterate-lazy f x)))
 
 ;; `(range)` → infinite lazy 0,1,2,…; `(range n)` → 0..n-1;
 ;; `(range start end)` → start..end-1; `(range start end step)` → stepped.
@@ -2351,42 +2353,29 @@
         ;; un-namespaced parent there would let one library's :shape collide
         ;; with another's; a hierarchy VALUE you passed in is your own.
         ;;
-        ;; The global overload calls namespace on parent before derive;
-        ;; Class parents therefore throw, unlike Class *children* of the
-        ;; three-argument overload. Both global tags must be namespaced.
-        (when-not (or (symbol? parent) (keyword? parent))
-          (throw (ClassCastException.
-                   (str "derive: parent must be a named symbol or keyword, got " (pr-str parent)))))
-        (when-not (namespace parent)
-          (throw (ex-info (str "derive: parent must be namespaced, got " (pr-str parent)) {})))
-        (when-not (or (class? tag)
-                      (and (or (symbol? tag) (keyword? tag)) (namespace tag)))
-          (throw (ex-info (str "derive: tag must be a class or a namespaced symbol/keyword, got "
-                               (pr-str tag))
-                          {})))
+        ;; The checks are clj's own asserts, in clj's order, so a bad argument
+        ;; is an AssertionError with clj's exact text. `namespace` on a Class
+        ;; parent throws ClassCastException before the assert, as in clj.
+        (assert (namespace parent))
+        (assert (or (class? tag) (and (instance? clojure.lang.Named tag) (namespace tag))))
         (swap! -global-hierarchy derive tag parent) nil)
        ([h tag parent]
-        ;; The 3-arity permits a Class tag but requires a Named parent.
-        ;; It does not require the parent to be namespaced.
-        (when-not (or (class? tag) (symbol? tag) (keyword? tag))
-          (throw (ex-info (str "derive: tag must be a class, symbol or keyword, got " (pr-str tag)) {})))
-        (when-not (or (symbol? parent) (keyword? parent))
-          (throw (ex-info (str "derive: parent must be a symbol or keyword, got " (pr-str parent)) {})))
-        ;; clj: self-derive → AssertionError; a non-map hierarchy field →
-        ;; NullPointerException (it invokes the field as a fn). Both throw here
-        ;; (exception-Kind divergence is AD-007). The 2-arity global path always
-        ;; passes a valid hierarchy, so those guards never fire on it.
-        (when (= tag parent)
-          (throw (ex-info (str "(not= tag parent) — cannot derive " tag " from itself") {})))
+        ;; The 3-arity permits a Class tag and an un-namespaced parent, but the
+        ;; parent must be Named.
+        (assert (not= tag parent))
+        (assert (or (class? tag) (instance? clojure.lang.Named tag)))
+        (assert (instance? clojure.lang.Named parent))
+        ;; clj invokes the hierarchy's fields as fns, so a non-map field is an
+        ;; NPE there; it throws here too (exception-Kind divergence is AD-007).
         (when-not (and (map? (:parents h)) (map? (:descendants h)) (map? (:ancestors h)))
           (throw (ex-info "derive: hierarchy must have map :parents / :descendants / :ancestors" {})))
         (let [tp (:parents h) td (:descendants h) ta (:ancestors h)]
           (if (contains? (get tp tag) parent)
             h
             (if (contains? (get ta tag) parent)
-              (throw (ex-info (str tag " already has " parent " as ancestor") {}))
+              (throw (Exception. (str tag " already has " parent " as ancestor")))
               (if (contains? (get ta parent) tag)
-                (throw (ex-info (str "Cyclic derivation: " parent " has " tag " as ancestor") {}))
+                (throw (Exception. (str "Cyclic derivation: " parent " has " tag " as ancestor")))
                 {:parents (assoc tp tag (conj (get tp tag #{}) parent))
                  :ancestors (-derive-tf ta tag td parent ta)
                  :descendants (-derive-tf td parent ta tag td)})))))))
@@ -2415,8 +2404,13 @@
 (def ancestors
   (fn* ([tag] (ancestors (deref -global-hierarchy) tag))
        ([h tag] (let [explicit (get (:ancestors h) tag)
-                       native (cljw.internal/__class-parents tag)]
-                   (not-empty (reduce conj (or explicit #{}) native))))))
+                       native (cljw.internal/__class-parents tag)
+                       ;; clj walks the superclass chain, which ends at Object
+                       ;; for every class but Object itself and interfaces.
+                       object (when (and (class? tag) (not= tag Object)
+                                         (cljw.internal/__class-isa? tag Object))
+                                [Object])]
+                   (not-empty (reduce conj (reduce conj (or explicit #{}) native) object))))))
 
 (def descendants
   (fn* ([tag] (descendants (deref -global-hierarchy) tag))

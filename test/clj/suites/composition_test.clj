@@ -23,14 +23,37 @@
   (is (= 4 (count (apply (fn* [& xs] xs) [1 2 3 4])))))  ; count_apply
 
 (deftest reduce-with-and-without-an-init
-  (is (= 10 (reduce + 0 [1 2 3 4])))                     ; reduce_init
-  (is (= 10 (reduce + [1 2 3 4])))                       ; reduce_no_init
+  (is (= 10 (reduce + 0 [1 2 3 4])))
+  (is (= 10 (reduce + [1 2 3 4])))
   (testing "an empty coll with no init uses the fn's zero-arity"
-    (is (= 0 (reduce + []))))                            ; reduce_empty
+    (is (= 0 (reduce + []))))
   (testing "the accumulator drives the fn, so it can stop growing"
     (is (= 6 (reduce (fn* [acc x] (if (> acc 5) acc (+ acc x)))
-                     0 [1 2 3 4 5 6]))))                 ; reduce_early
-  (is (= #{1 2 3} (reduce conj (hash-set) [1 2 3]))))    ; reduce_conj_set
+                     0 [1 2 3 4 5 6]))))
+  (is (= #{1 2 3} (reduce conj (hash-set) [1 2 3])))
+  (testing "multi-vector lazy maps retain realization and memoized effects"
+    (let [calls (atom 0)
+          s (map (fn [a b] (swap! calls inc) (+ a b)) [1 2 3] [4 5 6])]
+      (is (= 21 (reduce + s)))
+      (is (= 3 @calls))
+      (is (realized? s))
+      (is (= 21 (reduce + 0 s)))
+      (is (= 3 @calls))))
+  (testing "early termination, empty, shortest source and 3-source map"
+    (let [calls (atom 0)
+          s (map (fn [a b] (swap! calls inc) (+ a b)) [1 2 3] [4 5 6])]
+      (is (= 5 (reduce (fn [acc x] (reduced x)) 0 s)))
+      (is (= 1 @calls)))
+    (is (= 0 (reduce + (map + [] [1]))))
+    (is (= 42 (reduce + 42 (map + [] [1]))))
+    (is (= 5 (reduce + (map + [1 2] [4]))))
+    (is (= 21 (reduce + (map + [1 2] [3 4] [5 6])))))
+  (testing "a previously forced head is never mapped twice"
+    (let [calls (atom 0)
+          s (map (fn [a b] (swap! calls inc) (+ a b)) [1 2] [3 4])]
+      (is (= 4 (first s)))
+      (is (= 10 (reduce + s)))
+      (is (= 2 @calls)))))    ; reduce_conj_set
 
 (deftest into-targets-any-collection
   (is (= [1 2 3] (into [] [1 2 3])))                          ; into_vec_from_vec

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: the leak guard reads the allocator's leak report, which a cljw process prints only at its own exit
 # test/e2e/phase16_wasm_ffi.sh — polyglot Wasm FFI smoke + leak guard (ADR-0099,
 # D-259 (b)). Builds the `-Dwasm` binary (which resolves zwasm via the relative-
 # path build.zig.zon), loads a Zig→Wasm module, calls an export, and asserts BOTH
@@ -51,17 +52,8 @@ echo "PASS wasm-ffi-no-leak -> 0 leaks"
 # (NOT an internal_error / exit 70). The fixture wraps each failing wasm/load +
 # wasm/call in a (catch …); if any error were uncatchable the process would exit
 # 70 here (non-zero), and a mismatched Kind would print NOT-CAUGHT.
-catch_out="$("$BIN" test/e2e/fixtures/wasm_ffi_catch.clj 2>&1)" || fail "catchability fixture exited non-zero (an error escaped (catch …) → exit 70):
-$catch_out"
-grep -q "NOT-CAUGHT" <<<"$catch_out" && fail "a wasm error was not caught (or matched the wrong host class):
-$catch_out"
-grep -q "^wasi-load-split: CAUGHT$" <<<"$catch_out" || fail "wasm/load accepted or misclassified :wasi instead of enforcing the command/handle split:
-$catch_out"
-grep -q "^wasi-load-nil-split: CAUGHT$" <<<"$catch_out" || fail "wasm/load treated a present nil :wasi as absent:
-$catch_out"
-grep -q "^DONE$" <<<"$catch_out" || fail "catchability fixture did not run to completion:
-$catch_out"
-echo "PASS wasm-ffi-catchable -> all errors caught, exit 0"
+# The catchability cases (every wasm/load and wasm/call error is a catchable
+# exception of the right host class) live in test/clj/suites/wasm_ffi_catch_test.clj.
 
 echo
-echo "Phase 16 / wasm FFI smoke + leak guard + catchability: all green."
+echo "Phase 16 / wasm FFI smoke + leak guard: all green."

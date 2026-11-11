@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: EPL-2.0
 //! Heap-backed string Value.
 //!
-//! An immutable byte slice tagged `HeapTag.string`. The wrapper struct
-//! owns its own `[]u8` (duplicated from caller bytes at `alloc` time),
-//! so the resulting Value outlives any per-eval arena. The bytes are
-//! freed by a per-tag GC finaliser (registered via `registerGcHooks`;
-//! see L24-34) before mark-sweep rawFrees the wrapper.
+//! An immutable byte slice tagged `HeapTag.string`, copied from the
+//! caller's bytes at `alloc` time so the Value outlives any per-eval arena.
 //!
-//! Why not a Phase-1 small-string optimisation (inline tail of bytes
-//! after the header)? Because Clojure strings are arbitrary-length and
-//! the analyser's `.string` literal already arrives as a slice; one
-//! `gpa.dupe` is cheaper than the branch-on-length the inline form
-//! would need. A future string-interning pass could revisit this.
+//! Storage is chosen by length. A payload that fits a page-heap cell
+//! (`max_inline_bytes`) lives in the tail of the String's own GC cell: one
+//! allocation, freed with the cell by sweep. A larger one is an `infra`
+//! allocation freed by the per-tag finaliser (`registerGcHooks`). Measured
+//! 2026-10-23: the separate `gpa.dupe` + finaliser `free` per String was the
+//! dominant non-interpreter cost of `(str i)` in a loop (libc malloc/free
+//! about 12% of the profile), on top of the cell allocation it duplicated.
 
 const std = @import("std");
 const value_mod = @import("../value/value.zig");
@@ -20,6 +19,7 @@ const HeapHeader = value_mod.HeapHeader;
 const Runtime = @import("../runtime.zig").Runtime;
 const tag_ops = @import("../gc/tag_ops.zig");
 const gc_heap_mod = @import("../gc/gc_heap.zig");
+const page_heap_mod = @import("../gc/page_heap.zig");
 
 /// Heap String. `bytes_ptr` + `bytes_len` decompose what was previously
 /// a `[]const u8` slice; the decomposition lets the struct be `extern`,
@@ -27,16 +27,24 @@ const gc_heap_mod = @import("../gc/gc_heap.zig");
 /// (required by `gc.alloc(T)`'s comptime invariant). Use `bytes()` to
 /// recover the slice view.
 ///
-/// Lifetime: the byte storage is owned (duplicated at `alloc` time via
-/// `gc.infra.dupe`); the wrapper struct itself is GC-managed through
-/// `gc.alloc(String)`. The per-tag finaliser (`finaliseGc`, registered
-/// at `Runtime.init` time via `registerGcHooks`) frees the bytes back
-/// to `gc.infra` before sweep rawFrees the wrapper memory.
+/// Lifetime: the wrapper is GC-managed. `storage` says where the bytes
+/// are: `.inline_tail` bytes are part of the cell and die with it;
+/// `.owned` bytes were `gc.infra.dupe`d and the per-tag finaliser
+/// (`finaliseGc`) frees them before sweep frees the wrapper.
 pub const String = extern struct {
     header: HeapHeader,
-    _pad: [6]u8 = .{ 0, 0, 0, 0, 0, 0 },
+    /// Where the payload lives. Occupies a former padding byte.
+    storage: Storage = .owned,
+    _pad: [5]u8 = .{ 0, 0, 0, 0, 0 },
     bytes_ptr: [*]const u8,
     bytes_len: usize,
+
+    pub const Storage = enum(u8) {
+        /// `bytes_ptr` is an `infra` allocation the finaliser frees.
+        owned = 0,
+        /// `bytes_ptr` is the tail of this String's own GC cell.
+        inline_tail = 1,
+    };
 
     comptime {
         std.debug.assert(@alignOf(String) >= 8);
@@ -48,12 +56,35 @@ pub const String = extern struct {
     }
 };
 
-/// Allocate a heap String holding a copy of `bytes`. The byte storage
-/// is `dupe`d through `rt.gc.infra` (= `rt.gpa`) so the per-tag
-/// finaliser can release it back; the wrapper struct goes through
-/// `rt.gc.alloc(String)` so it appears on the GC's allocations list +
-/// participates in mark / sweep like any other Value.
+/// Longest payload stored inline, as the tail of the String's own GC cell,
+/// so the whole cell stays a page-heap cell (`page_heap.max_small_bytes`).
+pub const max_inline_bytes: usize = page_heap_mod.max_small_bytes - @sizeOf(String);
+
+/// Allocate a heap String holding a copy of `bytes`.
+///
+/// A payload of up to `max_inline_bytes` goes into the tail of the String's
+/// own GC cell: one page-heap allocation, and nothing for the finaliser to
+/// free. The allocation runs inside a fabrication region (no collect in the
+/// alloc prologue) because `byte_view` may be the inline tail of a String
+/// the caller holds unrooted, and it must survive until it is copied. A
+/// larger payload is `dupe`d through `rt.gc.infra` (= `rt.gpa`) before the
+/// cell exists, and released by the per-tag finaliser.
 pub fn alloc(rt: *Runtime, byte_view: []const u8) !Value {
+    if (byte_view.len <= max_inline_bytes) {
+        const n = byte_view.len;
+        rt.gc.enterFabrication();
+        defer rt.gc.exitFabrication();
+        const s = try rt.gc.allocWithTail(String, n);
+        const tail: [*]u8 = @ptrCast(@as([*]String, @ptrCast(s)) + 1);
+        @memcpy(tail[0..n], byte_view);
+        s.* = .{
+            .header = HeapHeader.init(.string),
+            .storage = .inline_tail,
+            .bytes_ptr = tail,
+            .bytes_len = n,
+        };
+        return Value.encodeHeapPtr(.string, s);
+    }
     const owned = try rt.gc.infra.dupe(u8, byte_view);
     errdefer rt.gc.infra.free(owned);
     rt.gc.noteOwnedAlloc(owned.len);
@@ -72,6 +103,7 @@ pub fn alloc(rt: *Runtime, byte_view: []const u8) !Value {
 pub fn finaliseGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
     const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
     const s: *String = @ptrCast(@alignCast(header));
+    if (s.storage == .inline_tail) return;
     gc.infra.free(s.bytes());
 }
 
@@ -80,8 +112,10 @@ pub fn finaliseGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
 /// `Runtime.init` calls this so registration lands before the first
 /// allocation.
 /// D-573: a live String's cost is its byte payload, not its 32-byte wrapper.
+/// An inline payload is already part of the cell's recorded size.
 fn ownedBytes(header: *HeapHeader) usize {
     const str: *String = @ptrCast(@alignCast(header));
+    if (str.storage == .inline_tail) return 0;
     return str.bytes_len;
 }
 
@@ -158,6 +192,31 @@ fn allocFailingHarness(alloc_inner: std.mem.Allocator) !void {
 
 test "alloc returns OOM without leaking under each allocation failure (uniform errdefer)" {
     try testing.checkAllAllocationFailures(testing.allocator, allocFailingHarness, .{});
+}
+
+test "a short payload is stored inline; a long one is an owned infra block" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+
+    const short = try alloc(&rt, "12345");
+    const s = short.decodePtr(*String);
+    try testing.expectEqual(String.Storage.inline_tail, s.storage);
+    try testing.expectEqual(@as(usize, 0), ownedBytes(&s.header));
+    try testing.expectEqualStrings("12345", asString(short));
+
+    const big = try testing.allocator.alloc(u8, max_inline_bytes + 1);
+    defer testing.allocator.free(big);
+    @memset(big, 'x');
+    const long = try alloc(&rt, big);
+    const l = long.decodePtr(*String);
+    try testing.expectEqual(String.Storage.owned, l.storage);
+    try testing.expectEqual(big.len, ownedBytes(&l.header));
+    try testing.expectEqualSlices(u8, big, asString(long));
+
+    const edge = try alloc(&rt, big[0..max_inline_bytes]);
+    try testing.expectEqual(String.Storage.inline_tail, edge.decodePtr(*String).storage);
 }
 
 test "alloc handles the empty string" {

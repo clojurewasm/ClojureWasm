@@ -1784,6 +1784,12 @@ pub fn alterVarRootFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
             }
         }
     }
+    // inc/dec (op_inc / op_dec) share the arith deopt flag.
+    for (rt.unary_vars) |cached| {
+        if (cached) |pv| {
+            if (@intFromPtr(pv) == @intFromPtr(v)) rt.core_arith_pristine = false;
+        }
+    }
     // Same deopt for the collection-accessor intrinsics (op_get / op_nth, O-043):
     // an alter-var-root on the cached `get`/`nth` Var must honour the new root.
     for (rt.coll_vars) |cached| {

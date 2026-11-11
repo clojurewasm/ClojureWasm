@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: asserts the source snippet in the CLI's rendered stderr for an uncaught error
 # test/e2e/phase16_load_file_source.sh: an error in a load-file'd file renders
 # the snippet of THAT file, at its current text.
 #

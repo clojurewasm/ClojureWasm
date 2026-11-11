@@ -42,6 +42,25 @@
       (burst)
       (is (<= (committed) (+ first-peak (* 2 mb)))))))
 
+(deftest churn-over-a-large-live-set-grows-by-one-live-set
+  ;; CLJW-PERF-GC-RETAIN: the trigger is max(floor, live), so churn over a
+  ;; live heap C peaks near 2C (live plus one live set of fresh space). The
+  ;; former 2x-live trigger peaked near 3C.
+  (let [held (vec (range 12000000))
+        _ (System/gc)
+        c (committed)
+        peak (loop [i 0 peak c]
+               (if (< i 4000000)
+                 (let [m {:a i :b [i i i]}]
+                   (recur (+ i (count (:b m)) -2)
+                          (if (zero? (mod i 4096)) (max peak (committed)) peak)))
+                 peak))]
+    (testing "the live set dwarfs the steered floor"
+      (is (> c (* 96 mb))))
+    (testing "peak committed heap stays under 2.5x the live heap"
+      (is (< peak (* 5/2 c)) (str "live " (quot c mb) " MB, peak " (quot peak mb) " MB")))
+    (is (= 12000000 (count held)))))
+
 (deftest memory-readings-stay-coherent
   (let [r (Runtime/getRuntime)
         t (.totalMemory r)

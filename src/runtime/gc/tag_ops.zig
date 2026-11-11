@@ -98,7 +98,7 @@ pub var tag_finaliser_table: [64]?*const fn (gc: *anyopaque, header: *HeapHeader
 /// Per-tag OWNED-BYTES hook (D-573): the bytes a live object owns BEYOND its
 /// GC record block — the memory its finaliser would free. `sweep` adds this to
 /// `last_live_bytes` so the adaptive trigger (`threshold = max(floor,
-/// last_live * 2)`) sees a cost-proportional live size. Without it, a heap of
+/// last_live)`) sees a cost-proportional live size. Without it, a heap of
 /// Strings reported only the 32-byte wrappers while the byte payloads — the
 /// memory actually held, the graph actually costing RSS — were invisible:
 /// measured 78 MB reported against 359 MB RSS, a factor of 4.6, which made the

@@ -24,9 +24,9 @@
 schema_version: "2.0"
 summary:
   namespaces_required: 36
-  total: 1464
-  zig: 431
-  clj: 807
+  total: 1472
+  zig: 438
+  clj: 808
   value: 220
   unbound: 6
 vars:
@@ -36,14 +36,17 @@ vars:
   "cljw.ffi/-bytes": { impl: zig, flags: "-" }
   "cljw.ffi/-close": { impl: zig, flags: "-" }
   "cljw.ffi/-invoke": { impl: zig, flags: "-" }
+  "cljw.ffi/-invoke-at": { impl: zig, flags: "-" }
   "cljw.ffi/-open": { impl: zig, flags: "-" }
   "cljw.ffi/-prepare": { impl: zig, flags: "-" }
+  "cljw.ffi/-prepare-at": { impl: zig, flags: "-" }
   "cljw.ffi/-string": { impl: zig, flags: "-" }
   "cljw.ffi/-sym": { impl: zig, flags: "-" }
   "cljw.ffi/bytes": { impl: clj, flags: "-" }
   "cljw.ffi/call": { impl: clj, flags: "-" }
   "cljw.ffi/close": { impl: clj, flags: "-" }
   "cljw.ffi/function": { impl: clj, flags: "-" }
+  "cljw.ffi/function-at": { impl: clj, flags: "-" }
   "cljw.ffi/open": { impl: clj, flags: "-" }
   "cljw.ffi/string": { impl: clj, flags: "-" }
   "cljw.ffi/sym": { impl: clj, flags: "-" }
@@ -92,11 +95,13 @@ vars:
   "cljw.internal/__entry-at": { impl: zig, flags: "-" }
   "cljw.internal/__extend-type!": { impl: zig, flags: "-" }
   "cljw.internal/__extends?": { impl: zig, flags: "-" }
+  "cljw.internal/__filter-lazy": { impl: zig, flags: "-" }
   "cljw.internal/__future-call": { impl: zig, flags: "-" }
   "cljw.internal/__get-method": { impl: zig, flags: "-" }
   "cljw.internal/__in-reader": { impl: zig, flags: "-" }
   "cljw.internal/__in-transaction?": { impl: zig, flags: "-" }
   "cljw.internal/__instance-of?": { impl: zig, flags: "-" }
+  "cljw.internal/__iterate-lazy": { impl: zig, flags: "-" }
   "cljw.internal/__kv-reduce-or": { impl: zig, flags: "-" }
   "cljw.internal/__lazy-seq-create": { impl: zig, flags: "-" }
   "cljw.internal/__load-source": { impl: zig, flags: "-" }
@@ -105,6 +110,7 @@ vars:
   "cljw.internal/__make-protocol!": { impl: zig, flags: "-" }
   "cljw.internal/__make-protocol-fn!": { impl: zig, flags: "-" }
   "cljw.internal/__map->record": { impl: zig, flags: "-" }
+  "cljw.internal/__map-lazy": { impl: zig, flags: "-" }
   "cljw.internal/__map-step": { impl: zig, flags: "-" }
   "cljw.internal/__methods": { impl: zig, flags: "-" }
   "cljw.internal/__native-type": { impl: zig, flags: "-" }
@@ -118,6 +124,7 @@ vars:
   "cljw.internal/__queue-pop": { impl: zig, flags: "-" }
   "cljw.internal/__re-find": { impl: zig, flags: "-" }
   "cljw.internal/__read-instant-timestamp": { impl: zig, flags: "-" }
+  "cljw.internal/__reduce-kv-vector": { impl: zig, flags: "-" }
   "cljw.internal/__reify!": { impl: zig, flags: "-" }
   "cljw.internal/__remove-method!": { impl: zig, flags: "-" }
   "cljw.internal/__resolve": { impl: zig, flags: "-" }
@@ -134,6 +141,7 @@ vars:
   "cljw.internal/__string-writer": { impl: zig, flags: "-" }
   "cljw.internal/__subvec": { impl: zig, flags: "-" }
   "cljw.internal/__subvec-fast": { impl: zig, flags: "-" }
+  "cljw.internal/__take-lazy": { impl: zig, flags: "-" }
   "cljw.internal/__unsupported-host-ref": { impl: zig, flags: "-" }
   "cljw.internal/__update-in": { impl: zig, flags: "-" }
   "cljw.internal/__vector-pop": { impl: zig, flags: "-" }

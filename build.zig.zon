@@ -1,6 +1,6 @@
 .{
     .name = .cljw,
-    .version = "1.15.4",
+    .version = "1.15.8",
     .fingerprint = 0x1869d207073beffa,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
@@ -13,6 +13,27 @@
         },
         // zwasm v2 embedding API (F-001 / D-037). `lazy` so the DEFAULT build +
         // gate never resolve it — only `-Dwasm` (b.lazyDependency) does.
+        //
+        // 2026-10-24: pinned to 787bf6c9, the head of fork PR #9
+        // (fix/component-go-reactor-init), stacked on #8 (22c2dc9f,
+        // fix/interp-frame-depth: the interp call-frame stack grows past 256
+        // with a configurable cap) and #7 (d77568a0, below). #9: a canon
+        // lower that returns a list or string allocates through the realloc
+        // named by its own canonopt, not the lift-side cabi_realloc. A Go
+        // reactor component built with the preview1 adapter (lazywal) now
+        // loads and answers. Same fix-branch caveat as #7: re-point to fork
+        // `main` once #7, #8 and #9 land.
+        //
+        // 2026-10-23: pinned to d77568a0, the head of fork PR #7
+        // (fix/wasi-p2-adapter-imports, one commit on fork `main` e9d74934):
+        // a component built with the wasi_snapshot_preview1 adapter
+        // (`wasm-tools component new --adapt`, any preview1 guest) links.
+        // The adapter's `env::memory` re-export now resolves, and three 0.2
+        // rows are served (filesystem-error-code, wall-clock/monotonic-clock
+        // `resolution`). Upstream: zwasm/zwasm#634. This pins a fix branch
+        // only because the fork's Actions are disabled, so #7 cannot merge
+        // with CI green. Its merge commit has the same tree, so the `.hash`
+        // stays valid: re-point `?ref=main#<merge sha>` once #7 lands.
         //
         // 2026-10-22: the fork's `main` is cljw's zwasm integration line:
         // upstream zwasm/zwasm `main` plus patches found and proven here, each
@@ -80,8 +101,8 @@
         // moment anything else claims that name. The `.hash` is
         // content-addressed, so the host of the URL never changes it.
         .zwasm = .{
-            .url = "git+https://github.com/BuddhiLW/zwasm.git?ref=main#e9d74934ec3212e502b101feab7673bf11c910ba",
-            .hash = "zwasm-2.7.0-FT1Fv3v5ngAavfQgV-JntjzckyYqMLUUCfYssfSrFN9S",
+            .url = "git+https://github.com/BuddhiLW/zwasm.git?ref=fix/component-go-reactor-init#787bf6c93c2b799305c4ee35b7f7f183e0408e13",
+            .hash = "zwasm-2.7.0-FT1FvzhhnwCWJOlb95vNM0JTRiQDhERDVHbj-KpHF-9a",
             .lazy = true,
         },
     },

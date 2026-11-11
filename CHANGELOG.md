@@ -7,6 +7,176 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+## [1.15.8] - 2026-11-11
+
+### Added
+
+- **`cljw.ffi/function-at`: call a function pointer.** `(ffi/function-at
+  addr [:long :long] :long)` turns an integer code address, such as one a C
+  API returns (a vtable slot, a plugin registry, jolt's `jolt_lookup`), into
+  an ordinary Clojure fn, with the same types and limits as `function`. No
+  library owns an address, so `close` does not reach it and there is no
+  `:closed` error; the caller keeps the code loaded. A NULL address (0 or
+  nil) throws `{:ffi/error :symbol :address addr}` at creation, a bad
+  signature `{:ffi/error :signature :address addr :reason ...}` (ADR-0202
+  amendment).
+- **`docs/examples/ffi/jolt/`: cljw calls a Clojure library compiled by
+  jolt.** `jolt build --library` produces a C-ABI shared object; the example
+  builds one, initialises it, and calls its exports through `jolt_lookup` and
+  `ffi/function-at`, next to a C driver doing the same.
+- **`docs/examples/wasm/clojure-guest/`: cljw hosting cljw.** The
+  `wasm32-wasi` build of the runtime runs under `wasm/run` with fuel, memory,
+  output and wall-clock budgets. The guest build is not a release artifact.
+- **`docs/examples/polyglot/hosts.cljc` runs on jolt**, a fourth host beside
+  the JVM, cljw and cljrs, and the gate checks it when `jolt` is on PATH.
+- **Every accepted divergence carries an executable check (ADR-0208).** The
+  gate re-evaluates each `accepted_divergences.yaml` row on cljw and on JVM
+  Clojure, and a row whose two answers have converged fails as stale. The
+  backfill corrected AD-065 and added AD-077.
+- `bench/numeric/`: `fib30`, `loop10m` and startup probes for the numeric
+  hot path.
+
+### Changed
+
+- The README documents `cljw.ffi` and the jolt library route, and
+  `docs/landscape.md` places jolt and states what cljw hosts and where it is
+  not yet a guest.
+
+### Fixed
+
+- CI installs ripgrep from a checksum-pinned release instead of `apt`, whose
+  mirror lookup failed the Linux gate before any test ran.
+
+## [1.15.7] - 2026-11-08
+
+### Added
+
+- `docs/examples/fractal/` grows into nineteen engines behind one renderer
+  port: Zig, C and Rust wasm kernels (on zwasm and in the browser), plain
+  Clojure on cljw and the JVM, replikativ/raster on the JVM and CUDA through
+  clojurecuda. The page is ClojureScript (re-frame and reagent) with zoom, pan,
+  split comparison and a bench. Fractals are data: Mandelbrot, Burning Ship,
+  Tricorn and the cubic Multibrot, each also as a Julia set, compiled from one
+  expression to the oracle, raster and CUDA, which agree bit for bit.
+  `golden.edn` pins every exact engine; property, mutation and hive-cljs page
+  tests guard it.
+
+### Changed
+
+- `reduce-kv` on vectors and subvecs now indexes in Zig instead of interpreting
+  the per-element loop, preserving reduced early termination and the original
+  indexed keys. On staging with the newer VM and allocator, a pinned-core
+  40-pass, 100k-element vector probe falls from 16.01B to 4.54B user
+  instructions (-71.7%). The `reduce_map` lazy-map shortcut was rejected
+  because it skipped observable lazy realization/memoization; its parity-safe
+  path stays at 29.29B instructions, and `transduce` stays at 28.82B.
+
+### Fixed
+
+- The fractal example page no longer hides its header controls: a bare
+  `canvas` rule positioned the rolling ms/frame chart over the top of the
+  page. The rule is scoped to the fractal view and the chart is a block of
+  the stats panel. A frame faster than the timer resolution shows `-`
+  Miter/s (HUD, live table and bench) instead of `Infinity`. The `phase16_fractal_server` gate now stops its server for real
+  on exit, instead of leaving it holding port 8159 for up to 120 s.
+- `derive` rejects a bad tag or parent with clj's own `AssertionError`
+  (`Assert failed: (namespace parent)` and the rest, in clj's order), and a
+  redundant or cyclic edge with a plain `Exception`, where it raised
+  `ex-info` with cljw-only wording.
+- `(ancestors C)` for a class includes `Object`, in the global hierarchy and
+  in a passed-in one, as clj's superclass walk does; `(ancestors Object)` and
+  an interface stay without it.
+- On glibc, cljw now pins malloc's mmap threshold at 128 KiB at startup
+  (unless `GLIBC_TUNABLES` is set), so long-lived servers that churn
+  64-256 KiB buffers, such as bb-mcp, no longer creep in RSS as glibc raises
+  the threshold and fragments its per-thread arenas. Other libcs are untouched.
+
+## [1.15.6] - 2026-11-08
+
+### Added
+
+- `cljw.http.server` accepts a primitive byte-array `:body` (for example the
+  result of `wasm/mem-read-array`) and writes its bytes verbatim. Binary
+  responses were impossible before: a String body is UTF-8, so a 640x480 RGBA
+  frame came back as 1,748,379 bytes instead of 1,228,800, and a byte-array
+  body was sent empty. Covered by a 256-byte case in `phase16_http_server`.
+- `docs/examples/fractal/`: a Mandelbrot zoom where one Zig `kernel.wasm` runs
+  on cljw's zwasm (JIT, interpreter, and a simd128 build on the JIT) behind
+  `cljw.http.server`, and in the browser on the same bytes. `bench.clj` checks
+  iteration and framebuffer parity across engines. Two e2e gates,
+  `phase16_fractal_kernel` (parity, and both artifacts rebuilt byte-identical
+  from the header recipes) and `phase16_fractal_server` (routes and tiles over
+  real HTTP), keep the committed artifacts honest.
+
+## [1.15.5] - 2026-10-29
+
+### Changed
+
+- Transient maps and sets now edit owned HAMT paths in place during `into`,
+  cloning only shared nodes; `persistent!` freezes ownership so later transients
+  cannot mutate published maps. The `into_collections` workload drops from
+  18.215B to 17.111B user instructions (-6.1%); isolated 20k-entry map `into`
+  drops from 2.599B to 2.016B (-22.4%) on one pinned core.
+
+### Fixed
+
+- The non-blocking bench-vs-bb CI job no longer fails on a restored
+  `.zig-cache` whose WriteFiles output is missing (`file_hash FileNotFound`
+  on `bootstrap_sources_stub.zig`). The job only reads the cache, so on a
+  failed build it drops `.zig-cache` and builds cold once.
+
+### Changed
+
+- Allocating a small GC cell is cheaper: the page heap's free-slot and bump
+  path is now inlined into each typed allocation site, with the size class
+  and the small/large choice folded at compile time, and the live-list
+  record is stored in place when the list has room. On a pinned core (user
+  instructions): lazy_chain 9.07 G to 8.27 G (-8.8 %), gc_churn 8.05 G to
+  7.75 G (-3.7 %), about 85 fewer instructions per allocation. Peak RSS is
+  unchanged.
+- `(inc x)` and `(dec x)` on canonical `clojure.core/inc`/`dec` now compile to
+  VM intrinsics (`op_inc` / `op_dec`) instead of a generic call into the
+  builtin. Fixnums and floats are computed inline; any other operand, an i48
+  overflow and a redefined `inc`/`dec` (`alter-var-root`) still go through the
+  builtin. The VM no longer runs a per-op cold-opcode test or publishes the
+  handler top on every op, and the arith fast path is inlined. The empty
+  `(loop [i 0 s 0] (if (< i n) (recur (inc i) (+ s 1)) s))` costs about 833
+  user instructions per iteration, down from 1585 (pinned core,
+  `instructions:u`); `(loop [i 0] (if (< i n) (recur (inc i)) i))` 601, down
+  from 1307. Bytecode format v15 (v14 artifacts are rejected).
+- A string of up to about 4 KB now keeps its bytes inside its own GC cell
+  instead of in a separate malloc block freed by a finaliser: one allocation
+  per string instead of two. Measured on a pinned core (user instructions, a
+  noisy host made wall time unreliable): `(count (str i))` in a loop costs 2300
+  instructions per iteration over the empty loop, down from 2790; bench/vs_bb
+  string_ops 5959M -> 5219M (-12%), gc_churn 8369M -> 8011M (-4%). Wall time
+  at load ~40: string_ops 2.02x -> 1.49x bb, probe str_ms 321-439 -> 245-439
+  ms (bb 71-122).
+
+- A small vector's tail and an array map's entries are now sized to their
+  element count inside one GC cell, not a fixed 32-slot tail (272 bytes) and
+  a fixed 16-slot entry array (152 bytes). 200k retained `{:id i :v [i (inc i)]}`
+  hold 29.6 MB live instead of 97.2 MB (148 bytes per entry, was 486), and
+  `bench/vs_bb/workloads/gc_churn.clj` allocates 175 MB instead of 497 MB.
+
+- **Double arithmetic and comparison stay inline in the VM (O-065).** A double
+  paired with a double or a long computes `+ - * < <= > >=` in f64 without the
+  builtin var call. Instruction counts: dot product over 1k doubles -12%,
+  over 100k -11%, a float `loop`/`recur` -26%.
+
+- **Lazy `map`, `filter`, `take` and `iterate` realize their nodes natively
+  (O-110).** A lazy chain no longer re-enters the evaluator per element to
+  step a `lazy-seq` thunk. `bench/vs_bb` lazy_chain went from 13.75x bb to
+  2.28x bb (1315 ms vs bb 576 ms in-process), with peak RSS 117 MB vs bb 198.
+
+- **The collect trigger grows the heap by one live set, not two
+  (CLJW-PERF-GC-RETAIN).** The threshold is now `max(floor, last_live)`
+  instead of `max(floor, 2 * last_live)`; peak heap is about live plus one
+  threshold, so a large live set no longer peaks near 3x itself. Peak RSS:
+  1M retained maps plus churn 1729 MB to 1153 MB (-33%), `bench/vs_bb`
+  gc_churn 352 MB to 242 MB (-31%), for +1.8% instructions on gc_churn and
+  +4.5% on the large-live probe; a small-live high-churn loop is unchanged.
+
 ## [1.15.4] - 2026-10-23
 
 ### Added

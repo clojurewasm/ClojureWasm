@@ -158,7 +158,7 @@ pub fn sweep(gc: *GcHeap) void {
 
 /// Full mark-sweep collection cycle: enumerate every root, mark
 /// transitively, sweep, then `gc_trigger.afterSweep` (threshold
-/// `max(floor, last_live * 2)`, counter reset, empty-page release).
+/// `max(floor, last_live)`, counter reset, empty-page release).
 ///
 /// The entry point lives here rather than on `GcHeap` because the cycle
 /// traverses `root_set.zig`, which imports `gc_heap.zig`.

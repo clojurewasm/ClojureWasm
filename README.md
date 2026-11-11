@@ -22,6 +22,7 @@
   <a href="#install">Install</a> ·
   <a href="#try-it-online">Demos</a> ·
   <a href="#call-c-from-clojure">Call C from Clojure</a> ·
+  <a href="#call-a-native-library">Native libraries</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#numbers">Numbers</a> ·
   <a href="#where-it-fits">Where it fits</a> ·
@@ -123,6 +124,36 @@ lists and `result<T, E>` cross as plain Clojure data.
 All of them build and run in [`docs/examples/polyglot`](./docs/examples/polyglot/README.md),
 rebuilt from source by CI on every push.
 
+## Call a native library
+
+`cljw.ffi` opens a shared library with `dlopen` and turns a C symbol, or a
+function pointer C handed back, into a Clojure fn. No sandbox applies: the
+library runs with the authority of the process.
+
+```clojure
+(require '[cljw.ffi :as ffi])
+
+(def libm (ffi/open "libm.so.6"))
+(def pow (ffi/function libm "pow" [:double :double] :double))
+(pow 2.0 10.0)   ;=> 1024.0
+```
+
+A Clojure library compiled by [jolt](https://github.com/jolt-lang/jolt)
+(`jolt build --library`) is such a library. Its exports are reached through
+`jolt_lookup`, which returns a pointer, and `ffi/function-at` calls it:
+
+```clojure
+(def lib (ffi/open "build/libdemo.so"))
+(ffi/call lib "jolt_library_init" [:int :pointer] :int 0 nil)
+(def lookup (ffi/function lib "jolt_lookup" [:string] :pointer))
+(def add (ffi/function-at (lookup "add") [:int :int] :int))
+(add 2 40)   ;=> 42
+```
+
+`function-at` needs v1.15.8 or later. Types,
+arrays and the jolt build are in [`docs/examples/ffi`](./docs/examples/ffi/README.md)
+and [`docs/examples/ffi/jolt`](./docs/examples/ffi/jolt/README.md).
+
 ## How it works
 
 ```mermaid
@@ -177,9 +208,15 @@ The release size is checked against the built binary on every push.
   returns `{:exit :out :err}`, as on the JVM and babashka.
 - **Short-lived processes.** CLIs, scripts and serverless handlers that pay
   for startup thousands of times a day.
-- **One program, two runtimes.** A host-free `.cljc` runs unchanged on the
-  JVM, on `cljw` and on its Rust-hosted sibling
-  [clojurust](https://github.com/BuddhiLW/clojurust) (`cljrs`).
+- **Untrusted Clojure.** The runtime also builds for `wasm32-wasi`, so a native
+  `cljw` runs a second `cljw` as a guest under the same budgets
+  ([example](./docs/examples/wasm/clojure-guest/README.md)). The guest build is
+  not a release artifact yet.
+- **One program, four hosts.** A host-free `.cljc` runs unchanged on the JVM,
+  on `cljw`, on its Rust-hosted sibling
+  [clojurust](https://github.com/BuddhiLW/clojurust) (`cljrs`) and on
+  [jolt](https://github.com/jolt-lang/jolt)
+  ([measured](./docs/examples/polyglot/README.md#one-program-four-hosts)).
 
 ```mermaid
 flowchart LR

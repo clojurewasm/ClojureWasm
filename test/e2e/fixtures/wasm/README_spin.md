@@ -56,7 +56,7 @@ WebAssembly component exhausted its fuel budget; the handle stays exhausted, ...
 A genuine guest fault (`docs/examples/wasm/trap.wasm`, divide by zero) still
 reads `trapped`, which is what lets an operator tell a guest bug from a budget.
 
-The no-build regression is `test/e2e/phase16_wasm_component_budget.sh`.
+The no-build regression is `test/clj/suites/wasm_component_budget_test.clj`.
 Set `CLJW_BIN` to the binary to verify. It places its own outer process
 timeout around the fixture, so a broken fuel implementation cannot hang the
 test runner. That test timeout is not a component runtime feature.

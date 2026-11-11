@@ -70,7 +70,10 @@ pub const LazySeq = extern struct {
     /// a thread holds the CAS-claim and is invoking the thunk). Accessed
     /// only via `@atomicLoad`/`@cmpxchgStrong`/`@atomicStore` in `force`.
     realized_flag: u8 = 0,
-    _pad: [5]u8 = .{ 0, 0, 0, 0, 0 },
+    /// 1 when `thunk` is a native step (a builtin_fn called with
+    /// `[step_a step_b]`) instead of an arity-0 closure (O-110).
+    native: u8 = 0,
+    _pad: [4]u8 = .{ 0, 0, 0, 0 },
     /// Arity-0 Fn Value that produces the body. Released (nil) once the
     /// node is realised, so the closure and what it captured can be
     /// collected (JVM `fn = null`); kept across a thrown realisation so the
@@ -88,6 +91,11 @@ pub const LazySeq = extern struct {
     /// (NOT the user meta map) so `(meta (map …))` stays nil = clj parity. Inert
     /// to every seq op (first/rest/seq/take force the thunk normally). [refs: O-023]
     fuse: Value = Value.nil_val,
+    /// PERF: O-110 the two operands of a native step (`native == 1`), e.g.
+    /// `f` and the source seq of a one-coll `map` node. Released with the
+    /// thunk once the node is realised. [refs: O-110]
+    step_a: Value = Value.nil_val,
+    step_b: Value = Value.nil_val,
 
     comptime {
         std.debug.assert(@alignOf(LazySeq) >= 8);
@@ -116,6 +124,27 @@ pub fn alloc(rt: *Runtime, thunk_fn: Value) !Value {
         .fuse = Value.nil_val,
     };
     return Value.encodeHeapPtr(.lazy_seq, ls);
+}
+
+/// PERF: a lazy node whose body is a native step: realizing it calls the
+/// builtin `step` with `[a b]` instead of an interpreted arity-0 closure, so
+/// a core producer (map/filter/take/iterate) costs no closure allocation and
+/// no eval re-entry per node. Same at-most-once realization. Callers root
+/// `a`/`b` across this alloc. [refs: O-110]
+pub fn allocNative(rt: *Runtime, step: Value, a: Value, b: Value) !Value {
+    const ls = try rt.gc.alloc(LazySeq);
+    ls.* = .{ .header = HeapHeader.init(.lazy_seq), .native = 1, .thunk = step, .step_a = a, .step_b = b };
+    return Value.encodeHeapPtr(.lazy_seq, ls);
+}
+
+/// Invoke a node's body: the native step on its operands, or the closure.
+fn callBody(rt: *Runtime, env: *env_mod.Env, ls: *LazySeq, loc: SourceLocation) anyerror!Value {
+    if (ls.native == 1) {
+        const step = ls.thunk.asBuiltinFn(@import("dispatch.zig").BuiltinFn);
+        return step(rt, env, &.{ ls.step_a, ls.step_b }, loc);
+    }
+    const vt = rt.vtable orelse return error.LazySeqVTableNotInstalled;
+    return vt.callFn(rt, env, ls.thunk, &[_]Value{}, loc);
 }
 
 /// True iff the LazySeq's thunk has already been forced. Powers
@@ -166,16 +195,12 @@ fn realize(rt: *Runtime, env: *env_mod.Env, v: Value, loc: SourceLocation, compt
                 // Try to win the realise window. Loser falls through to
                 // re-observe (the winner is now CLAIMING).
                 if (@cmpxchgStrong(u8, &ls.realized_flag, flag_pending, flag_claiming, .acq_rel, .acquire) != null) continue;
-                const vt = rt.vtable orelse {
-                    @atomicStore(u8, &ls.realized_flag, flag_pending, .release);
-                    return error.LazySeqVTableNotInstalled;
-                };
                 var gc_roots: [1]Value = .{.nil_val};
                 var gc_sp: u16 = 1;
                 var gc_frame: root_set.EvalFrame = .{ .stack = &gc_roots, .sp = &gc_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
                 root_set.eval_frame_head = &gc_frame;
                 defer root_set.eval_frame_head = gc_frame.parent;
-                const raw = vt.callFn(rt, env, ls.thunk, &[_]Value{}, loc) catch |e| {
+                const raw = callBody(rt, env, ls, loc) catch |e| {
                     @atomicStore(u8, &ls.realized_flag, flag_pending, .release);
                     return e;
                 };
@@ -186,6 +211,8 @@ fn realize(rt: *Runtime, env: *env_mod.Env, v: Value, loc: SourceLocation, compt
                 };
                 ls.realized = stored;
                 ls.thunk = .nil_val;
+                ls.step_a = .nil_val;
+                ls.step_b = .nil_val;
                 // Publish: the release-store fences the plain `realized` /
                 // `thunk` writes so a fast-path acquire-load observes them
                 // (clj's volatile-lock visibility trick).
@@ -236,6 +263,8 @@ pub fn traceLazySeq(gc_ptr: *anyopaque, header: *HeapHeader) void {
     if (ls.realized.heapHeader()) |h| mark_sweep.mark(gc, h);
     if (ls.meta.heapHeader()) |h| mark_sweep.mark(gc, h);
     if (ls.fuse.heapHeader()) |h| mark_sweep.mark(gc, h);
+    if (ls.step_a.heapHeader()) |h| mark_sweep.mark(gc, h);
+    if (ls.step_b.heapHeader()) |h| mark_sweep.mark(gc, h);
 }
 
 /// Register the LazySeq trace fn into `tag_ops.tag_trace_table`.
@@ -281,7 +310,7 @@ fn copy(rt: *Runtime, v: Value) !*LazySeq {
             @atomicStore(u8, &ls.realized_flag, flag_pending, .release);
         };
         const nls = try rt.gc.alloc(LazySeq);
-        nls.* = .{ .header = HeapHeader.init(.lazy_seq), .realized_flag = flag, .thunk = ls.thunk, .realized = ls.realized, .meta = ls.meta, .fuse = ls.fuse };
+        nls.* = .{ .header = HeapHeader.init(.lazy_seq), .realized_flag = flag, .native = ls.native, .thunk = ls.thunk, .realized = ls.realized, .meta = ls.meta, .fuse = ls.fuse, .step_a = ls.step_a, .step_b = ls.step_b };
         return nls;
     }
 }
