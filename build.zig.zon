@@ -1,6 +1,6 @@
 .{
     .name = .cljw,
-    .version = "1.15.7",
+    .version = "1.15.8",
     .fingerprint = 0x1869d207073beffa,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{

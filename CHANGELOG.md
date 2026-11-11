@@ -7,6 +7,8 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+## [1.15.8] - 2026-11-11
+
 ### Added
 
 - **`cljw.ffi/function-at`: call a function pointer.** `(ffi/function-at
