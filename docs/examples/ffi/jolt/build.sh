@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the jolt library, the named-symbol shim, and the C driver into build/.
+# Build the jolt library and the C driver into build/.
 #
 #   sh docs/examples/ffi/jolt/build.sh
 #
@@ -28,7 +28,5 @@ fi
 
 cd "$here"
 jolt build --library -m demo.core -o "$out/libdemo"
-"$cc" -O2 -shared -fPIC "$here/shim.c" -L"$out" -ldemo -lpthread \
-  -Wl,-rpath,'$ORIGIN' -o "$out/libdemo_named.so"
 "$cc" -O2 "$here/driver.c" -ldl -o "$out/driver"
-echo "built $out/libdemo.so $out/libdemo_named.so $out/driver"
+echo "built $out/libdemo.so $out/driver"

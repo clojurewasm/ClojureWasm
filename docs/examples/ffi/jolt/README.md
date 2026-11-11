@@ -13,21 +13,21 @@ object, and `cljw.ffi` calls it like any other C library.
 ```sh
 sh docs/examples/ffi/jolt/build.sh
 cljw -M docs/examples/ffi/jolt/jolt_lib.clj docs/examples/ffi/jolt/build
-# jolt_library_init 0 in 495.06 ms
-# jolt_lookup add 1085063232 mandel 1085063520 missing 0
+# jolt_library_init 0 in 169.24 ms
+# jolt_lookup add 1097891904 mandel 1097892192 missing 0
+# export missing: {:ffi/error :symbol, :address 0}
 # add(2,40) 42 mandel(-0.75,0.1,1000) 33
-# grid 300x200 sum 4198758 in 991.74 ms
-cljw -M docs/examples/ffi/hive_call.clj docs/examples/ffi/jolt/build/libdemo_named.so ops
+# grid 300x200 sum 4198758 in 406.92 ms
 # {:ok true, :value [{:doc "Sum of a and b.", :args ["a" "b"], :name "add"}
-#             {:doc "Escape count of cr + ci*i, capped at max.", :args ["cr" "ci" "max"], :name "mandel"}
-#             {:doc "List the ops this library answers.", :args [], :name "ops"}]}
+#                    {:doc "Escape count of cr + ci*i, capped at max.", :args ["cr" "ci" "max"], :name "mandel"}
+#                    {:doc "List the ops this library answers.", :args [], :name "ops"}]}
+# {:ok true, :value 42.0}
 ```
 
 | file | is |
 |---|---|
 | `src/demo/core.clj` | the jolt library: `add`, `mandel`, and the hive C ABI (`hive_call`, `hive_free`) |
-| `build.sh` | builds `build/libdemo.so`, the shim and the C driver |
-| `shim.c` | interim: re-exports the looked-up pointers as named symbols |
+| `build.sh` | builds `build/libdemo.so` and the C driver |
 | `driver.c` | C host: dlopen, init, lookup, call, timed |
 | `jolt_lib.clj` | the cljw host |
 | `chez.c`, `extract_chez.py` | a `chez` for `jolt build --library`, from the kernel the jolt binary embeds |
@@ -37,28 +37,40 @@ cljw -M docs/examples/ffi/hive_call.clj docs/examples/ffi/jolt/build/libdemo_nam
 `nm -D --defined-only libdemo.so` lists `jolt_library_init`, `jolt_lookup`,
 `jolt_library_release_thread`, `jolt_library_shutdown` and the Chez kernel
 (`S*`). The `export!` names are not dynamic symbols: `jolt_lookup("add")`
-returns a function pointer, valid after `jolt_library_init`. So cljw can run
-the init and the lookups by name today, and it cannot yet call what the lookup
-returns. `shim.c` closes the gap for now: it calls the init once, looks the
-exports up, and forwards named C functions to them. Once `cljw.ffi` can call
-an address (card CLJW-FFI-CALL-ADDRESS, branch `feat/ffi-call-address`) the
-host becomes
+returns a function pointer, valid after `jolt_library_init`, and 0 for a name
+the library does not export. cljw calls the two entry points by name and the
+returned pointers with `ffi/function-at`:
 
 ```clojure
-(def lookup (ffi/function lib "jolt_lookup" [:string] :pointer))
+(def lib (ffi/open "build/libdemo.so"))
 (ffi/call lib "jolt_library_init" [:int :pointer] :int 0 nil)
-(def add (ffi/function (lookup "add") [:int :int] :int))   ; pending that branch
+(def lookup (ffi/function lib "jolt_lookup" [:string] :pointer))
+(def add (ffi/function-at (lookup "add") [:int :int] :int))
+(add 2 40)   ;=> 42
 ```
 
-`jolt_lib.clj` already carries this form in `direct` and reports it pending.
+A name the library lacks gives address 0, which `function-at` refuses with
+`{:ffi/error :symbol :address 0}`. `jolt_lib.clj` also speaks the hive C ABI
+(`hive_call`, `hive_free`, as `../hive_call.clj` does) over looked-up pointers.
+No library owns a looked-up address, so `ffi/close` does not invalidate these
+fns: keep `lib` open while they are called.
 
-## Measured (x86_64 Linux, jolt 0.8.19, cljw 1.15.3)
+## Measured
+
+2026-11-11, x86_64 Linux, jolt 0.8.19, cljw 1.15.7 (ReleaseSafe) with
+`function-at`. Five runs each, on a host under load (load average about 33),
+so the ranges are wide; the C driver ran on the same host in the same minute.
 
 | | C host | cljw host |
 |---|---|---|
-| `jolt_library_init` | 236 to 492 ms | 221 to 495 ms warm, 1.5 s cold |
-| 60 000 `mandel` calls, 255 iterations max | 200 to 290 ms | 990 to 1060 ms (through the shim) |
+| `jolt_library_init` | 195 to 223 ms | 169 to 265 ms |
+| 60 000 `mandel` calls, 255 iterations max | 175 to 187 ms | 407 to 502 ms |
 | `jolt build --library` | 28 s, 14.9 MB `.so` | |
+
+The 60 000-call grid through `function-at` measured the same as through the
+interim C shim it replaces (385 to 531 ms over the same five runs), so the
+shim is gone and there is one path. Both hosts call the same kernel in the
+same library, so the gap to the C host is on the cljw side of the call.
 
 Init loads a whole Chez heap (the runtime and `clojure.core`) on every
 process start. Two collectors, cljw's and Chez's, share the process without
@@ -67,11 +79,12 @@ trouble in these runs, including under cljw allocation churn after init.
 ## The trade
 
 A jolt library is native code. It runs with the ambient authority of the cljw
-process (files, network, every byte of memory), carries its own GC and signal
-handling, and a fault in it is a fault in cljw. A Wasm guest loaded by cljw is
-confined to its own linear memory and to the imports it is given. Use a jolt
-library where native speed and the whole Clojure language on the far side are
-worth that trust; use a Wasm guest where the code is not yours to trust.
+process (files, network, every byte of memory), carries its own GC, installs
+its signal handlers at `jolt_library_init`, and a fault in it is a fault in
+cljw. A Wasm guest loaded by cljw is confined to its own linear memory and to
+the imports it is given. Use a jolt library where native speed and the whole
+Clojure language on the far side are worth that trust; use a Wasm guest where
+the code is not yours to trust.
 
 ## Building
 
