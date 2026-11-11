@@ -18,6 +18,7 @@ ordinary Clojure fn. No libffi, no binding generator, no rebuild of cljw.
 | `(close lib)` | nil, idempotent; its functions then throw `{:ffi/error :closed}` |
 | `(sym lib name)` | symbol address as an integer |
 | `(function lib name arg-types ret-type)` | a Clojure fn; types resolved once |
+| `(function-at addr arg-types ret-type)` | a Clojure fn over a function pointer C handed back; no library owns it, so no `:closed` and the caller keeps it valid; 0 or nil throws `{:ffi/error :symbol}` |
 | `(call lib name arg-types ret-type & args)` | one-shot call |
 | `(string ptr)` | copy a NUL-terminated C string; 0 or nil gives nil |
 | `(bytes ptr n)` | copy `n` bytes into a byte array |
@@ -53,6 +54,19 @@ a C array as it stands:
 
 `object-array`, `to-array` and `into-array` hold Clojure values and are not
 accepted as `:pointer`.
+
+A C API that returns a function pointer (a vtable, a plugin registry,
+`jolt_lookup`) is called through `function-at`:
+
+```clojure
+;; long (*get_adder(void))(long, long);
+(def add (ffi/function-at ((ffi/function lib "get_adder" [] :pointer))
+                          [:long :long] :long))
+(add 2 3)   ;=> 5
+```
+
+The address has no owning library, so closing `lib` does not invalidate
+`add`: keep the code it points into loaded for as long as you call it.
 
 Limits: at most 6 integer-class and 8 `:double` arguments, no varargs
 (`printf`), no structs by value, no `float`. Available on x86_64 and aarch64,
