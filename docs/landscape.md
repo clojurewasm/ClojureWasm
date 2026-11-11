@@ -12,6 +12,7 @@ corner, and the only numbers it claims are its own measured ones.
 | **ClojureScript**  | JavaScript. Front-end and the Node ecosystem.                                     | JS host.                                |
 | **jank**           | LLVM / C++. Native code and seamless C++ interop.                                 | Native.                                 |
 | **ClojureDart**    | Dart / Flutter. Mobile and cross-platform UI.                                     | App bundles.                            |
+| **jolt**           | Chez Scheme. A self-hosted compiler to native code, and C-ABI shared libraries.   | Self-contained binary.                  |
 | **clojurust**      | Rust. Cranelift JIT, AOT to native, Rust libraries as `cdylib` plugins.           | Native binary.                          |
 | **ClojureWasm**    | Zig. Embeds a Wasm engine so Clojure calls modules from Rust/Go/C (polyglot FFI). | ~8.1 MB native binary, starts in ~6 ms. |
 
@@ -45,9 +46,12 @@ Compiling *Clojure source* into a WebAssembly component is a separate project:
 ## The sibling: clojurust (`cljrs`)
 
 [clojurust](https://github.com/BuddhiLW/clojurust) is a Rust-hosted Clojure
-dialect by the same maintainer, with a Cranelift JIT and native AOT. The two
-are not bridged (cljrs cannot host a component, cljw has no `dlopen`), but
-they share two things that matter more:
+dialect by the same maintainer, with a Cranelift JIT and native AOT. Neither
+hosts the other (cljrs cannot host a component), but they share three things:
+
+- **The C FFI.** `cljw.ffi` and `clojure.rust.ffi` are one API over `dlopen`,
+  so a portable adapter is one reader conditional
+  ([`docs/examples/ffi/`](../docs/examples/ffi/)).
 
 - **The Clojure surface.** cljw reads `.cljc` under `{:cljw :clj :default}`
   and cljrs under `{:rust}`, so a host-free `.cljc` runs unchanged on the JVM,
@@ -62,6 +66,26 @@ they share two things that matter more:
   absorbs shape differences (a WIT `result` lifts to `[:ok v]` / `[:err e]`,
   a trap reports as the capability answer it is) and the shared program keeps
   the semantics.
+
+## Hosting, and being hosted
+
+ClojureWasm is a host. It loads two kinds of foreign code:
+
+- **Wasm modules and WIT components**, sandboxed, under a fuel and memory
+  budget (`cljw.wasm`).
+- **Native shared libraries**, unsandboxed, through `dlopen` (`cljw.ffi`).
+
+It is not a guest. `cljw build` produces an executable; there is no
+shared-library build and no `wasm32` build of the runtime, so a C, Rust or
+.NET program cannot embed it.
+
+[jolt](https://github.com/jolt-lang/jolt) covers that direction:
+`jolt build --library` compiles a Clojure project into a shared object with
+its runtime inside, entered through `jolt_library_init` and `jolt_lookup`.
+The two meet at the C ABI. A jolt library is native code with ambient
+authority, so it loads through `cljw.ffi`, not through the sandbox. One limit
+applies today: `jolt_lookup` returns a function pointer, and `cljw.ffi` calls
+a symbol by name, not an address.
 
 ## A note on respect
 
@@ -78,6 +102,7 @@ is exploring one more corner — not competing for the others' ground.
   ([Clojure](https://clojure.org), [Babashka](https://babashka.org),
   [ClojureScript](https://clojurescript.org), [jank](https://jank-lang.org),
   [ClojureDart](https://github.com/Tensegritics/ClojureDart),
+  [jolt](https://github.com/jolt-lang/jolt),
   [clojurust](https://github.com/BuddhiLW/clojurust)).
 - ClojureWasm figures: [`bench/RELEASE_METRICS.md`](../bench/RELEASE_METRICS.md)
   (reproduce with `bash bench/release_metrics.sh`).
