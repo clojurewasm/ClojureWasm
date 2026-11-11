@@ -32,13 +32,13 @@ Two things, which are easy to conflate — and only the first one is shipped:
    [`docs/examples/wasm/`](../docs/examples/wasm/).) This is the angle
    ClojureWasm is exploring, and it has no obvious equivalent in the other
    runtimes.
-2. **ClojureWasm does not compile *itself* to WebAssembly.** There is no
-   `wasm32` build of the runtime, and `cljw build` produces a native binary
-   with an embedded bytecode payload — not a `.wasm`. The runtime is plain
-   Zig, so the target is reachable in principle, but the value representation
-   and garbage collector are designed for linear memory, so such a build would
-   not interoperate with WasmGC-based languages. It is tracked as future
-   research, not a feature.
+2. **ClojureWasm does not ship as a `.wasm`.** The runtime compiles for
+   `wasm32-wasi`, and CI keeps that target compiling, but no release carries
+   the artifact. That build is single-threaded: no futures or agents, no
+   network, no `cljw.ffi`, no embedded engine. `cljw build` produces a native
+   binary with an embedded bytecode payload, not a `.wasm`. The value
+   representation and garbage collector use linear memory, so the build does
+   not interoperate with WasmGC-based languages.
 
 Compiling *Clojure source* into a WebAssembly component is a separate project:
 [ClojureWit](https://github.com/clojurewasm/ClojureWit), in the upstream org.
@@ -77,9 +77,10 @@ ClojureWasm is a host. It loads two kinds of foreign code:
   budget (`cljw.wasm`).
 - **Native shared libraries**, unsandboxed, through `dlopen` (`cljw.ffi`).
 
-It is not a guest. `cljw build` produces an executable; there is no
-shared-library build and no `wasm32` build of the runtime, so a C, Rust or
-.NET program cannot embed it.
+It is not yet a guest. `cljw build` produces an executable and there is no
+shared-library build, so a C, Rust or .NET program cannot link it. The
+`wasm32-wasi` build above is the one route in: any Wasm host could run it,
+cljw included, but it is unreleased.
 
 [jolt](https://github.com/jolt-lang/jolt) covers that direction:
 `jolt build --library` compiles a Clojure project into a shared object with
