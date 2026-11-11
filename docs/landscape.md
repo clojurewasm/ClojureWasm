@@ -86,9 +86,8 @@ cljw included, but it is unreleased.
 `jolt build --library` compiles a Clojure project into a shared object with
 its runtime inside, entered through `jolt_library_init` and `jolt_lookup`.
 The two meet at the C ABI. A jolt library is native code with ambient
-authority, so it loads through `cljw.ffi`, not through the sandbox. One limit
-applies today: `jolt_lookup` returns a function pointer, and `cljw.ffi` calls
-a symbol by name, not an address.
+authority, so it loads through `cljw.ffi`, not through the sandbox:
+`jolt_lookup` returns a function pointer, and `ffi/function-at` calls it.
 
 ## A note on respect
 
