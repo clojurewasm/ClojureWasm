@@ -7,6 +7,44 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+### Added
+
+- **`cljw.ffi/function-at`: call a function pointer.** `(ffi/function-at
+  addr [:long :long] :long)` turns an integer code address, such as one a C
+  API returns (a vtable slot, a plugin registry, jolt's `jolt_lookup`), into
+  an ordinary Clojure fn, with the same types and limits as `function`. No
+  library owns an address, so `close` does not reach it and there is no
+  `:closed` error; the caller keeps the code loaded. A NULL address (0 or
+  nil) throws `{:ffi/error :symbol :address addr}` at creation, a bad
+  signature `{:ffi/error :signature :address addr :reason ...}` (ADR-0202
+  amendment).
+- **`docs/examples/ffi/jolt/`: cljw calls a Clojure library compiled by
+  jolt.** `jolt build --library` produces a C-ABI shared object; the example
+  builds one, initialises it, and calls its exports through `jolt_lookup` and
+  `ffi/function-at`, next to a C driver doing the same.
+- **`docs/examples/wasm/clojure-guest/`: cljw hosting cljw.** The
+  `wasm32-wasi` build of the runtime runs under `wasm/run` with fuel, memory,
+  output and wall-clock budgets. The guest build is not a release artifact.
+- **`docs/examples/polyglot/hosts.cljc` runs on jolt**, a fourth host beside
+  the JVM, cljw and cljrs, and the gate checks it when `jolt` is on PATH.
+- **Every accepted divergence carries an executable check (ADR-0208).** The
+  gate re-evaluates each `accepted_divergences.yaml` row on cljw and on JVM
+  Clojure, and a row whose two answers have converged fails as stale. The
+  backfill corrected AD-065 and added AD-077.
+- `bench/numeric/`: `fib30`, `loop10m` and startup probes for the numeric
+  hot path.
+
+### Changed
+
+- The README documents `cljw.ffi` and the jolt library route, and
+  `docs/landscape.md` places jolt and states what cljw hosts and where it is
+  not yet a guest.
+
+### Fixed
+
+- CI installs ripgrep from a checksum-pinned release instead of `apt`, whose
+  mirror lookup failed the Linux gate before any test ran.
+
 ## [1.15.7] - 2026-11-08
 
 ### Added

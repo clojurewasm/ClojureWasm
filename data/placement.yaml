@@ -24,9 +24,9 @@
 schema_version: "2.0"
 summary:
   namespaces_required: 36
-  total: 1469
-  zig: 436
-  clj: 807
+  total: 1472
+  zig: 438
+  clj: 808
   value: 220
   unbound: 6
 vars:
@@ -36,14 +36,17 @@ vars:
   "cljw.ffi/-bytes": { impl: zig, flags: "-" }
   "cljw.ffi/-close": { impl: zig, flags: "-" }
   "cljw.ffi/-invoke": { impl: zig, flags: "-" }
+  "cljw.ffi/-invoke-at": { impl: zig, flags: "-" }
   "cljw.ffi/-open": { impl: zig, flags: "-" }
   "cljw.ffi/-prepare": { impl: zig, flags: "-" }
+  "cljw.ffi/-prepare-at": { impl: zig, flags: "-" }
   "cljw.ffi/-string": { impl: zig, flags: "-" }
   "cljw.ffi/-sym": { impl: zig, flags: "-" }
   "cljw.ffi/bytes": { impl: clj, flags: "-" }
   "cljw.ffi/call": { impl: clj, flags: "-" }
   "cljw.ffi/close": { impl: clj, flags: "-" }
   "cljw.ffi/function": { impl: clj, flags: "-" }
+  "cljw.ffi/function-at": { impl: clj, flags: "-" }
   "cljw.ffi/open": { impl: clj, flags: "-" }
   "cljw.ffi/string": { impl: clj, flags: "-" }
   "cljw.ffi/sym": { impl: clj, flags: "-" }

@@ -95,6 +95,10 @@ divides by zero:
 
 Run it: `zig build -Dwasm && ./zig-out/bin/cljw docs/examples/wasm/trap.clj`.
 
+The guest can be cljw itself: [`clojure-guest/`](./clojure-guest/README.md)
+runs the `wasm32-wasi` build of cljw under `wasm/run`, so untrusted Clojure
+evaluates under fuel and memory budgets with no ambient files or environment.
+
 ## Engines
 
 `wasm/load` takes `{:engine :auto}` (the default: zwasm's JIT, with a fallback

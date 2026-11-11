@@ -79,3 +79,18 @@ void fill_i64(long *p, long n, long v) {
 void bump_bytes(unsigned char *p, long n) {
     for (long i = 0; i < n; i++) p[i]++;
 }
+
+// Function pointers handed back by C (ffi/function-at): the callees are
+// static, so no symbol names them and only the returned address reaches them.
+typedef long (*binop_fn)(long, long);
+typedef double (*unop_fn)(double);
+
+static long adder(long a, long b) { return a + b; }
+
+static double halver(double x) { return x / 2.0; }
+
+binop_fn get_adder(void) { return adder; }
+
+unop_fn get_halver(void) { return halver; }
+
+binop_fn get_null_fn(void) { return NULL; }
