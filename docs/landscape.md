@@ -56,7 +56,9 @@ hosts the other (cljrs cannot host a component), but they share three things:
 - **The Clojure surface.** cljw reads `.cljc` under `{:cljw :clj :default}`
   and cljrs under `{:rust}`, so a host-free `.cljc` runs unchanged on the JVM,
   on cljw and on cljrs. Conditionals are needed only where a kernel touches a
-  host.
+  host. jolt runs the same file too
+  ([measured](./examples/polyglot/README.md#one-program-four-hosts)); it also
+  reads `:clj`, so its `:jolt` branch goes before `:clj`.
 - **The Rust library.** The same crate serves cljw as a zero-import Wasm
   component and cljrs as a native `cdylib`. Measured on a Groth16 prover
   (2026-09-12): identical 128-byte proofs and verdicts on both; cljrs ran it in
